@@ -1,0 +1,101 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-code-review.sh",
+            "timeout": 10,
+            "statusMessage": "Checking code-review gate..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-static-analysis.sh",
+            "timeout": 180,
+            "statusMessage": "Running Checkstyle + PMD..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-coverage.sh",
+            "timeout": 120,
+            "statusMessage": "Checking coverage gate..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-doc-gate.sh",
+            "timeout": 10,
+            "statusMessage": "Checking doc gate..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-settings-bash.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/code-guardrail.js",
+            "timeout": 30,
+            "statusMessage": "Running code guardrail..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-persona-reminder.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-settings.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-test-first.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-skill-prereqs.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/post-tool-use-memory.js",
+            "timeout": 30,
+            "statusMessage": "Updating memory..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/validate-feat-html.js",
+            "timeout": 15,
+            "statusMessage": "Validating feat HTML..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/validate-feat-index.js",
+            "timeout": 15,
+            "statusMessage": "Validating feat index..."
+          }
+        ]
+      }
+    ]
+  }
+}

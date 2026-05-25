@@ -6,6 +6,12 @@ from dpaa.models import Finding, LayerResult
 from dpaa.parser import PlanDocument, split_sentences
 from dpaa.suggestions import get_suggestion
 
+try:
+    import stanza as _stanza  # noqa: F401
+    _STANZA_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    _STANZA_AVAILABLE = False
+
 _PASSIVE_RE = re.compile(r'\b(is|are|was|were|be|been|being)\s+\w+ed\b', re.IGNORECASE)
 _COORD_RE = re.compile(r'\b(and|or)\b', re.IGNORECASE)
 
@@ -62,7 +68,7 @@ class SyntacticLayer(LayerAnalyzer):
     def analyze(self, doc: PlanDocument) -> LayerResult:
         try:
             return self._analyze_impl(doc)
-        except Exception:
+        except (ImportError, ModuleNotFoundError):
             return LayerResult(layer=self.LAYER_NAME, score=0, findings=())
 
     def _analyze_impl(self, doc: PlanDocument) -> LayerResult:

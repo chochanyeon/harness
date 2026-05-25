@@ -1,5 +1,6 @@
 from __future__ import annotations
 import pytest
+from unittest.mock import patch
 from dpaa.layers.syntactic import SyntacticLayer
 from dpaa.parser import MarkdownParser, PlanDocument, Section
 
@@ -32,8 +33,11 @@ def test_long_sentence_detected():
     long_sentence = " ".join(["word"] * 45)
     doc = _make_doc(long_sentence)
     result = SyntacticLayer().analyze(doc)
-    rules = {f.rule for f in result.findings}
-    assert "long_sentence" in rules
+    findings = [f for f in result.findings if f.rule == "long_sentence"]
+    assert len(findings) == 1
+    finding = findings[0]
+    assert "long_sentence" in {f.rule for f in result.findings}
+    assert finding.score == 3
 
 
 def test_short_sentence_no_long_finding():
@@ -47,8 +51,11 @@ def test_multiple_subjects_detected():
     sentence = "The worker and the scheduler and the monitor or the dispatcher handle retries."
     doc = _make_doc(sentence)
     result = SyntacticLayer().analyze(doc)
-    rules = {f.rule for f in result.findings}
-    assert "multiple_subjects" in rules
+    findings = [f for f in result.findings if f.rule == "multiple_subjects"]
+    assert len(findings) == 1
+    finding = findings[0]
+    assert "multiple_subjects" in {f.rule for f in result.findings}
+    assert finding.score == 5
 
 
 def test_two_conjunctions_no_multiple_subjects():
@@ -63,8 +70,11 @@ def test_passive_voice_without_agent_detected():
     sentence = "The configuration file is updated during deployment."
     doc = _make_doc(sentence)
     result = SyntacticLayer().analyze(doc)
-    rules = {f.rule for f in result.findings}
-    assert "passive_voice_without_agent" in rules
+    findings = [f for f in result.findings if f.rule == "passive_voice_without_agent"]
+    assert len(findings) == 1
+    finding = findings[0]
+    assert "passive_voice_without_agent" in {f.rule for f in result.findings}
+    assert finding.score == 5
 
 
 def test_passive_voice_with_agent_not_flagged():
@@ -85,12 +95,12 @@ def test_clean_sentence_no_findings():
 
 def test_three_findings_score_at_most_15():
     long = " ".join(["word"] * 45)
-    passive = "The index is rebuilt after the migration step."
+    passive = "The index is updated after the migration step."
     conjunction = "The a and the b and the c or the d runs the task."
     content = f"{long}\n{passive}\n{conjunction}"
     doc = _make_doc(content)
     result = SyntacticLayer().analyze(doc)
-    assert result.score <= 15
+    assert result.score == 13  # long_sentence(3) + passive_voice(5) + multiple_subjects(5)
 
 
 def test_finding_scores_are_positive():
@@ -104,5 +114,15 @@ def test_finding_scores_are_positive():
 def test_empty_document_returns_no_findings():
     doc = MarkdownParser().parse("")
     result = SyntacticLayer().analyze(doc)
+    assert result.findings == ()
+    assert result.score == 0
+
+
+def test_graceful_degradation_without_stanza():
+    """Layer returns empty result when stanza unavailable."""
+    layer = SyntacticLayer()
+    doc = _make_doc("This is a normal sentence.")
+    with patch.object(layer, '_analyze_impl', side_effect=ModuleNotFoundError("stanza")):
+        result = layer.analyze(doc)
     assert result.findings == ()
     assert result.score == 0

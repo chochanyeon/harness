@@ -34,19 +34,18 @@ superpowers Phase               Action                        Gate
 ──────────────────────────────────────────────────────────────────────
 ① idea-refine (optional)       아이디어 구체화               —
 ② spec-driven-development      인수 기준 정의                —
-③ planning-and-task-breakdown  TaskCreate로 슬라이스 분해    ⚠ commit 시 plan 경고
+③ planning-and-task-breakdown  TaskCreate로 슬라이스 분해    —
 ④ context-engineering          관련 코드 파악                —
 ⑤ incremental-implementation
-   ├ architecture-sensitive    Entity·Controller·Gradle 수정 ⚠ guard-persona-reminder.sh
-   ├ test-driven-development   테스트 먼저 작성 (신규 파일)  🔒 guard-test-first.sh
-   └ quality-gate              핵심 코드·스타일·PMD 검사     🔒 code-guardrail.js
+   ├ architecture-sensitive    Entity·Controller·Gradle 수정 ⚠ persona-inject.sh
+   └ test-driven-development   테스트 먼저 작성              📋 CLAUDE.md 지침
 ⑥ code-review-and-quality      /code-review                  🔒 guard-skill-prereqs.sh
-⑦ documentation-and-adrs       /document-feature             🔒 validate-feat-html/index
-⑧ git-workflow-and-versioning  git commit                    🔒 guard-code-review.sh
+⑦ documentation-and-adrs       /document-feature             ⚠ validate-feat-html/index
+⑧ git-workflow-and-versioning  git commit                    🔒 commit-message + code-review + static-analysis
 ⑨ shipping-and-launch          /push-with-review             —  (스킬 호출 = 승인)
 ```
 
-🔒 차단(block)   ⚠ 경고(advisory)
+🔒 차단(deny)   ⚠ 경고(advisory)   📋 지침(guideline)
 
 ---
 
@@ -55,10 +54,10 @@ superpowers Phase               Action                        Gate
 ```
 superpowers Phase               Action                        Gate
 ──────────────────────────────────────────────────────────────────────
-① debugging-and-error-recovery 버그 재현 테스트 작성         🔒 guard-test-first.sh
-② incremental-implementation   최소 수정                     🔒 code-guardrail.js
+① debugging-and-error-recovery 버그 재현 테스트 작성         📋 CLAUDE.md 지침
+② incremental-implementation   최소 수정                     —
 ③ code-review-and-quality      /code-review                  🔒 guard-skill-prereqs.sh
-④ git-workflow-and-versioning  git commit                    🔒 guard-code-review.sh
+④ git-workflow-and-versioning  git commit                    🔒 commit-message + code-review + static-analysis
 ⑤ shipping-and-launch          /push-with-review (lite)      —  (스킬 호출 = 승인)
 ```
 
@@ -70,9 +69,9 @@ superpowers Phase               Action                        Gate
 superpowers Phase               Action                        Gate
 ──────────────────────────────────────────────────────────────────────
 ① pre-check                    기존 테스트 통과 확인 (수동)  —
-② incremental-implementation   구조 개선, 기능 변경 없음     🔒 code-guardrail.js
+② incremental-implementation   구조 개선, 기능 변경 없음     —
 ③ code-review-and-quality      /code-review                  🔒 guard-skill-prereqs.sh
-④ git-workflow-and-versioning  git commit                    🔒 guard-code-review.sh
+④ git-workflow-and-versioning  git commit                    🔒 commit-message + code-review + static-analysis
 ⑤ shipping-and-launch          /push-with-review (lite)      —  (스킬 호출 = 승인)
 ```
 
@@ -83,10 +82,12 @@ superpowers Phase               Action                        Gate
 ```
 superpowers Phase               Action                        Gate
 ──────────────────────────────────────────────────────────────────────
-① implementation                설정·의존성 변경              🔒 code-guardrail.js (if .java)
-② git-workflow-and-versioning   git commit                    🔒 guard-code-review.sh
+① implementation                설정·의존성 변경              —
+② git-workflow-and-versioning   git commit                    🔒 commit-message + static-analysis (Java 변경 시)
 ③ shipping-and-launch           git push                      —
 ```
+
+Java production 코드 변경이 없으면 code-review 게이트는 자동 통과합니다.
 
 ---
 
@@ -95,42 +96,40 @@ superpowers Phase               Action                        Gate
 ```
 superpowers Phase               Action                        Gate
 ──────────────────────────────────────────────────────────────────────
-① documentation-and-adrs       /document-feature             🔒 validate-feat-html/index
-② git-workflow-and-versioning  git commit                    🔒 guard-code-review.sh
+① documentation-and-adrs       /document-feature             ⚠ validate-feat-html/index
+② git-workflow-and-versioning  git commit                    🔒 commit-message
 ③ shipping-and-launch          git push                      —
 ```
+
+Java production 코드 변경이 없으면 code-review 및 static-analysis 게이트는 자동 통과합니다.
 
 ---
 
 ## 7. 게이트 빠른 참조
 
-| 게이트                     | 차단 조건                               | 해제 방법                                          |
-|----------------------------|-----------------------------------------|----------------------------------------------------|
-| `guard-test-first.sh`      | 테스트 없이 신규 `.java` Write          | 테스트 클래스 먼저 작성                            |
-| `code-guardrail.js`        | 핵심 코드 삭제 / Checkstyle·PMD 위반   | 수정 또는 `GUARDRAIL_SKIP=1`                       |
-| `guard-code-review.sh`     | 리뷰 결과 없이 `git commit`             | `/code-review` 실행 후 재시도                      |
-| `guard-static-analysis.sh` | Checkstyle·PMD 위반 시 `git commit`    | 위반 수정 또는 `STATIC_ANALYSIS_SKIP=1`            |
-| `guard-coverage.sh`        | 커버리지 임계값 미달 시 `git commit`    | 테스트 추가 또는 `COVERAGE_SKIP=1`                 |
-| `guard-skill-prereqs.sh`   | 변경사항 없이 `/code-review`            | 코드 변경 후 재시도                                |
-| `validate-feat-html.js`    | HTML 구조 이상                          | validate 통과 후 재시도                            |
-| `validate-feat-index.js`   | INDEX 누락 항목                         | `docs/feat/INDEX.md` 업데이트                      |
+### Final-Stage Gates (deny — 커밋 시점)
 
-### Override 명령
+| 게이트 | 차단 조건 | 해제 방법 |
+|--------|----------|----------|
+| `guard-commit-message.sh` | Conventional Commits 형식 위반 | 메시지 형식 수정 |
+| `guard-code-review.sh` | 리뷰 결과 없이 `git commit` (Java 변경 시) | `/code-review` 실행 후 재시도 |
+| `guard-static-analysis.sh` | Checkstyle·PMD 위반 (Java 변경 시) | 위반 수정 |
 
-```bash
-# 커밋 단건 승인 (10분 유효)
-touch ~/.claude/hooks/.commit-gate
+### Advisory Hooks
 
-# 커밋 세션 승인 (하네스 모드 — 종료 시 rm -f .commit-gate-session)
-touch ~/.claude/hooks/.commit-gate-session
+| 훅 | 역할 |
+|-----|------|
+| `guard-skill-prereqs.sh` | 변경없이 `/code-review` 시도 시 deny |
+| `validate-feat-html.js` | HTML 구조 검증 후 수정 안내 |
+| `validate-feat-index.js` | INDEX.md 누락 시 안내 |
 
-# Push 단건 승인 (push-with-review가 자동 생성)
-touch ~/.claude/hooks/.push-gate            # 10분 유효
+### 지침화된 항목 (기존 hook → CLAUDE.md 지침)
 
-# Guardrail 우회 (대규모 리팩토링 등 의도적 삭제)
-GUARDRAIL_SKIP=1                            # 환경변수 방식
-touch .claude/.guardrail-skip               # 파일 방식
-```
+| 항목 | 검증 위치 |
+|------|----------|
+| TDD (test-first) | 코드리뷰에서 테스트 누락 검증 |
+| 커버리지 | CI/CD에서 JaCoCo 검증 |
+| 문서화 | push-with-review 스킬에서 강제 |
 
 ---
 
@@ -138,20 +137,34 @@ touch .claude/.guardrail-skip               # 파일 방식
 
 | 구성 요소                  | 유형  | 이벤트                   | 대상 파일                     | lifecycle 단계             |
 |----------------------------|-------|--------------------------|-------------------------------|----------------------------|
-| `guard-test-first.sh`      | Hook  | PreToolUse / Write       | `*.java` (src/main)           | Test-Driven Development    |
-| `code-guardrail.js`        | Hook  | PreToolUse / Edit, Write | `*.java`                      | Implementation, Review     |
-| `guard-persona-reminder.sh`| Hook  | PreToolUse / Edit, Write | Entity·Controller·Security    | Governance (advisory)      |
-| `guard-code-review.sh`     | Hook  | PreToolUse / Bash        | `git commit`                  | Code Review & Quality      |
-| `guard-static-analysis.sh` | Hook  | PreToolUse / Bash        | `git commit` (Java 변경 시)   | Static Analysis            |
-| `guard-coverage.sh`        | Hook  | PreToolUse / Bash        | `git commit` (Java 변경 시)   | Test Coverage              |
-| `guard-doc-gate.sh`        | Hook  | PreToolUse / Bash        | `git commit` (feat/*)         | Documentation              |
-| `guard-skill-prereqs.sh`   | Hook  | PreToolUse / Skill       | `/code-review`                | 전처리                     |
-| `guard-settings.sh`        | Hook  | PreToolUse / Edit, Write | `.claude/settings.json`       | Security                   |
-| `guard-settings-bash.sh`   | Hook  | PreToolUse / Bash        | `.claude/` 수정 시도          | Security                   |
-| `validate-feat-html.js`    | Hook  | PostToolUse / Write      | `docs/feat/html/*.html`       | Documentation              |
-| `validate-feat-index.js`   | Hook  | PostToolUse / Write      | `docs/feat/html/index.html`   | Documentation              |
-| `post-tool-use-memory.js`  | Hook  | PostToolUse / Write,Edit | 모든 파일                     | Memory                     |
-| `/code-review`             | Skill | 수동                     | 변경 파일                     | Code Review & Quality      |
-| `/document-feature`        | Skill | 수동                     | —                             | Documentation & ADRs       |
-| `/push-with-review`        | Skill | 수동                     | —                             | Shipping & Launch          |
-| `/render-docs`             | Skill | 수동                     | `docs/feat/*.md`              | Documentation              |
+### Final-Stage Gates
+
+| 구성 요소 | 이벤트 | 대상 | lifecycle |
+|---------|--------|------|----------|
+| `guard-commit-message.sh` | PreToolUse / Bash | `git commit` | Commit Format |
+| `guard-code-review.sh` | PreToolUse / Bash | `git commit` (Java 변경 시) | Code Review |
+| `guard-static-analysis.sh` | PreToolUse / Bash | `git commit` (Java 변경 시) | Static Analysis |
+
+### Advisory Hooks
+
+| 구성 요소 | 이벤트 | 대상 | lifecycle |
+|---------|--------|------|----------|
+| `session-start-context.sh` | SessionStart | — | Context Injection |
+| `persona-inject.sh` | PreToolUse / Write,Edit | Entity·Security·Gradle | Governance |
+| `pre-commit-context.sh` | PreToolUse / Bash | `git commit` | Context Injection |
+| `guard-skill-prereqs.sh` | PreToolUse / Skill | `/code-review` | 전처리 |
+| `guard-settings.sh` | PreToolUse / Write,Edit | `.claude/settings.json` | Security |
+| `guard-settings-bash.sh` | PreToolUse / Bash | `.claude/` 수정 | Security |
+| `validate-feat-html.js` | PostToolUse / Write | `docs/feat/html/*.html` | Documentation |
+| `validate-feat-index.js` | PostToolUse / Write | `docs/feat/html/index.html` | Documentation |
+| `post-tool-use-memory.js` | PostToolUse / Write,Edit | 모든 파일 | Memory |
+| `session-stop-report.sh` | Stop | — | Session Report |
+
+### Skills
+
+| 구성 요소 | 대상 | lifecycle |
+|---------|------|----------|
+| `/code-review` | 변경 파일 | Code Review & Quality |
+| `/document-feature` | — | Documentation & ADRs |
+| `/push-with-review` | — | Shipping & Launch |
+| `/render-docs` | `docs/feat/*.md` | Documentation |

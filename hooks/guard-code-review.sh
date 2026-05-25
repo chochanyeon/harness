@@ -5,27 +5,30 @@
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 
-[ "$REVIEW_SKIP" = "1" ] && exit 0
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${HOOK_DIR}/hook-common.sh"
 
-deny() {
-  jq -n --arg r "$1" '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$r}}'
-  exit 0
-}
+# git commit이 아니면 즉시 종료
+is_git_commit "$CMD" || exit 0
 
-# git commit 감지 (guard-git-commit.sh와 동일 로직)
-CMD_STRIPPED=$(echo "$CMD" | sed "s/'[^']*'//g" | sed 's/"[^"]*"//g')
-CMD_NORMALIZED=$(echo "$CMD_STRIPPED" | sed 's/git[[:space:]]\+-C[[:space:]]\+[^[:space:]]*/git/g')
-if ! echo "$CMD_NORMALIZED" | grep -qE '(^|[|;&[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
-  exit 0
-fi
-
-ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+ROOT=$(git_root)
 [ -z "$ROOT" ] && exit 0
 
-RESULT_FILE="${ROOT}/.claude/review-result.json"
+# ── Check 0: 의미 있는 변경(리뷰 대상 파일)이 있는지 확인 ──
+# Java production 코드 변경 없으면(chore, docs 등) 리뷰 불필요
+HAS_MEANINGFUL=0
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  is_unimportant_file "$f" || { HAS_MEANINGFUL=1; break; }
+done < <(git -C "$ROOT" diff --cached --name-only 2>/dev/null)
+
+[ "$HAS_MEANINGFUL" -eq 0 ] && exit 0
+
+RESULT_FILE="${ROOT}/tmp/review-result.json"
 
 # ── Check 1: 결과 파일 존재 여부 ──
 if [ ! -f "$RESULT_FILE" ]; then
+  log_violation "code-review-deny" "review-result.json" "file missing"
   deny "── 🔍 CODE REVIEW REQUIRED ────────────
 
   커밋 전 /code-review 실행이 필요합니다.
@@ -33,8 +36,6 @@ if [ ! -f "$RESULT_FILE" ]; then
   ① /code-review 스킬 실행
   ② Critical 0 + Major ≤2 확인
   ③ 커밋 재시도
-
-  💡 긴급 우회: REVIEW_SKIP=1
 
 ──────────────────────────────────────"
 fi
@@ -46,30 +47,44 @@ TIMESTAMP=$(jq -r '.timestamp // empty' "$RESULT_FILE" 2>/dev/null)
 
 if [ "$CRITICAL" = "-1" ] || [ "$MAJOR" = "-1" ]; then
   rm -f "$RESULT_FILE"
+  log_violation "code-review-deny" "review-result.json" "file corrupted"
   deny "── ⚠️ 결과 파일 손상 ─────────────────
 
   review-result.json이 손상되었습니다.
   /code-review를 다시 실행하세요.
 
-  💡 긴급 우회: REVIEW_SKIP=1
-
 ──────────────────────────────────────"
 fi
 
-# ── Check 3: 시간 만료 (30분 TTL) ──
+# ── Check 3: 시간 만료 (60분 TTL) ──
 if [ -n "$TIMESTAMP" ]; then
-  REVIEW_EPOCH=$(date -d "$TIMESTAMP" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${TIMESTAMP%%Z*}" +%s 2>/dev/null || echo 0)
+  REVIEW_EPOCH=$(node -e "process.stdout.write(String(Math.floor(new Date('$TIMESTAMP').getTime()/1000)))" 2>/dev/null \
+    || date -d "$TIMESTAMP" +%s 2>/dev/null \
+    || date -j -f "%Y-%m-%dT%H:%M:%S" "${TIMESTAMP%%Z*}" +%s 2>/dev/null \
+    || echo 0)
   NOW_EPOCH=$(date +%s)
   AGE=$(( NOW_EPOCH - REVIEW_EPOCH ))
 
   if [ "$AGE" -gt 3600 ]; then
+    # 의미 있는 변경(커버리지 대상 파일)이 있는지 확인 — 없으면 재리뷰 불필요
+    HAS_MEANINGFUL=0
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      is_unimportant_file "$f" || { HAS_MEANINGFUL=1; break; }
+    done < <(git -C "$ROOT" diff --cached --name-only 2>/dev/null)
+
+    if [ "$HAS_MEANINGFUL" -eq 0 ]; then
+      # 제외 대상 파일만 변경 → 만료돼도 재리뷰 생략
+      rm -f "$RESULT_FILE"
+      exit 0
+    fi
+
     rm -f "$RESULT_FILE"
+    log_violation "code-review-deny" "review-result.json" "expired ${AGE}s"
     deny "── ⏰ 리뷰 만료 ────────────────────────
 
   리뷰가 60분 이상 경과했습니다 (${AGE}초).
   /code-review를 다시 실행하세요.
-
-  💡 긴급 우회: REVIEW_SKIP=1
 
 ──────────────────────────────────────"
   fi
@@ -85,6 +100,7 @@ if [ "$CRITICAL" -gt 0 ] || [ "$MAJOR" -gt 2 ]; then
   fi
 
   rm -f "$RESULT_FILE"
+  log_violation "code-review-deny" "review-result.json" "critical=${CRITICAL} major=${MAJOR}"
   deny "── 🔍 CODE REVIEW 미통과 ────────────
 
   ${VERDICT}
@@ -95,8 +111,6 @@ if [ "$CRITICAL" -gt 0 ] || [ "$MAJOR" -gt 2 ]; then
   ① 지적된 이슈 수정
   ② /code-review 재실행
   ③ 커밋 재시도
-
-  💡 긴급 우회: REVIEW_SKIP=1
 
 ──────────────────────────────────────"
 fi

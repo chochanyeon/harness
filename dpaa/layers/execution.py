@@ -28,7 +28,6 @@ class ExecutionLayer(LayerAnalyzer):
         rule_cfg = rules["rules"]["weak_action_without_metric"]
 
         findings: list[Finding] = []
-        is_structured = self._has_structured_steps(doc)
 
         for section in doc.sections.values():
             for line_no, sentence in split_sentences(section.content):
@@ -37,23 +36,15 @@ class ExecutionLayer(LayerAnalyzer):
                 has_metric = bool(_METRIC_RE.search(sentence))
 
                 if has_weak and not has_metric:
-                    severity = "medium" if is_structured else rule_cfg["severity"]
-                    score = rule_cfg["score"] // 2 if is_structured else rule_cfg["score"]
                     findings.append(Finding(
                         layer=self.LAYER_NAME,
                         rule="weak_action_without_metric",
-                        severity=severity,
+                        severity=rule_cfg["severity"],
                         line=section.line_start + line_no,
                         text=sentence,
                         message="Weak action term without measurable metric.",
-                        score=score,
+                        score=rule_cfg["score"],
                         suggestion=get_suggestion("weak_action_without_metric"),
                     ))
 
         return self._make_result(findings)
-
-    def _has_structured_steps(self, doc: PlanDocument) -> bool:
-        steps_section = doc.sections.get("Steps", None)
-        if not steps_section:
-            return False
-        return "```yaml" in steps_section.content

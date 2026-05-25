@@ -21,7 +21,7 @@ if [ -f "$GATE_FILE" ]; then
 fi
 
 # settings.json 또는 hooks/*.sh 수정 감지
-if echo "$FILE_PATH" | grep -qE "\.claude/(settings\.json|hooks/guard-.*\.sh)$"; then
+if echo "$FILE_PATH" | grep -qE "\.claude/(settings\.json|hooks/.*\.(sh|js))$"; then
     TARGET=$(basename "$FILE_PATH")
     DENY_MSG=$(cat <<MSG
 ── 🔒 SETTINGS PROTECTION ─────────────
@@ -30,7 +30,7 @@ if echo "$FILE_PATH" | grep -qE "\.claude/(settings\.json|hooks/guard-.*\.sh)$";
 
   차단 대상:
   - settings.json (hook 설정)
-  - hooks/guard-*.sh (보안 guard 파일)
+  - hooks/*.sh, hooks/*.js (hook 파일)
 
   정당한 수정이 필요한 경우:
 

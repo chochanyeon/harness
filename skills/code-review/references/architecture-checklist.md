@@ -471,11 +471,8 @@ public class CreateUserRequest {
 새로운 아키텍처 결정 시 ADR 작성 필수:
 
 **Check existing ADRs:**
-```bash
-ls .claude/adrs/
-# 0001-spring-boot-layered-architecture.md
-# 0002-oauth-provider-selection.md
-```
+
+Use the Glob tool on `docs/adr/*.md` to see existing ADRs. The current ADRs are in `docs/adr/`, not `.claude/adrs/`.
 
 **Create new ADR if:**
 - 새로운 레이어 추가

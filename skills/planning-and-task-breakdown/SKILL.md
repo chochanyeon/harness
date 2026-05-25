@@ -255,9 +255,9 @@ When multiple agents or sessions are available:
 
 ## DevCenter Integration
 
-**guard-arch-governance.sh:** Entity/Controller/Gradle changes require `.arch-gate` — plan should note this.
+**persona-inject.sh:** Entity/Controller/Gradle 변경 시 페르소나 컨텍스트가 자동 주입됩니다 (advisory).
 
-**guard-test-first.sh:** New `.java` files require tests first — plan should include test tasks before implementation.
+**TDD (지침):** 새 `.java` 파일에는 테스트를 먼저 작성합니다 — plan에 test task를 implementation task 앞에 배치하세요.
 
 **WORKFLOW.md:** Planning is phase ② in the `feat/*` Full Lifecycle.
 

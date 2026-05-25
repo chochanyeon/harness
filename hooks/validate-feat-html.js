@@ -28,11 +28,14 @@ async function main() {
     process.exit(0);
   }
 
-  if (!fs.existsSync(filePath)) {
+
+  let html;
+  try {
+    html = fs.readFileSync(filePath, 'utf8');
+  } catch (e) {
+    console.error(`[validate-feat-html] 파일 읽기 실패: ${e.message}`);
     process.exit(0);
   }
-
-  const html = fs.readFileSync(filePath, 'utf8');
   const issues = [];
 
   // 1. Mermaid 초기화 확인
@@ -56,7 +59,7 @@ async function main() {
   }
 
   if (issues.length === 0) {
-    console.log(`[validate-feat-html] ✓ ${path.basename(filePath)} 구조 검증 통과`);
+    console.error(`[validate-feat-html] ✓ ${path.basename(filePath)} 구조 검증 통과`);
     process.exit(0);
   }
 

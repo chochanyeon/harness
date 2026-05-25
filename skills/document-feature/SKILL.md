@@ -1,6 +1,6 @@
 ---
 name: document-feature
-description: After feature development, summarizes the work in docs/feat/** and updates INDEX.md. Use this skill whenever you finish implementing a feature on a feat/* branch, when the user asks to "document the feature" / "write feature docs" / "summarize this work", or as part of the push-with-review workflow. Always invoke this skill before pushing feat/* branches. Requires three sections — Context & Problem, Flow Diagram, and Decision Log — and prompts the user for items that cannot be inferred automatically. Output language is Korean; skill instructions are English.
+description: Use this skill whenever you finish implementing a feature on a feat/* branch, when the user asks to "document the feature" / "write feature docs" / "summarize this work", or as part of the push-with-review workflow. Always invoke this skill before pushing feat/* branches. Requires three sections — Context & Problem, Flow Diagram, and Decision Log — and prompts the user for items that cannot be inferred automatically. Output language is Korean; skill instructions are English.
 ---
 
 # Document Feature Skill
@@ -26,7 +26,7 @@ git diff <main-branch>..HEAD --name-only → changed file list
   - e.g. `feat/adapt_oauth` → `adapt-oauth`
 - Read changed service, controller, and entity files to understand the core flow.
 
-### Step 2: Collect user input (use AskUserQuestion)
+### Step 2: Collect user input (ask the user directly)
 
 Ask for items that cannot be inferred automatically, all at once.
 

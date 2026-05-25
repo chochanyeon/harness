@@ -3,7 +3,6 @@ from .referential import ReferentialLayer
 from .temporal import TemporalLayer
 from .execution import ExecutionLayer
 from .verification import VerificationLayer
-from .state import StateLayer
 
 try:
     from .syntactic import SyntacticLayer
@@ -13,5 +12,5 @@ except ImportError:
 
 __all__ = [
     "StructuralLayer", "ReferentialLayer", "TemporalLayer",
-    "ExecutionLayer", "VerificationLayer", "StateLayer",
+    "ExecutionLayer", "VerificationLayer",
 ]

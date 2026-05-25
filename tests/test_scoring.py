@@ -8,7 +8,7 @@ def _make_result(layer: str, score: int) -> LayerResult:
 
 def test_all_zero_scores_pass():
     layers = [_make_result(l, 0) for l in
-              ["structural","syntactic","referential","temporal","execution","verification","state"]]
+              ["structural","syntactic","referential","temporal","execution","verification"]]
     scorer = Scorer(profile="default")
     report = scorer.compute("test.md", layers)
     assert report.level == "PASS"
@@ -21,8 +21,7 @@ def test_high_execution_score_fails():
               _make_result("referential", 0),
               _make_result("temporal", 0),
               _make_result("execution", 100),
-              _make_result("verification", 100),
-              _make_result("state", 0)]
+              _make_result("verification", 100)]
     scorer = Scorer(profile="default")
     report = scorer.compute("test.md", layers)
     assert report.level == "FAIL"
@@ -34,8 +33,7 @@ def test_syntactic_layer_capped_at_warn():
               _make_result("referential", 0),
               _make_result("temporal", 0),
               _make_result("execution", 0),
-              _make_result("verification", 0),
-              _make_result("state", 0)]
+              _make_result("verification", 0)]
     scorer = Scorer(profile="default")
     report = scorer.compute("test.md", layers)
     assert report.level in ("PASS", "WARN"), "syntactic alone must not cause FAIL"

@@ -12,7 +12,7 @@ ask() {
 # .claude 디렉터리를 대상으로 하는 명령어 감지
 if echo "$CMD" | grep -qE '(\.claude/(settings|hooks)|settings\.json|guard-.*\.sh)'; then
     # 파일 수정/삭제 도구만 차단 (읽기 전용 명령 제외)
-    if echo "$CMD" | grep -qE '(\brm\b|\bmv\b|cat[[:space:]].*>|echo[[:space:]].*>|tee|\bchmod\b|chown|\bdd\b|truncate)'; then
+    if echo "$CMD" | grep -qE '(\brm\b|\bmv\b|\bcp\b|cat[[:space:]].*>|echo[[:space:]].*>|printf[[:space:]].*>|tee|sed[[:space:]].*-i|\bchmod\b|chown|\bdd\b|truncate)'; then
         ask ".claude/ 설정 파일 수정 시도가 감지되었습니다. 허가하시겠습니까?
 
 명령: $CMD"

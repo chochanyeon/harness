@@ -204,7 +204,7 @@ For JPA relationship patterns (@OneToMany, @ManyToOne, @ManyToMany), use the Rea
 
 ## DevCenter Integration
 
-**guard-arch-governance.sh:** Blocks Entity/Controller modifications without architecture review gate.
+**persona-inject.sh:** Entity/Controller/Security 파일 수정 시 페르소나 컨텍스트를 자동 주입합니다 (advisory).
 
 **AGENTS.md:** Backend Engineer persona includes REST API design as a core responsibility.
 

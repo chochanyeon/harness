@@ -326,17 +326,7 @@ public static HeavyObject getInstance() {
 - Index 추가
 - Caching 도입
 
-### 2. JaCoCo 성능 임계값
-```properties
-# gradle.properties
-api-service.minCoverage=0.60
-common.minCoverage=0.70
-consumer-service.minCoverage=0.55
-```
-- 테스트 커버리지 강제로 인한 과도한 Mock은 지양
-- 통합 테스트가 더 효율적이면 단위 테스트 강요하지 말 것
-
-### 3. Kafka Consumer Batch Size
+### 2. Kafka Consumer Batch Size
 ```java
 // DevCenter 기본값
 @KafkaListener(

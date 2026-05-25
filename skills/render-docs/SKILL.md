@@ -1,6 +1,6 @@
 ---
 name: render-docs
-description: Reads feature docs (md) and generates enhanced HTML with editorial judgment — applies toggle/accordion/tab/diff patterns based on content density. Use this skill whenever the user mentions feature docs, HTML rendering, documentation updates, publishing md files, or requests "render the docs" / "update feature docs" / "make X into HTML". Always invoke this skill after document-feature creates a new .md file. Output language is Korean; skill instructions are English.
+description: Use this skill whenever the user mentions feature docs, HTML rendering, documentation updates, publishing md files, or requests "render the docs" / "update feature docs" / "make X into HTML". Always invoke this skill after document-feature creates a new .md file. Output language is Korean; skill instructions are English.
 ---
 
 # render-docs
@@ -86,7 +86,7 @@ Apply the **Core Editorial Principles** above. Write your pattern decisions down
 
 For each file listed in the "변경 범위" section:
 
-1. Resolve the actual path (use `grep -r` if the md uses `...` abbreviation)
+1. Resolve the actual path (use the Grep tool if the md uses `...` abbreviation)
 2. Get the diff:
    ```bash
    git diff origin/dev...HEAD -- {file_path}

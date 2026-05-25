@@ -44,12 +44,12 @@ async function main() {
   }
 
   const index = fs.readFileSync(indexPath, 'utf8');
-  if (!index.includes(featName)) {
+  if (!new RegExp(`\\[${featName}\\]`).test(index)) {
     inject(`[validate-feat-index] INDEX.md에 '${featName}' 항목이 없습니다.\n  → docs/feat/INDEX.md에 '${featName}' 링크를 추가하세요.`);
     process.exit(0);
   }
 
-  console.log(`[validate-feat-index] ✓ INDEX.md에 '${featName}' 확인됨`);
+  console.error(`[validate-feat-index] ✓ INDEX.md에 '${featName}' 확인됨`);
   process.exit(0);
 }
 

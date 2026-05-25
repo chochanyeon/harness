@@ -5,7 +5,7 @@ import typer
 from dpaa.parser import MarkdownParser
 from dpaa.layers import (
     StructuralLayer, ReferentialLayer, TemporalLayer,
-    ExecutionLayer, VerificationLayer, StateLayer,
+    ExecutionLayer, VerificationLayer,
 )
 from dpaa.scoring.scorer import Scorer
 from dpaa.output.json_report import to_json
@@ -26,12 +26,11 @@ def lint(
     doc = MarkdownParser().parse(content)
 
     analyzers = [
-        StructuralLayer(profile=profile),
+        StructuralLayer(),
         ReferentialLayer(),
         TemporalLayer(),
         ExecutionLayer(),
         VerificationLayer(),
-        StateLayer(),
     ]
 
     if syntactic:

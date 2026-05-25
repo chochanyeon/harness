@@ -26,57 +26,38 @@ class VerificationLayer(LayerAnalyzer):
         rules = _load_rules()
         triggers = rules["acceptance_triggers"]
         threshold_patterns = rules["threshold_patterns"]
-        test_methods = rules["test_method_patterns"]
         findings: list[Finding] = []
 
-        ac_section = doc.sections.get("Acceptance Criteria")
-        if not ac_section:
-            return self._make_result(findings)
+        for section in doc.sections.values():
+            for line_no, sentence in split_sentences(section.content):
+                lower = sentence.lower()
+                if not any(t in lower for t in triggers):
+                    continue
 
-        # test method is checked at section level: "Run:" often appears on its own line
-        section_lower = ac_section.content.lower()
-        section_has_test = any(t in section_lower for t in test_methods)
+                has_metric = bool(_METRIC_RE.search(sentence))
+                has_threshold = any(p in lower for p in threshold_patterns)
 
-        for line_no, sentence in split_sentences(ac_section.content):
-            lower = sentence.lower()
-            looks_like_ac = any(t in lower for t in triggers)
-            if not looks_like_ac:
-                continue
-
-            has_metric = bool(_METRIC_RE.search(sentence))
-            has_threshold = any(p in lower for p in threshold_patterns)
-
-            if not has_metric:
-                findings.append(Finding(
-                    layer=self.LAYER_NAME,
-                    rule="missing_metric",
-                    severity="high",
-                    line=line_no,
-                    text=sentence,
-                    message="Acceptance criterion has no numeric metric.",
-                    score=10,
-                    suggestion=get_suggestion("missing_metric"),
-                ))
-            if not has_threshold:
-                findings.append(Finding(
-                    layer=self.LAYER_NAME,
-                    rule="missing_threshold",
-                    severity="high",
-                    line=line_no,
-                    text=sentence,
-                    message="Acceptance criterion has no measurable threshold.",
-                    score=10,
-                    suggestion=get_suggestion("missing_threshold"),
-                ))
-
-        if not section_has_test:
-            findings.append(Finding(
-                layer=self.LAYER_NAME,
-                rule="missing_test_method",
-                severity="medium",
-                message="Acceptance Criteria section has no explicit test method.",
-                score=6,
-                suggestion=get_suggestion("missing_test_method"),
-            ))
+                if not has_metric:
+                    findings.append(Finding(
+                        layer=self.LAYER_NAME,
+                        rule="missing_metric",
+                        severity="high",
+                        line=section.line_start + line_no,
+                        text=sentence,
+                        message="Acceptance criterion has no numeric metric.",
+                        score=10,
+                        suggestion=get_suggestion("missing_metric"),
+                    ))
+                if not has_threshold:
+                    findings.append(Finding(
+                        layer=self.LAYER_NAME,
+                        rule="missing_threshold",
+                        severity="high",
+                        line=section.line_start + line_no,
+                        text=sentence,
+                        message="Acceptance criterion has no measurable threshold.",
+                        score=10,
+                        suggestion=get_suggestion("missing_threshold"),
+                    ))
 
         return self._make_result(findings)

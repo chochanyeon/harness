@@ -57,7 +57,12 @@ process.stdin.on('end', () => {
     }
 
     if (reminders.length > 0) {
-      process.stdout.write(reminders.join('\n\n') + '\n');
+      process.stdout.write(JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PostToolUse',
+          additionalContext: reminders.join('\n\n'),
+        },
+      }) + '\n');
     }
   } catch (_) {
     // silent fail

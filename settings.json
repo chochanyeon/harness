@@ -1,62 +1,94 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew *)",
+      "Bash(node scripts/ai-audit/cli.mjs *)",
+      "Bash(git -C * log *)",
+      "Bash(git -C * diff *)",
+      "Bash(git -C * status *)",
+      "Bash(git -C * branch *)",
+      "Bash(git -C * show *)",
+      "Bash(git -C * rev-parse *)",
+      "Bash(git -C * worktree *)",
+      "Bash(python3 - *)"
+    ]
+  },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start-context.sh",
+            "timeout": 30,
+            "statusMessage": "Loading session context..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/guard-code-review.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-commit-context.sh",
+            "timeout": 15,
+            "statusMessage": "Checking pre-commit context..."
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-commit-message.sh",
+            "timeout": 10,
+            "statusMessage": "Checking commit message format..."
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-code-review.sh",
             "timeout": 10,
             "statusMessage": "Checking code-review gate..."
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/guard-static-analysis.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-static-analysis.sh",
             "timeout": 180,
             "statusMessage": "Running Checkstyle + PMD..."
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/guard-coverage.sh",
-            "timeout": 120,
-            "statusMessage": "Checking coverage gate..."
-          },
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/guard-doc-gate.sh",
-            "timeout": 10,
-            "statusMessage": "Checking doc gate..."
-          },
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/guard-settings-bash.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-settings-bash.sh",
             "timeout": 10
           }
         ]
       },
       {
-        "matcher": "Edit|Write",
+        "matcher": "Write",
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/code-guardrail.js",
-            "timeout": 30,
-            "statusMessage": "Running code guardrail..."
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/persona-inject.sh",
+            "timeout": 10,
+            "statusMessage": "Loading persona context..."
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/guard-persona-reminder.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-settings.sh",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/persona-inject.sh",
+            "timeout": 10,
+            "statusMessage": "Loading persona context..."
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/guard-settings.sh",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/guard-test-first.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-settings.sh",
             "timeout": 10
           }
         ]
@@ -66,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/guard-skill-prereqs.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-skill-prereqs.sh",
             "timeout": 10
           }
         ]
@@ -78,21 +110,44 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/post-tool-use-memory.js",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-memory.js",
             "timeout": 30,
             "statusMessage": "Updating memory..."
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/validate-feat-html.js",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/validate-feat-html.js",
             "timeout": 15,
             "statusMessage": "Validating feat HTML..."
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/validate-feat-index.js",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/validate-feat-index.js",
             "timeout": 15,
             "statusMessage": "Validating feat index..."
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/copy-permissions-to-worktree.js",
+            "timeout": 10,
+            "statusMessage": "Copying settings to new worktree..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/session-stop-report.sh",
+            "timeout": 10,
+            "statusMessage": "Generating session report..."
           }
         ]
       }

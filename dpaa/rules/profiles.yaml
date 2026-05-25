@@ -10,7 +10,7 @@ profiles:
       state: 0.10
     thresholds:
       pass: 20
-      warn: 50
+      warn: 30
     required_sections: default
 
   strict:

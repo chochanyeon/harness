@@ -1,0 +1,98 @@
+weak_action_without_metric:
+  title: "Weak action without measurable metric"
+  fix: |
+    Replace vague verb with specific operation + measurable target.
+    Bad:  "Improve worker reliability."
+    Good: "Add exponential backoff retry to failed worker jobs.
+           Use initial_delay=1s, multiplier=2.0, max_delay=30s, max_attempts=5."
+
+vague_temporal_without_interval:
+  title: "Vague temporal term without interval"
+  fix: |
+    Replace vague timing with exact interval or condition.
+    Bad:  "Retry periodically."
+    Good: "Retry every 30s, max 5 attempts, timeout 10m."
+
+periodic_without_interval:
+  title: "Periodic action without interval"
+  fix: |
+    Specify: interval, max_attempts, trigger condition, timeout.
+    Example YAML:
+      retry:
+        interval: 30s
+        max_attempts: 5
+        trigger: worker_failed
+        timeout: 10m
+
+unresolved_pronoun:
+  title: "Unresolved pronoun"
+  fix: |
+    Replace pronoun with explicit named target.
+    Bad:  "Restart it after migration."
+    Good: "Restart orchestrator_service after db_migration completes."
+
+vague_entity:
+  title: "Vague entity reference"
+  fix: |
+    Name the specific component.
+    Bad:  "Update the handler."
+    Good: "Update RetryHandler in worker/retry.py."
+
+missing_required_section:
+  title: "Required section missing"
+  fix: |
+    Add the missing section with content.
+    A Rollback section must describe: how to revert, expected state after revert,
+    and time bound (e.g., "Revert commit. Re-deploy v1.2.3. Verify within 5 min.").
+
+placeholder_found:
+  title: "Placeholder left in document"
+  fix: |
+    Replace TBD/TODO/FIXME with actual content before implementation.
+
+missing_threshold:
+  title: "Acceptance criterion has no threshold"
+  fix: |
+    Add a measurable threshold.
+    Bad:  "System should be stable."
+    Good: "P95 latency must remain below 150ms under 5k concurrent requests."
+
+missing_test_method:
+  title: "Acceptance criterion has no test method"
+  fix: |
+    Add a verifiable test method.
+    Example: "Run: pytest tests/integration/ or simulate_failure.py --scenario network_loss"
+
+missing_metric:
+  title: "Acceptance criterion has no numeric metric"
+  fix: |
+    Add a numeric value.
+    Examples: 150ms, 99.9%, 3 retries, 0 failed jobs, within 60 seconds.
+
+missing_required_state_producer:
+  title: "Required state has no producer"
+  fix: |
+    Add a step that produces the required state.
+    Every 'requires' entry must match a 'produces' entry in another step.
+
+cyclic_dependency:
+  title: "Cyclic dependency in workflow"
+  fix: |
+    Remove the cycle. Steps must form a directed acyclic graph (DAG).
+    Reorder steps so each step only depends on outputs of earlier steps.
+
+missing_rollback:
+  title: "Step has no rollback path"
+  fix: |
+    Add a rollback step or rollback field describing how to undo this step.
+    Example: DEPLOY step should have a paired ROLLBACK_DEPLOY step.
+
+empty_section:
+  title: "Section is empty"
+  fix: |
+    Fill in the section with actual content.
+
+duplicate_step_id:
+  title: "Duplicate step ID"
+  fix: |
+    Each step ID must be unique within the document.

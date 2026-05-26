@@ -1,0 +1,25 @@
+acceptance_triggers:
+  - pass if
+  - pass when
+  - must
+  - should
+
+threshold_patterns:
+  - "<"
+  - ">"
+  - "<="
+  - ">="
+  - at most
+  - at least
+  - no more than
+  - within
+  - below
+  - above
+
+rules:
+  missing_threshold:
+    severity: high
+    score: 10
+  missing_metric:
+    severity: high
+    score: 10

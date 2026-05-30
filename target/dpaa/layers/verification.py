@@ -13,6 +13,10 @@ _METRIC_RE = re.compile(
     r"\d+(\.\d+)?\s?(ms|s|sec|seconds|%|requests|retries|attempts|MB|GB|min|hour)",
     re.IGNORECASE,
 )
+# Negation/prohibition: "must not", "should not", "shouldn't", "mustn't"
+_NEGATION_RE = re.compile(r"\b(must\s+not|must\s+NOT|should\s+not|shouldn't|mustn't)\b")
+# Prerequisite: "must have <verb>ed"
+_PREREQ_RE = re.compile(r"\bmust\s+have\b")
 
 
 def _load_rules() -> dict:
@@ -32,6 +36,22 @@ class VerificationLayer(LayerAnalyzer):
             for line_no, sentence in split_sentences(section.content):
                 lower = sentence.lower()
                 if not any(t in lower for t in triggers):
+                    continue
+
+                stripped = sentence.strip()
+                # Skip labels, questions, headings, table rows
+                if (stripped.endswith(":") or stripped.endswith("?")
+                        or stripped.startswith("#") or stripped.startswith(">")
+                        or "│" in stripped):
+                    continue
+                # Skip prohibitions ("must not", "should not") — binary constraints are precise
+                if _NEGATION_RE.search(sentence):
+                    continue
+                # Skip prerequisites ("must have run", "must have completed")
+                if _PREREQ_RE.search(sentence):
+                    continue
+                # Skip very short fragments (≤3 words) — headings, terse labels
+                if len(stripped.split()) < 4:
                     continue
 
                 has_metric = bool(_METRIC_RE.search(sentence))

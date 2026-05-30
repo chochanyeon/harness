@@ -1,31 +1,45 @@
+---
+name: interview
+description: Use for structured pre-implementation interviews before planning non-trivial work. Guides requirement discovery, ambiguity removal, spec/plan creation, iterative review, subagent implementation handoff, and final goal review. Trigger only when the user explicitly asks to plan, design, interview, or work through requirements before implementation. Output language is Korean.
+---
+
 # Interview Skill
 
-계획이 필요한 규모의 작업을 위한 사전 설계 워크플로우.
-Interview → Spec/Plan → 반복 리뷰 → 서브에이전트 구현 → Goal 리뷰 순서로 진행.
+Use this skill for non-trivial work that needs requirements discovery before implementation. The flow is:
 
-> **출력 언어**: 모든 응답은 한국어로 작성합니다.
+Interview → Spec/Plan → iterative review → subagent implementation → goal review.
+
+## Output Language
+
+Respond to the user in Korean.
+
+Write machine-checked artifacts in English:
+
+- `.ai/interview/spec.md` must be written in English.
+- `.ai/interview/plan.md` must be written in English.
+
+Reason: DPAA currently uses English-centered deterministic rules. Korean user-facing summaries are allowed, but the spec/plan files that DPAA checks must be English.
 
 ## Trigger
 
-다음 지시어로 시작되는 경우에만 활성화:
+Use this skill only when the user explicitly asks to plan, design, interview, or work through requirements before implementation. Examples:
 
 - "계획 짜보자", "계획 세워보자", "플랜 짜줘", "설계해보자"
 - "인터뷰해줘", "같이 설계하자"
 
-명시적 트리거 없이 수정/구현 지시가 들어오면 이 스킬을 호출하지 않는다.
+Do not invoke this skill for a direct edit or implementation request unless the user explicitly asks for the interview/planning workflow.
 
 ---
 
 ## Phase 1: Interview
 
-**목표**: LLM이 모호함 없이 Spec을 작성할 수 있다는 확신이 생길 때까지 질문을 반복한다.
-한 라운드로 끝내려 하지 말고, 답변에서 새로운 모호함이 보이면 즉시 후속 질문한다.
+Goal: keep asking grouped clarification questions until an implementer could write the spec without making unstated decisions. Do not assume one round is enough; if the answer creates new ambiguity, ask follow-up questions immediately.
 
-### 1-1. 첫 번째 라운드 — 기초 파악
+### 1.1 First Round — Baseline Understanding
 
-다음 질문을 한 번에 묶어서 제시한다:
+Ask these questions together:
 
-```
+```text
 다음 내용을 알려주세요:
 
 1. 무엇을 만들거나 수정하려 하나요? (구체적 범위)
@@ -35,214 +49,197 @@ Interview → Spec/Plan → 반복 리뷰 → 서브에이전트 구현 → Goal
 5. 제약사항이나 알려진 위험이 있나요?
 ```
 
-### 1-2. 모호함 탐지 → 후속 질문 (반복)
+### 1.2 Ambiguity Detection → Follow-up Questions
 
-답변을 받은 후, LLM 관점에서 **구현 시 판단이 필요한 지점**을 모두 나열한다.
-다음 기준으로 모호함을 탐지한다:
+After each user answer, list every point where implementation would require judgment. Check for:
 
-- 완료 기준이 "잘 동작하면", "더 낫게", "빠르게" 같은 주관적 표현을 포함하는가?
-- 엣지 케이스가 언급되지 않았는가? (빈 값, 에러, 동시성, 권한 등)
-- 두 가지 이상의 구현 방식이 가능한가? (선택 기준이 불명확)
-- 영향 범위가 "아마도", "보통은" 같은 불확실한 표현으로 서술되어 있는가?
-- 기존 코드/시스템과의 호환성이 언급되지 않았는가?
+- Acceptance criteria that use subjective terms such as "works well", "better", or "faster".
+- Missing edge cases: empty values, errors, concurrency, permissions, rollback, compatibility.
+- Multiple viable implementation approaches with no selection criteria.
+- Uncertain scope language such as "probably", "usually", or "maybe".
+- Missing compatibility constraints with existing code or systems.
 
-모호한 지점이 하나라도 있으면 **후속 질문을 묶어서 즉시 제시**한다:
+If any ambiguity remains, ask grouped follow-up questions immediately:
 
-```
+```text
 몇 가지 더 명확히 해야 할 부분이 있어요:
 
-[모호한 지점 번호]. [구체적 질문]
-[모호한 지점 번호]. [구체적 질문]
+1. <구체적 질문>
+2. <구체적 질문>
 ...
 ```
 
-### 1-3. 종료 조건
+### 1.3 Exit Criteria
 
-다음 두 조건을 **모두** 만족할 때만 Phase 2로 진행한다:
+Proceed to Phase 2 only when both are true:
 
-1. LLM이 "지금 당장 Spec을 작성해도 구현자가 판단을 내릴 필요가 없다"고 확신
-2. 모든 완료 기준이 Pass/Fail을 객관적으로 판단할 수 있는 형태로 정의됨
+1. You are confident that a spec can be written without the implementer making additional decisions.
+2. Every acceptance criterion can be judged objectively as pass/fail.
 
-확신이 없으면 라운드를 추가한다. 사용자가 "그냥 진행해"라고 해도
-남은 모호함을 명시적으로 고지하고 진행 여부를 재확인한다.
+If you are not confident, ask another round. If the user says "just proceed", explicitly state the remaining ambiguity and ask for confirmation before moving on.
 
 ---
 
-## Phase 2: Spec + Plan 작성
+## Phase 2: Write Spec + Plan
 
-인터뷰 응답을 기반으로 두 파일을 작성한다.
+Create these files from the interview context. Both files must be written in English for DPAA compatibility. Continue explaining the result to the user in Korean.
 
 ### `.ai/interview/spec.md` — WHAT
 
 ```markdown
-# Task Spec: <제목>
+# Task Spec: <title>
 
 ## Problem
-<해결하려는 문제, 동기>
+<problem and motivation>
 
 ## Acceptance Criteria
-- [ ] <테스트 가능한 완료 기준 1>
-- [ ] <테스트 가능한 완료 기준 2>
-- [ ] ...
+- [ ] <testable criterion 1>
+- [ ] <testable criterion 2>
 
 ## Constraints
-<알려진 제약, 한계, 위험>
+<known constraints, limits, risks>
 
 ## Out of Scope
-<명시적으로 제외되는 것>
+<explicit exclusions>
 ```
 
 ### `.ai/interview/plan.md` — HOW
 
 ```markdown
-# Implementation Plan: <제목>
+# Implementation Plan: <title>
 
 ## Approach
-<고수준 전략 및 핵심 설계 결정>
+<high-level strategy and key design decisions>
 
 ## Steps
-1. <단계> — `경로/파일명`
+1. <step> — `path/file`
 2. ...
 
 ## Test Strategy
-<각 완료 기준을 어떻게 검증할지>
+<how each acceptance criterion will be verified>
 
 ## Escalation Points
-<구현 중 판단이 필요할 수 있는 지점 (미리 예측)>
+<decisions that may still require user/main-session input>
 
 ## Risks
-<기술적 위험 및 대응>
+<technical risks and mitigations>
 ```
 
 ---
 
-## Phase 3: Spec/Plan 반복 리뷰
+## Phase 3: Iterative Spec/Plan Review
 
-### 3-1. LLM 자체 리뷰 (사용자에게 보여주기 전)
+### 3.1 Self-Review Before Showing the User
 
-다음 체크리스트를 순서대로 확인한다:
+Check the plan in this order:
 
-- [ ] 모든 완료 기준이 테스트 가능하고 모호하지 않은가?
-- [ ] Plan의 각 단계가 완료 기준 중 하나 이상을 커버하는가?
-- [ ] 숨겨진 암묵적 가정이 없는가?
-- [ ] Out of Scope가 명시되어 있는가?
-- [ ] 외부 의존성이 있다면 Risk 목록에 포함되어 있는가?
+- [ ] Every acceptance criterion is testable and unambiguous.
+- [ ] Every plan step maps to at least one acceptance criterion.
+- [ ] There are no hidden assumptions.
+- [ ] Out of Scope is explicit.
+- [ ] External dependencies, if any, are listed as risks.
 
-미흡한 항목이 있으면 파일을 수정한 후 사용자에게 제시한다.
+If any item fails, update the files before presenting them to the user. Also verify that the spec and plan files are written in English, not Korean.
 
-### 3-2. 사용자 리뷰
+### 3.2 User Review
 
-Spec + Plan 내용을 요약해서 보여주고 다음을 물어본다:
+Summarize the spec and plan, then ask:
 
-```
+```text
 위 내용으로 진행할까요?
 수정이 필요한 부분이 있으면 알려주세요.
 ```
 
-사용자가 수정을 요청하면:
-1. Spec/Plan 업데이트
-2. LLM 자체 리뷰 재실행 (3-1로 돌아감)
-3. 사용자에게 재제시
+If the user requests changes:
 
-사용자가 명시적으로 승인하면 ("진행해", "좋아", "맞아", "OK" 등) Phase 4로 진행한다.
+1. Update the spec/plan.
+2. Run self-review again.
+3. Present the updated version.
+
+Proceed to Phase 4 only after explicit approval such as "진행해", "좋아", "맞아", or "OK".
 
 ---
 
-## Phase 4: 서브에이전트 구현
+## Phase 4: Subagent Implementation
 
-### 4-1. 서브에이전트 위임
+### 4.1 Delegate to Subagent Workflow
 
-다음 스킬을 호출한다:
+Invoke:
 
-```
+```text
 Skill("subagent-driven-development")
 ```
 
-서브에이전트 프롬프트에 반드시 포함할 내용:
-- `.ai/interview/spec.md` 전체 내용
-- `.ai/interview/plan.md` 전체 내용
-- **Escalation 프로토콜 안내** (아래 참조)
+The subagent prompt must include:
 
-### 4-2. Escalation 프로토콜
+- Full `.ai/interview/spec.md` content or a path plus an instruction to read it.
+- Full `.ai/interview/plan.md` content or a path plus an instruction to read it.
+- The escalation protocol below.
 
-서브에이전트가 구현 중 판단 불가한 상황을 만나면 다음 형식으로 출력한다:
+### 4.2 Escalation Protocol
 
+If a subagent encounters a decision it cannot make, it must output:
+
+```text
+ESCALATION: <question>
+Context: <why blocked, available options>
 ```
-ESCALATION: <질문 내용>
-맥락: <왜 막혔는지, 어떤 선택지가 있는지>
-```
 
-메인 에이전트가 이 출력을 감지하면:
-- 코드/파일을 읽지 않고, **인터뷰에서 확보한 컨텍스트만으로** 답변한다
-- 답변을 추가 컨텍스트로 포함해 서브에이전트를 재호출한다
-- 메인 에이전트는 구현 세부사항을 절대 직접 탐색하지 않는다
+When the main agent sees this:
 
-서브에이전트가 `IMPLEMENTATION_COMPLETE: <요약>` 형식으로 보고하면 Phase 5로 진행한다.
+- Do not read implementation files.
+- Answer only from the interview/spec/plan context.
+- Resume the subagent with the answer as additional context.
+- Do not explore implementation details directly in the main session.
+
+When the subagent reports `IMPLEMENTATION_COMPLETE: <summary>`, proceed to Phase 5.
 
 ---
 
-## Phase 5: Goal 리뷰 루프
+## Phase 5: Goal Review Loop
 
-### 5-1. LLM Goal 리뷰
+### 5.1 LLM Goal Review
 
-서브에이전트의 완료 보고(구현 파일 직접 읽기 금지)를 기반으로
-`.ai/interview/spec.md`의 각 완료 기준을 순서대로 검토한다:
+Using only the subagent completion report, review every acceptance criterion from `.ai/interview/spec.md`:
 
-```
+```text
 완료 기준 검토:
 - [ ] <기준 1>: ✅ 충족 / ⚠️ 부분 충족 / ❌ 미충족
   근거: <서브에이전트 보고 중 해당 내용>
 - [ ] <기준 2>: ...
 ```
 
-### 5-2. 결과에 따른 분기
+### 5.2 Branching
 
-**모든 기준 ✅ 인 경우:**
-```
+If all criteria are ✅:
+
+```text
 ✅ 모든 완료 기준 충족
 → 사용자 확인 후 push-with-review 진행 가능
 ```
 
-**⚠️ 또는 ❌ 가 하나라도 있는 경우:**
-1. 미충족 기준만 명시해 서브에이전트에 수정 지시
-2. 서브에이전트 재호출 (Phase 4-1로 돌아감)
-3. 완료 보고 수신 후 Goal 리뷰 재실행 (Phase 5-1로 돌아감)
+If any criterion is ⚠️ or ❌:
 
-### 5-3. 사용자 확인
+1. Send only the unmet criteria back to the subagent.
+2. Resume Phase 4.1.
+3. Run the goal review again after the next completion report.
 
-LLM 리뷰가 모두 ✅ 여도 사용자에게 최종 확인을 받는다:
+### 5.3 Final User Confirmation
 
-```
+Even if all criteria are ✅, ask:
+
+```text
 모든 완료 기준이 충족되었습니다.
 push-with-review를 진행할까요?
 ```
 
-사용자가 "이 정도면 됐어" 등으로 루프 조기 종료를 요청하면 즉시 수락한다.
+If the user asks to stop early, accept immediately.
 
 ---
 
-## 전체 흐름 요약
+## Absolute Rules
 
-```
-Interview (질문 묶음 1회)
-    ↓ 사용자 응답
-Spec + Plan 작성
-    ↓
-[LLM 자체 리뷰 → 사용자 리뷰] 반복
-    ↓ 사용자 승인
-서브에이전트 구현
-  └─ ESCALATION 감지 → 메인이 컨텍스트로 답변 → 재개
-    ↓ IMPLEMENTATION_COMPLETE
-[Goal LLM 리뷰 → 미충족 시 서브에이전트 수정] 반복
-    ↓ 전부 ✅ + 사용자 확인
-Skill("push-with-review")
-```
-
----
-
-## 절대 규칙
-
-- 메인 에이전트는 **절대로 구현 파일을 직접 읽거나 편집하지 않는다**
-- Escalation 답변은 인터뷰 컨텍스트에서만 — 코드 탐색 없이
-- Phase 순서는 변경할 수 없다
-- 사용자의 명시적 승인 없이 Phase 4로 진행하지 않는다
+- The main agent must not directly read or edit implementation files during the subagent implementation/review loop.
+- Escalation answers must come from interview/spec/plan context only.
+- Do not change phase order.
+- Do not proceed to Phase 4 without explicit user approval.

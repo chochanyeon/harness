@@ -1,6 +1,6 @@
 acceptance_triggers:
   - pass if
-  - acceptance
+  - pass when
   - must
   - should
 

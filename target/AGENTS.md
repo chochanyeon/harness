@@ -123,7 +123,7 @@ For push and commit workflows, see the `/push-with-review` skill (Single Source 
 
 ## Harness Gates v2
 
-Harness gates are implemented as a Pi extension in `.pi/extensions/harness-gates.ts`.
+Harness gates are implemented as a Pi extension in `.pi/extensions/workflow.ts`.
 
 - **Final-stage gates (deny)**: 커밋 시점에서 결정론적으로 차단. 우회 불가.
 - **Advisory context**: 브랜치, 리뷰 토큰, workflow state를 system prompt에 주입. 차단하지 않음.

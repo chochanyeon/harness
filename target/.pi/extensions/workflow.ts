@@ -1,31 +1,33 @@
 /**
- * harness-gates.ts — Pi Extension
+ * workflow.ts — Pi Extension
  *
- * 기존 harness의 final-stage 게이트를 Pi extension으로 구현.
- * 핵심 개선: 파일 기반 토큰 → 프로세스 메모리 토큰 (LLM이 bash로 위조 불가)
+ * Implements the harness final-stage gates and advisory workflow layer as a
+ * Pi extension.
  *
- * 구현 게이트:
- *   1. Code Review Gate  — git commit 전 /skill:code-review 필수
- *   2. Commit Message Gate — Conventional Commits 형식 강제
+ * Gates:
+ *   1. Code Review Gate — require /skill:code-review before git commit
+ *   2. Commit Message Gate — enforce Conventional Commits format
  *
- * 추가 기능:
- *   - resources_discover: 기존 harness skills 경로를 Pi에 자동 등록
- *   - session_start: 브랜치/미테스트 클래스 컨텍스트 주입
- *   - before_agent_start: 매 턴 gate 상태를 system prompt에 주입
+ * Additional behavior:
+ *   - resources_discover: register bundled harness skills with Pi
+ *   - session_start: show branch and untested-class context
+ *   - before_agent_start: inject gate/workflow state into the system prompt
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
-// 이 파일이 있는 곳: <harness-root>/.pi/extensions/harness-gates.ts
+// This file lives at: <harness-root>/.pi/extensions/workflow.ts
 const HARNESS_ROOT = path.resolve(__dirname, "../..");
 
 export default function (pi: ExtensionAPI) {
   // ── In-memory state ────────────────────────────────────────────────────────
-  // 프로세스 메모리에만 존재 → LLM이 bash 도구로 접근/위조 불가
+  // Process memory only: the LLM cannot forge this token through shell/file writes.
   const state = {
     reviewResult: null as {
       critical: number;
@@ -33,10 +35,10 @@ export default function (pi: ExtensionAPI) {
       minor: number;
       timestamp: number;
     } | null,
-    workflow: null as WorkflowInstance | null,
+    workflow: loadPersistedWorkflow(),
   };
 
-  // ── resources_discover: 기존 harness skills Pi에 등록 ──────────────────────
+  // ── resources_discover: register bundled harness skills ───────────────────
   pi.on("resources_discover", async () => {
     const skillsPath = path.join(HARNESS_ROOT, ".pi", "skills");
     if (!fs.existsSync(skillsPath)) return;
@@ -44,21 +46,21 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── Tool: submit_review_result ─────────────────────────────────────────────
-  // code-review 스킬 완료 후 LLM이 반드시 호출해야 하는 도구.
-  // 이 호출이 in-memory 토큰을 생성하며, 토큰 없이는 git commit이 차단됨.
+  // The LLM must call this tool after completing the code-review skill.
+  // This creates the in-memory commit token; commits are blocked without it.
   pi.registerTool({
     name: "submit_review_result",
     label: "리뷰 결과 제출",
     description: [
-      "코드 리뷰 완료 후 반드시 호출해야 하는 도구.",
-      "호출 시 in-memory 커밋 허가 토큰이 생성됩니다.",
-      "이 토큰 없이는 git commit이 infrastructure 레벨에서 차단됩니다.",
-      "리뷰 섹션(Critical/Major/Minor)별 이슈 수를 정확히 전달하세요.",
+      "Call this tool after completing code review.",
+      "It creates the in-memory commit approval token.",
+      "Without this token, git commit is blocked at the infrastructure level.",
+      "Submit the exact Critical/Major/Minor issue counts from the review.",
     ].join(" "),
     parameters: Type.Object({
-      critical: Type.Number({ description: "🔴 Critical 이슈 개수 (0이어야 커밋 허용)" }),
-      major:    Type.Number({ description: "🟡 Major 이슈 개수 (2 이하여야 커밋 허용)" }),
-      minor:    Type.Number({ description: "🔵 Minor 이슈 개수" }),
+      critical: Type.Number({ description: "Number of Critical issues; must be 0 to allow commit." }),
+      major:    Type.Number({ description: "Number of Major issues; must be 2 or fewer to allow commit." }),
+      minor:    Type.Number({ description: "Number of Minor issues." }),
     }),
     async execute(_id, params) {
       state.reviewResult = { ...params, timestamp: Date.now() };
@@ -83,9 +85,9 @@ export default function (pi: ExtensionAPI) {
 
   // ── Command: /workflow — advisory workflow state manager ──────────────────
   pi.registerCommand("workflow", {
-    description: "인터뷰→계획→구현→리뷰→푸시 workflow 상태를 관리합니다",
+    description: "Manage the advisory interview → plan → implementation → review → push workflow state.",
     getArgumentCompletions: (prefix) => {
-      const commands = ["start", "approve", "status", "undo", "redo", "history", "abort", "state"];
+      const commands = ["start", "approve", "status", "undo", "redo", "history", "abort", "state", "dpaa-audit"];
       return commands
         .filter((command) => command.startsWith(prefix))
         .map((value) => ({ value, label: value }));
@@ -104,12 +106,13 @@ export default function (pi: ExtensionAPI) {
         }
 
         state.workflow = createWorkflow(rest.join(" "));
+        saveWorkflow(state.workflow);
         ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
         return;
       }
 
       if (command === "approve") {
-        const result = advanceWorkflow(state.workflow, "user_approved");
+        const result = await advanceWorkflow(state.workflow, "user_approved");
         if (!result.ok) {
           ctx.ui.notify(result.message, "warning");
           return;
@@ -135,6 +138,11 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      if (command === "dpaa-audit") {
+        ctx.ui.notify(formatLatestDpaaAudit(), "info");
+        return;
+      }
+
       if (command === "abort") {
         if (!state.workflow) {
           ctx.ui.notify("진행 중인 workflow가 없습니다.", "info");
@@ -143,6 +151,7 @@ export default function (pi: ExtensionAPI) {
         const ok = !ctx.hasUI || (await ctx.ui.confirm("Abort workflow", `현재 workflow(${state.workflow.phase})를 종료할까요?`));
         if (!ok) return;
         state.workflow = null;
+        clearPersistedWorkflow();
         ctx.ui.notify("Workflow를 종료했습니다.", "info");
         return;
       }
@@ -155,6 +164,7 @@ export default function (pi: ExtensionAPI) {
         }
         if (!state.workflow) state.workflow = createWorkflow("manual");
         transitionWorkflow(state.workflow, next, "manual_override");
+        saveWorkflow(state.workflow);
         ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
         return;
       }
@@ -169,16 +179,26 @@ export default function (pi: ExtensionAPI) {
     if (!state.workflow || state.workflow.phase === "done") return { action: "continue" };
     if (!isApprovalText(event.text)) return { action: "continue" };
 
-    const result = advanceWorkflow(state.workflow, "natural_language_approval");
-    if (!result.ok) return { action: "continue" };
+    const result = await advanceWorkflow(state.workflow, "natural_language_approval");
+    if (!result.ok) {
+      return {
+        action: "transform",
+        text: [
+          event.text,
+          "",
+          `[Workflow] Transition blocked: ${result.message}`,
+          "Resolve the blocker before asking the user to approve the next phase again.",
+        ].join("\n"),
+      };
+    }
 
     return {
       action: "transform",
       text: [
         event.text,
         "",
-        `[Workflow] 사용자 승인으로 '${state.workflow.phase}' 단계로 전이되었습니다.`,
-        `현재 단계에 맞는 작업을 진행하세요. 다음 단계로 넘어가기 전에는 사용자 확인을 요청하세요.`,
+        `[Workflow] User approval advanced the workflow to '${state.workflow.phase}'.`,
+        "Proceed according to the current phase. Ask for user confirmation before moving to the next phase.",
       ].join("\n"),
     };
   });
@@ -298,39 +318,38 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`Harness Gates 로드 | ${parts.join(" | ")}`, "info");
   });
 
-  // ── before_agent_start: 매 턴 gate 상태를 system prompt에 주입 ─────────────
+  // ── before_agent_start: inject gate state into the system prompt ──────────
   //
-  // 거절 메시지(context)로만 규칙을 전달하는 방식과 달리,
-  // system prompt에 주입하면 LLM이 이를 "극복할 장애물"이 아닌
-  // "자신이 따라야 할 규칙"으로 인식합니다.
+  // System-prompt injection makes these constraints part of the model's rules,
+  // instead of presenting them only as tool rejection messages to work around.
   pi.on("before_agent_start", async (event) => {
     const root = getGitRoot();
     const branch = root ? getBranch(root) : "unknown";
 
     let reviewStatus: string;
     if (!state.reviewResult) {
-      reviewStatus = "미실행 ❌";
+      reviewStatus = "not run ❌";
     } else {
       const ageMin = Math.floor((Date.now() - state.reviewResult.timestamp) / 60_000);
       const { critical, major } = state.reviewResult;
-      reviewStatus = `완료 ✅  (Critical: ${critical}, Major: ${major}, ${ageMin}분 전)`;
+      reviewStatus = `completed ✅ (Critical: ${critical}, Major: ${major}, ${ageMin} min ago)`;
     }
 
     const injection = [
       "",
-      "[Harness Gate — 현재 상태]",
-      `브랜치: ${branch}`,
-      `코드 리뷰 토큰: ${reviewStatus}`,
+      "[Harness Gate — Current State]",
+      `Branch: ${branch}`,
+      `Code review token: ${reviewStatus}`,
       "",
-      "[Workflow State — advisory]",
+      "[Workflow State — Persisted advisory]",
       formatWorkflowPrompt(state.workflow),
       "",
-      "[Gate 규칙 — infrastructure 레벨 강제, 우회 불가]",
-      "• git commit 전 /skill:code-review 실행 필수",
-      "• 리뷰 완료 후 submit_review_result 도구를 반드시 호출할 것",
-      "  (이 호출이 메모리 토큰을 생성하며, 토큰 없이는 commit이 차단됨)",
-      "• 토큰은 프로세스 메모리에만 존재 — bash 파일 생성으로 우회 불가",
-      "• 커밋 메시지는 Conventional Commits 형식 필수",
+      "[Gate Rules — Infrastructure-enforced, not bypassable]",
+      "• Run /skill:code-review before git commit.",
+      "• After review, you must call submit_review_result.",
+      "  (This creates the in-memory token; commits are blocked without it.)",
+      "• The token exists only in process memory; creating files with bash cannot bypass the gate.",
+      "• Commit messages must follow Conventional Commits:",
       "  <type>(<scope>): <description>",
     ].join("\n");
 
@@ -366,6 +385,33 @@ type WorkflowInstance = {
   undone: WorkflowTransition[];
   startedAt: number;
   updatedAt: number;
+};
+
+type DpaaReport = {
+  overall: number;
+  level: string;
+  findings: Array<{
+    layer: string;
+    rule: string;
+    line?: number;
+    message: string;
+    suggestion: string;
+  }>;
+};
+
+type DpaaRunReceipt = {
+  timestamp: string;
+  workflowId: string;
+  from: WorkflowPhase;
+  to: WorkflowPhase;
+  projectRoot: string;
+  planPath: string;
+  planSha256: string;
+  exitCode: number;
+  level: string;
+  overall: number;
+  findingsCount: number;
+  reportSha256: string;
 };
 
 const WORKFLOW_PHASES: WorkflowPhase[] = [
@@ -408,12 +454,238 @@ function transitionWorkflow(workflow: WorkflowInstance, to: WorkflowPhase, reaso
   workflow.updatedAt = Date.now();
 }
 
-function advanceWorkflow(workflow: WorkflowInstance | null, reason: string): { ok: boolean; message: string } {
+async function advanceWorkflow(workflow: WorkflowInstance | null, reason: string): Promise<{ ok: boolean; message: string }> {
   if (!workflow) return { ok: false, message: "진행 중인 workflow가 없습니다. /workflow start 를 먼저 실행하세요." };
-  const next = getNextPhase(workflow.phase);
+  const from = workflow.phase;
+  const next = getNextPhase(from);
   if (!next) return { ok: false, message: `이미 마지막 단계입니다: ${workflow.phase}` };
+
+  const gate = await runPreTransitionGate(workflow, from, next);
+  if (!gate.ok) return gate;
+
   transitionWorkflow(workflow, next, reason);
-  return { ok: true, message: `Workflow 전이: ${workflow.history.at(-1)?.from} → ${workflow.phase}` };
+  saveWorkflow(workflow);
+  return { ok: true, message: `Workflow 전이: ${from} → ${workflow.phase}` };
+}
+
+async function runPreTransitionGate(workflow: WorkflowInstance, from: WorkflowPhase, to: WorkflowPhase): Promise<{ ok: boolean; message: string }> {
+  if (from === "plan_review" && to === "implement") {
+    return runDpaaGate(workflow, from, to);
+  }
+  return { ok: true, message: "" };
+}
+
+function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to: WorkflowPhase): { ok: boolean; message: string } {
+  const planPath = findPlanForDpaa();
+  if (!planPath) {
+    return {
+      ok: false,
+      message: [
+        "DPAA 검증을 실행할 plan 파일을 찾지 못했습니다.",
+        "`.ai/interview/plan.md` 또는 `docs/superpowers/plans/*.md`에 plan을 작성한 뒤 다시 승인하세요.",
+      ].join("\n"),
+    };
+  }
+
+  const reportPath = path.join(os.tmpdir(), `dpaa-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+  let exitCode = 0;
+  try {
+    execSync(`python -m dpaa.cli "${escapeForDoubleQuotedArg(planPath)}" --output "${escapeForDoubleQuotedArg(reportPath)}" --no-text`, {
+      cwd: HARNESS_ROOT,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    // DPAA returns a non-zero exit code when ambiguity findings fail the gate.
+    // The JSON report is still written and is parsed below.
+    exitCode = typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 1;
+  }
+
+  let report: DpaaReport;
+  let receipt: DpaaRunReceipt | null = null;
+  try {
+    report = JSON.parse(fs.readFileSync(reportPath, "utf-8")) as DpaaReport;
+    receipt = writeDpaaReceipt({ workflow, from, to, planPath, reportPath, report, exitCode });
+  } catch (error) {
+    return {
+      ok: false,
+      message: `DPAA report를 읽지 못했습니다: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  } finally {
+    fs.rmSync(reportPath, { force: true });
+  }
+
+  if (report.level === "PASS") {
+    return { ok: true, message: "DPAA 검증 통과" };
+  }
+
+  const findings = report.findings.slice(0, 5).map((finding, index) => {
+    const line = finding.line ? `line ${finding.line}` : "line unknown";
+    return `${index + 1}. [${finding.layer}/${finding.rule}] ${line}: ${finding.message}\n   → ${finding.suggestion}`;
+  });
+
+  return {
+    ok: false,
+    message: [
+      banner("❌ DPAA 검증 실패"),
+      table([
+        ["항목", "값"],
+        ["결과", report.level],
+        ["Penalty", String(report.overall)],
+        ["대상 plan", path.relative(process.cwd(), planPath)],
+        ["검증 기록", receipt ? `${receipt.timestamp} / ${receipt.planSha256.slice(0, 12)}` : "저장 실패"],
+      ]),
+      "",
+      "➡️  남은 모호성을 추가 인터뷰로 보충한 뒤 영어 plan/spec을 수정하고 다시 승인하세요.",
+      "",
+      "상위 Findings",
+      "──────────────────────────────────────",
+      ...findings,
+    ].join("\n"),
+  };
+}
+
+function findPlanForDpaa(): string | null {
+  const directCandidates = [
+    path.join(process.cwd(), ".ai", "interview", "plan.md"),
+    path.join(process.cwd(), "docs", "superpowers", "plans", "plan.md"),
+  ];
+
+  for (const candidate of directCandidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+
+  const planDir = path.join(process.cwd(), "docs", "superpowers", "plans");
+  if (!fs.existsSync(planDir) || !fs.statSync(planDir).isDirectory()) return null;
+
+  const plans = fs.readdirSync(planDir)
+    .filter((name) => name.endsWith(".md"))
+    .map((name) => path.join(planDir, name))
+    .filter((candidate) => fs.statSync(candidate).isFile())
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+
+  return plans[0] ?? null;
+}
+
+function escapeForDoubleQuotedArg(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+}
+
+function loadPersistedWorkflow(): WorkflowInstance | null {
+  const file = getWorkflowStatePath();
+  if (!fs.existsSync(file)) return null;
+
+  try {
+    const workflow = JSON.parse(fs.readFileSync(file, "utf-8")) as WorkflowInstance;
+    if (!WORKFLOW_PHASES.includes(workflow.phase)) return null;
+    return workflow;
+  } catch {
+    return null;
+  }
+}
+
+function saveWorkflow(workflow: WorkflowInstance): void {
+  const file = getWorkflowStatePath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(workflow, null, 2), "utf-8");
+}
+
+function clearPersistedWorkflow(): void {
+  fs.rmSync(getWorkflowStatePath(), { force: true });
+}
+
+function getWorkflowStatePath(): string {
+  return path.join(getWorkflowStateDir(), "state.json");
+}
+
+function writeDpaaReceipt(args: {
+  workflow: WorkflowInstance;
+  from: WorkflowPhase;
+  to: WorkflowPhase;
+  planPath: string;
+  reportPath: string;
+  report: DpaaReport;
+  exitCode: number;
+}): DpaaRunReceipt {
+  const receipt: DpaaRunReceipt = {
+    timestamp: new Date().toISOString(),
+    workflowId: args.workflow.id,
+    from: args.from,
+    to: args.to,
+    projectRoot: process.cwd(),
+    planPath: args.planPath,
+    planSha256: sha256File(args.planPath),
+    exitCode: args.exitCode,
+    level: args.report.level,
+    overall: args.report.overall,
+    findingsCount: args.report.findings.length,
+    reportSha256: sha256File(args.reportPath),
+  };
+
+  const dir = getDpaaReceiptDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${Date.now()}-${receipt.level.toLowerCase()}.json`);
+  fs.writeFileSync(file, JSON.stringify(receipt, null, 2), "utf-8");
+  return receipt;
+}
+
+function formatLatestDpaaAudit(): string {
+  const receipt = readLatestDpaaReceipt();
+  if (!receipt) {
+    return "⚪ DPAA 실행 기록이 없습니다.";
+  }
+
+  const icon = receipt.level === "PASS" ? "✅" : receipt.level === "WARN" ? "⚠️" : "❌";
+  return [
+    banner(`${icon} 최근 DPAA 실행 기록`),
+    table([
+      ["항목", "값"],
+      ["시간", receipt.timestamp],
+      ["Workflow", receipt.workflowId],
+      ["전이", `${receipt.from} → ${receipt.to}`],
+      ["결과", receipt.level],
+      ["Penalty", `${receipt.overall} (낮을수록 좋음)`],
+      ["Exit code", String(receipt.exitCode)],
+      ["Findings", String(receipt.findingsCount)],
+      ["Plan", path.relative(process.cwd(), receipt.planPath)],
+      ["Plan hash", receipt.planSha256],
+      ["Report hash", receipt.reportSha256],
+    ]),
+  ].join("\n");
+}
+
+function readLatestDpaaReceipt(): DpaaRunReceipt | null {
+  const dir = getDpaaReceiptDir();
+  if (!fs.existsSync(dir)) return null;
+
+  const files = fs.readdirSync(dir)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => path.join(dir, name))
+    .filter((file) => fs.statSync(file).isFile())
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+
+  if (!files[0]) return null;
+  return JSON.parse(fs.readFileSync(files[0], "utf-8")) as DpaaRunReceipt;
+}
+
+function getDpaaReceiptDir(): string {
+  return path.join(getWorkflowStateDir(), "dpaa-runs");
+}
+
+function getWorkflowStateDir(): string {
+  return path.join(getAgentDir(), "workflow-state", projectHash(process.cwd()));
+}
+
+function getAgentDir(): string {
+  return process.env.PI_CODING_AGENT_DIR ?? path.join(os.homedir(), ".pi", "agent");
+}
+
+function projectHash(root: string): string {
+  return createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 16);
+}
+
+function sha256File(file: string): string {
+  return createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
 function undoWorkflow(workflow: WorkflowInstance | null): { ok: boolean; message: string } {
@@ -423,6 +695,7 @@ function undoWorkflow(workflow: WorkflowInstance | null): { ok: boolean; message
   workflow.phase = last.from;
   workflow.undone.push(last);
   workflow.updatedAt = Date.now();
+  saveWorkflow(workflow);
   return { ok: true, message: `Workflow undo: ${last.to} → ${last.from}` };
 }
 
@@ -433,45 +706,112 @@ function redoWorkflow(workflow: WorkflowInstance | null): { ok: boolean; message
   workflow.phase = next.to;
   workflow.history.push(next);
   workflow.updatedAt = Date.now();
+  saveWorkflow(workflow);
   return { ok: true, message: `Workflow redo: ${next.from} → ${next.to}` };
 }
 
 function formatWorkflowStatus(workflow: WorkflowInstance | null): string {
-  if (!workflow) return "Workflow: 없음\n시작: /workflow start <목표>";
+  if (!workflow) {
+    return [
+      banner("⚪ Workflow 없음"),
+      "시작: /workflow start <목표>",
+    ].join("\n");
+  }
   const next = getNextPhase(workflow.phase);
   return [
-    `Workflow: ${workflow.id}`,
-    `목표: ${workflow.title}`,
-    `현재 단계: ${workflow.phase}`,
-    `다음 단계: ${next ?? "없음"}`,
-    `Undo 가능: ${workflow.history.length > 0 ? "yes" : "no"}`,
-    `Redo 가능: ${workflow.undone.length > 0 ? "yes" : "no"}`,
+    banner("🧭 Workflow 상태"),
+    table([
+      ["항목", "값"],
+      ["ID", workflow.id],
+      ["목표", workflow.title],
+      ["현재 단계", workflow.phase],
+      ["다음 단계", next ?? "없음"],
+      ["Undo 가능", workflow.history.length > 0 ? "yes" : "no"],
+      ["Redo 가능", workflow.undone.length > 0 ? "yes" : "no"],
+    ]),
   ].join("\n");
 }
 
 function formatWorkflowHistory(workflow: WorkflowInstance | null): string {
-  if (!workflow) return "진행 중인 workflow가 없습니다.";
-  if (workflow.history.length === 0) return "Workflow 전이 이력이 없습니다.";
-  return workflow.history
-    .map((item, index) => `${index + 1}. ${item.from} → ${item.to} (${item.reason})`)
-    .join("\n");
+  if (!workflow) return "⚪ 진행 중인 workflow가 없습니다.";
+  if (workflow.history.length === 0) return "⚪ Workflow 전이 이력이 없습니다.";
+  return [
+    banner("🕘 Workflow 전이 이력"),
+    table([
+      ["#", "전이", "사유"],
+      ...workflow.history.map((item, index) => [String(index + 1), `${item.from} → ${item.to}`, item.reason]),
+    ]),
+  ].join("\n");
+}
+
+function banner(title: string): string {
+  const width = Math.max(36, displayWidth(title) + 2);
+  return [
+    `╔${"═".repeat(width)}╗`,
+    `║ ${padDisplay(title, width - 1)}║`,
+    `╚${"═".repeat(width)}╝`,
+  ].join("\n");
+}
+
+function table(rows: string[][]): string {
+  const widths = rows[0].map((_, column) => Math.max(...rows.map((row) => displayWidth(String(row[column] ?? "")))));
+  return rows.map((row, index) => {
+    const line = `| ${row.map((cell, column) => padDisplay(String(cell ?? ""), widths[column])).join(" | ")} |`;
+    if (index !== 0) return line;
+    const separator = `| ${widths.map((width) => "-".repeat(width)).join(" | ")} |`;
+    return `${line}\n${separator}`;
+  }).join("\n");
+}
+
+function padDisplay(value: string, width: number): string {
+  return value + " ".repeat(Math.max(0, width - displayWidth(value)));
+}
+
+function displayWidth(value: string): number {
+  let width = 0;
+  for (const char of Array.from(value)) {
+    width += isWideChar(char) ? 2 : 1;
+  }
+  return width;
+}
+
+function isWideChar(char: string): boolean {
+  const code = char.codePointAt(0) ?? 0;
+  return (
+    (code >= 0x1100 && code <= 0x11ff) ||
+    (code >= 0x2e80 && code <= 0xa4cf) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe10 && code <= 0xfe19) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x1f000 && code <= 0x1faff)
+  );
 }
 
 function formatWorkflowPrompt(workflow: WorkflowInstance | null): string {
   if (!workflow) {
     return [
-      "• 진행 중인 workflow 없음",
-      "• 새 작업을 절차적으로 진행하려면 /workflow start <목표> 를 사용자에게 제안하세요.",
+      "• No active workflow.",
+      "• For procedural work, suggest /workflow start <goal> to the user.",
     ].join("\n");
   }
   const next = getNextPhase(workflow.phase);
-  return [
-    `• 현재 단계: ${workflow.phase}`,
-    `• 다음 단계: ${next ?? "없음"}`,
-    "• 현재 단계의 산출물을 먼저 제시하고, 다음 단계 전에는 사용자 확인을 요청하세요.",
-    "• 사용자는 /workflow approve 또는 '응, 진행해' 같은 자연어 승인으로 다음 단계 전이를 승인할 수 있습니다.",
-    "• 이 workflow는 advisory layer입니다. commit/push의 최종 차단은 기존 Harness Gate가 계속 담당합니다.",
-  ].join("\n");
+  const lines = [
+    `• Current phase: ${workflow.phase}`,
+    `• Next phase: ${next ?? "none"}`,
+    "• Present the current phase deliverable first, then ask for user confirmation before advancing.",
+    "• The user can approve the next transition with /workflow approve or natural language such as '응, 진행해'.",
+    "• This workflow state is persisted outside the workspace; commit approval tokens are not persisted.",
+    "• This workflow is advisory except for enforced transition gates such as DPAA before implementation.",
+  ];
+  if (workflow.phase === "plan_review") {
+    lines.push("• Moving from plan_review to implement requires DPAA to pass against the current English plan.");
+    lines.push("• Ensure .ai/interview/spec.md and .ai/interview/plan.md are written in English for DPAA compatibility.");
+    lines.push("• If DPAA fails, conduct additional interview, update the English plan, and ask for approval again.");
+  }
+  return lines.join("\n");
 }
 
 function isApprovalText(text: string): boolean {

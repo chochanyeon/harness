@@ -29,7 +29,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ExcludeDirs = @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache")
+$ExcludeDirs = @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", ".cache")
 $ExcludeFiles = @(".DS_Store")
 
 function Assert-Command($Name) {
@@ -51,7 +51,7 @@ function Test-Excluded([System.IO.FileSystemInfo]$Item, [string]$Root) {
     $parts = $rel -split '[\\/]+'
 
     foreach ($part in $parts) {
-        if ($ExcludeDirs -contains $part) { return $true }
+        if (($ExcludeDirs -contains $part) -or $part.EndsWith(".egg-info")) { return $true }
     }
 
     if (-not $Item.PSIsContainer -and ($ExcludeFiles -contains $Item.Name)) { return $true }

@@ -28,6 +28,14 @@ pi
 
 The initializer clones `https://github.com/cycho21/harness.git` into a temp directory, copies missing files from `target/`, then removes the temp clone. Existing files are skipped by default.
 
+After initialization, self-check the install:
+
+```text
+/workflow doctor
+```
+
+DPAA dependencies are installed automatically into `.pi/.venv/` the first time the DPAA gate runs. The generated venv is ignored by `.pi/.gitignore`.
+
 Optional arguments:
 
 Windows PowerShell:
@@ -55,6 +63,32 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 # Overwrite existing files intentionally
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --force
 ```
+
+## Update an installed harness
+
+Run from the project root.
+
+Windows PowerShell:
+
+```powershell
+$p=Join-Path $env:TEMP 'update-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p
+```
+
+macOS/Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.sh | sh
+```
+
+Updates overwrite upstream-managed harness runtime files only. Project-owned files such as `AGENTS.md`, `.pi/config/`, and `.pi/local/` are preserved.
+
+## Customization boundary
+
+- Upstream-managed: `.pi/extensions/`, `.pi/dpaa/`, `.pi/workflows/`, `.pi/skills/`, `.pi/personas/`, `.pi/WORKFLOW.md`, `.pi/GOVERNANCE.md`, `.pi/pyproject.toml`
+- Project-owned: `AGENTS.md`, `.pi/config/`, `.pi/local/`, `.pi/LOCAL.md`
+- Generated/ignored: `.pi/.venv/`, `.pi/.cache/`, `.pi/dpaa-runs/`
+
+See `.pi/LOCAL.md` after initialization for the same boundary inside the project.
 
 ## Preview the bundled target template
 

@@ -29,6 +29,7 @@ import {
   createWorkspaceCheckpoint,
   formatArtifactSnapshotCreated,
   formatGateBlocked,
+  formatHarnessDoctor,
   formatLatestDpaaAudit,
   formatLoadedWorkflowPrompt,
   formatLoadedWorkflowTemplate,
@@ -100,7 +101,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("workflow", {
     description: "Manage the advisory interview → plan → implementation → review → document → commit → push workflow state.",
     getArgumentCompletions: (prefix) => {
-      const commands = ["start", "approve", "status", "list", "load", "unload", "undo", "redo", "history", "abort", "state", "snapshot", "checkpoint", "checkpoints", "restore", "skip", "dpaa-audit"];
+      const commands = ["start", "approve", "status", "doctor", "list", "load", "unload", "undo", "redo", "history", "abort", "state", "snapshot", "checkpoint", "checkpoints", "restore", "skip", "dpaa-audit"];
       const workflowIds = listWorkflowTemplates().map((template) => template.id);
       return [...commands, ...workflowIds]
         .filter((value) => value.startsWith(prefix))
@@ -140,6 +141,11 @@ export default function (pi: ExtensionAPI) {
           ].join("\n"),
         );
       };
+
+      if (command === "doctor") {
+        ctx.ui.notify(formatHarnessDoctor(), "info");
+        return;
+      }
 
       if (command === "start") {
         if (state.workflow && state.workflow.phase !== "done") {

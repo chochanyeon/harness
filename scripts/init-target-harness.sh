@@ -78,6 +78,9 @@ find "$SOURCE" -type f \
   ! -path '*/.pytest_cache/*' \
   ! -path '*/.mypy_cache/*' \
   ! -path '*/.ruff_cache/*' \
+  ! -path '*/.venv/*' \
+  ! -path '*/.cache/*' \
+  ! -path '*/*.egg-info/*' \
   ! -name '.DS_Store' | sort | while IFS= read -r SRC; do
     REL=${SRC#"$SOURCE"/}
     TARGET="$DEST/$REL"

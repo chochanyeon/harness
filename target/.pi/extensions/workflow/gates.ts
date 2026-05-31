@@ -10,22 +10,84 @@ import { table } from "./ui";
 // This file lives at: <harness-root>/.pi/extensions/workflow/gates.ts
 const HARNESS_ROOT = path.resolve(__dirname, "../../..");
 const PI_ROOT = path.join(HARNESS_ROOT, ".pi");
+const DPAA_VENV_DIR = path.join(PI_ROOT, ".venv");
 
 export type WorkflowGate = "dpaa" | "code-quality" | "push-review" | "policy-scan";
 
+function quoteCommand(command: string): string {
+  return `"${escapeForDoubleQuotedArg(command)}"`;
+}
+
+function venvPythonPath(): string {
+  return process.platform === "win32"
+    ? path.join(DPAA_VENV_DIR, "Scripts", "python.exe")
+    : path.join(DPAA_VENV_DIR, "bin", "python");
+}
+
+function isUsablePython(command: string): boolean {
+  try {
+    execSync(`${quoteCommand(command)} -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"`, {
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolvePythonCommand(): string {
   for (const command of ["python", "python3"]) {
-    try {
-      execSync(`${command} -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"`, {
-        encoding: "utf-8",
-        stdio: "pipe",
-      });
-      return command;
-    } catch {
-      // Try the next interpreter name.
-    }
+    if (isUsablePython(command)) return command;
   }
-  return "python";
+  throw new Error("Python >= 3.10 not found. Install Python 3.10+ or make `python`/`python3` available on PATH.");
+}
+
+function canImportDpaa(command: string): boolean {
+  try {
+    execSync(`${quoteCommand(command)} -c "import dpaa.cli"`, {
+      cwd: HARNESS_ROOT,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: "utf-8",
+        PYTHONPATH: process.env.PYTHONPATH ? `${PI_ROOT}${path.delimiter}${process.env.PYTHONPATH}` : PI_ROOT,
+      },
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function installDpaaIntoVenv(venvPython: string): void {
+  execSync(`${quoteCommand(venvPython)} -m pip install -e ${quoteCommand(PI_ROOT)}`, {
+    cwd: HARNESS_ROOT,
+    encoding: "utf-8",
+    stdio: "pipe",
+    maxBuffer: 1024 * 1024 * 20,
+  });
+}
+
+function ensureDpaaPythonCommand(): string {
+  const existingVenvPython = venvPythonPath();
+  if (fs.existsSync(existingVenvPython) && isUsablePython(existingVenvPython)) {
+    if (!canImportDpaa(existingVenvPython)) installDpaaIntoVenv(existingVenvPython);
+    return existingVenvPython;
+  }
+
+  const basePython = resolvePythonCommand();
+  fs.mkdirSync(PI_ROOT, { recursive: true });
+  execSync(`${quoteCommand(basePython)} -m venv ${quoteCommand(DPAA_VENV_DIR)}`, {
+    cwd: HARNESS_ROOT,
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+
+  const venvPython = venvPythonPath();
+  installDpaaIntoVenv(venvPython);
+  return venvPython;
 }
 
 const skipTokens: Array<{
@@ -125,9 +187,23 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
   const checkedPlanPath = snapshot?.planPath ?? planPath;
   const reportPath = path.join(os.tmpdir(), `dpaa-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
   let exitCode = 0;
-  const pythonCommand = resolvePythonCommand();
+  let pythonCommand: string;
   try {
-    execSync(`${pythonCommand} -m dpaa.cli "${escapeForDoubleQuotedArg(checkedPlanPath)}" --output "${escapeForDoubleQuotedArg(reportPath)}" --no-text`, {
+    pythonCommand = ensureDpaaPythonCommand();
+  } catch (error) {
+    return {
+      ok: false,
+      message: formatGateBlocked({
+        gate: "DPAA",
+        why: `Failed to prepare DPAA Python environment: ${error instanceof Error ? error.message : String(error)}`,
+        next: ["Install Python 3.10+", "Ensure `python` or `python3` is available", "Run /workflow approve again"],
+        skip: "/workflow skip dpaa <reason>",
+      }),
+    };
+  }
+
+  try {
+    execSync(`${quoteCommand(pythonCommand)} -m dpaa.cli "${escapeForDoubleQuotedArg(checkedPlanPath)}" --output "${escapeForDoubleQuotedArg(reportPath)}" --no-text`, {
       cwd: HARNESS_ROOT,
       encoding: "utf-8",
       env: {

@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getGitRoot } from "./git";
@@ -75,6 +76,46 @@ export function formatWorkflowPrerequisiteScan(scan: WorkflowPrerequisiteScan): 
     sections.push("All required workflow files and quality guard hints are present.");
   }
   return sections.join("\n");
+}
+
+function commandOk(command: string): boolean {
+  try {
+    execSync(command, { cwd: HARNESS_ROOT, encoding: "utf-8", stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function pythonOk(command: string): boolean {
+  return commandOk(`${command} -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"`);
+}
+
+export function formatHarnessDoctor(): string {
+  const scan = scanWorkflowPrerequisites();
+  const venvPython = process.platform === "win32"
+    ? path.join(PI_ROOT, ".venv", "Scripts", "python.exe")
+    : path.join(PI_ROOT, ".venv", "bin", "python");
+  const python = pythonOk("python");
+  const python3 = pythonOk("python3");
+  const dpaaImport = fs.existsSync(venvPython) && commandOk(`"${venvPython}" -c "import dpaa.cli"`);
+  const checks = [
+    ["runtime files", scan.ok ? "OK" : "FAIL"],
+    ["git", commandOk("git --version") ? "OK" : "FAIL"],
+    ["python >= 3.10", python || python3 ? "OK" : "FAIL"],
+    ["python command", python ? "OK" : "WARN"],
+    ["python3 command", python3 ? "OK" : "WARN"],
+    ["DPAA venv", fs.existsSync(venvPython) ? "OK" : "MISSING (auto-created on first DPAA gate)"],
+    ["DPAA import", dpaaImport ? "OK" : "MISSING (auto-installed on first DPAA gate)"],
+    ["project AGENTS.md", fs.existsSync(path.join(HARNESS_ROOT, "AGENTS.md")) ? "OK" : "FAIL"],
+  ];
+
+  return [
+    banner("🩺 Harness doctor"),
+    table([["Check", "Status"], ...checks]),
+    "",
+    formatWorkflowPrerequisiteScan(scan),
+  ].join("\n");
 }
 
 export function listWorkflowTemplates(): WorkflowTemplate[] {

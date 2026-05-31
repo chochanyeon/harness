@@ -22,6 +22,8 @@ DEFAULT_EXCLUDES = {
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
+    ".venv",
+    ".cache",
     ".DS_Store",
 }
 
@@ -32,7 +34,7 @@ def repo_root() -> Path:
 
 def iter_files(source: Path) -> Iterable[Path]:
     for path in sorted(source.rglob("*")):
-        if any(part in DEFAULT_EXCLUDES for part in path.parts):
+        if any(part in DEFAULT_EXCLUDES or part.endswith(".egg-info") for part in path.parts):
             continue
         if path.is_file():
             yield path

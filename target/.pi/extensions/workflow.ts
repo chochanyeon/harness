@@ -16,6 +16,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -94,6 +95,7 @@ export default function (pi: ExtensionAPI) {
     policyApprovals: [] as Array<{ timestamp: number; totalChanged: number; categories: string[]; signature: string }>,
     lastInputCheckpointSignature: null as string | null,
     recentVerificationCommands: [] as Array<{ command: string; timestamp: number; phase?: string }>,
+    reviewPackageToken: null as null | { workflowId: string; timestamp: number; critical: number; major: number; minor: number; mainSummary: string; reviewerSummary: string; qualitySummary: string },
   };
 
   function normalizePathText(value: string): string {
@@ -222,6 +224,67 @@ export default function (pi: ExtensionAPI) {
     return { skillPaths: [skillsPath] };
   });
 
+  // ── Tool: submit_review_package — records main/subagent review evidence ──
+  pi.registerTool({
+    name: "submit_review_package",
+    label: "Submit review package",
+    description: "Record the main-agent self-review, independent reviewer/subagent review, and quality-gate summary before automated review approval.",
+    parameters: Type.Object({
+      mainReviewSummary: Type.String({ description: "Main agent self-review summary and fixes performed." }),
+      reviewerReviewSummary: Type.String({ description: "Independent reviewer/subagent findings summary." }),
+      qualityGateSummary: Type.String({ description: "Quality gate/test/lint/typecheck result summary." }),
+      critical: Type.Number({ description: "Critical issue count after fixes." }),
+      major: Type.Number({ description: "Major issue count after fixes." }),
+      minor: Type.Number({ description: "Minor issue count after fixes." }),
+    }),
+    async execute(_toolCallId, params) {
+      if (!state.workflow) {
+        return { content: [{ type: "text", text: "No active workflow. Start /workflow first." }], details: { ok: false } };
+      }
+      if (state.workflow.phase !== "code_review") {
+        return { content: [{ type: "text", text: `Review package can be submitted only in code_review phase. Current phase: ${state.workflow.phase}` }], details: { ok: false } };
+      }
+      const critical = Number(params.critical);
+      const major = Number(params.major);
+      const minor = Number(params.minor);
+      const missing = [params.mainReviewSummary, params.reviewerReviewSummary, params.qualityGateSummary].some((value) => !String(value ?? "").trim());
+      if (missing || !Number.isFinite(critical) || !Number.isFinite(major) || !Number.isFinite(minor)) {
+        return { content: [{ type: "text", text: "Review package rejected: main review, independent reviewer review, quality gate summary, and severity counts are required." }], details: { ok: false } };
+      }
+      if (critical > 0 || major > 2) {
+        state.reviewPackageToken = null;
+        return { content: [{ type: "text", text: `Review package rejected: Critical=${critical} (required 0), Major=${major} (required ≤2). Return to implement, fix issues, then review again.` }], details: { ok: false, critical, major, minor } };
+      }
+
+      state.reviewPackageToken = {
+        workflowId: state.workflow.id,
+        timestamp: Date.now(),
+        critical,
+        major,
+        minor,
+        mainSummary: String(params.mainReviewSummary),
+        reviewerSummary: String(params.reviewerReviewSummary),
+        qualitySummary: String(params.qualityGateSummary),
+      };
+
+      const result = await advanceWorkflow(state.workflow, "automated_review_package");
+      const notices: string[] = [
+        `Review package accepted: Critical=${critical}, Major=${major}, Minor=${minor}.`,
+      ];
+      if (result.ok) {
+        state.codeQualityGuardSatisfiedToken = { workflowId: state.workflow.id, issuedAt: Date.now(), reason: "automated_review_package" };
+        state.codeReviewGuardSatisfiedToken = { critical, major, minor, timestamp: Date.now() };
+        state.recentVerificationCommands.push({ command: "codeQualityGuard", timestamp: Date.now(), phase: "code_review" });
+        if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
+        notices.push(result.message);
+        notices.push("Automated review approved: review package and quality gate satisfied.");
+      } else {
+        notices.push(result.message);
+      }
+      return { content: [{ type: "text", text: notices.join("\n") }], details: { ok: result.ok, critical, major, minor, workflowPhase: state.workflow.phase } };
+    },
+  });
+
   // ── Command: /workflow — advisory workflow state manager ──────────────────
   pi.registerCommand("workflow", {
     description: "Manage the advisory interview → plan → implementation → review → document → commit → push workflow state.",
@@ -335,6 +398,10 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (command === "approve") {
+        if (state.workflow?.phase === "code_review" && state.reviewPackageToken?.workflowId !== state.workflow.id) {
+          ctx.ui.notify("Review package required before review_approved. Run main self-review, independent reviewer/subagent review, quality gates, then call submit_review_package.", "warning");
+          return;
+        }
         if (state.workflow?.phase === "commit" && !(await confirmPushPolicyForPushPhase(ctx))) return;
         const workflowId = state.workflow?.id ?? null;
         const result = await advanceWorkflow(state.workflow, "user_approved");
@@ -632,6 +699,18 @@ export default function (pi: ExtensionAPI) {
     if (!isApprovalText(event.text)) return { action: "continue" };
 
     const from = state.workflow.phase;
+    if (state.workflow.phase === "code_review" && state.reviewPackageToken?.workflowId !== state.workflow.id) {
+      return {
+        action: "transform",
+        text: [
+          event.text,
+          "",
+          "[Workflow] Review package is required before review_approved.",
+          "Run main self-review, independent reviewer/subagent review, quality gates, then call submit_review_package.",
+        ].join("\n"),
+      };
+    }
+
     if (state.workflow.phase === "commit" && !(await confirmPushPolicyForPushPhase(ctx))) {
       return {
         action: "transform",
@@ -1045,6 +1124,7 @@ export default function (pi: ExtensionAPI) {
       formatWorkflowReminders(scanWorkflowReminders(state.workflow, {
         recentVerificationCommands: state.recentVerificationCommands,
         codeQualityGuardSatisfied: Boolean(state.workflow && state.codeQualityGuardSatisfiedToken?.workflowId === state.workflow.id),
+        reviewPackageSubmitted: Boolean(state.workflow && state.reviewPackageToken?.workflowId === state.workflow.id),
       })),
     ].join("\n");
 

@@ -7,9 +7,10 @@
   {"actor":"assistant","kind":"artifact","name":".ai/interview/plan.md","dpaa_level":"PASS","text":"# Plan\n\n- Add deterministic audit log tests.\n- Implement with explicit verification.\n"},
   {"actor":"user","kind":"input","text":"DPAA 반영했으니 구현 승인합니다."},
   {"actor":"assistant","kind":"tool_call","tool":"bash","command":"git push origin HEAD","expect_blocked":"WORKFLOW PHASE"},
-  {"actor":"user","kind":"input","text":"구현 완료 확인. 자동 리뷰와 품질 게이트 진행 승인합니다."},
+  {"actor":"user","kind":"input","text":"구현 완료 확인. 리뷰 단계로 진행합니다."},
+  {"actor":"assistant","kind":"review_package","critical":0,"major":0,"minor":1},
   {"actor":"assistant","kind":"tool_call","tool":"bash","command":"git push origin HEAD","expect_blocked":"WORKFLOW PHASE"},
   {"actor":"user","kind":"input","text":"push 단계 승인합니다."},
-  {"assistant_note":"In the real extension this push is allowed only because automated review/quality gates issued the review token before push.","actor":"assistant","kind":"tool_call","tool":"bash","command":"git push origin HEAD","expect_allowed":true},
+  {"assistant_note":"In the real extension this push is allowed only because submit_review_package issued the review token before push.","actor":"assistant","kind":"tool_call","tool":"bash","command":"git push origin HEAD","expect_allowed":true},
   {"actor":"assistant","kind":"tool_call","tool":"bash","command":"git push origin HEAD","expect_blocked":"Push Review"}
 ]

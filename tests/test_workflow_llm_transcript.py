@@ -22,11 +22,9 @@ def _workflow_phases_from_runtime_source() -> list[str]:
 
 def _assert_transcript_covers_real_extension_gates() -> None:
     text = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
-    # This test is a replay of the real workflow contract. If these hooks/tools
-    # disappear, the transcript would no longer represent the extension runtime.
     for needle in [
         'pi.registerCommand("workflow"',
-        'Automated review approved',
+        'submit_review_package',
         'pi.on("input"',
         'event.source !== "interactive"',
         'pi.on("tool_call"',
@@ -59,14 +57,8 @@ class ReplayHarness:
 
     def advance(self, reason: str) -> dict[str, str | bool]:
         assert self.phase is not None
-        current_index = self.phases.index(self.phase)
-        if current_index == len(self.phases) - 1:
+        if self.phases.index(self.phase) == len(self.phases) - 1:
             return {"allowed": False, "reason": f"already at final phase: {self.phase}"}
-
-        from_phase = self.phase
-        to_phase = self.phases[current_index + 1]
-        if from_phase == "plan_review" and to_phase == "implement" and self.dpaa_level != "PASS":
-            return {"allowed": False, "reason": "DPAA gate blocked before plan_review → implement"}
 
         transitions = []
         while True:
@@ -80,7 +72,9 @@ class ReplayHarness:
                     return {"allowed": False, "reason": "DPAA gate blocked before plan_review → implement"}
                 break
             if from_phase == "code_review" and to_phase == "review_approved" and not self.review_token:
-                self.confirm_code_review_guard()
+                if not transitions:
+                    return {"allowed": False, "reason": "review package required before code_review → review_approved"}
+                break
             self.phase = to_phase
             self.history.append((from_phase, to_phase, reason))
             transitions.append((from_phase, to_phase))
@@ -90,12 +84,16 @@ class ReplayHarness:
                 break
         return {"allowed": True, "phase": self.phase}
 
+    def submit_review_package(self, critical: int, major: int, minor: int) -> dict[str, str | bool]:
+        assert self.phase == "code_review"
+        if critical > 0 or major > 2:
+            return {"allowed": False, "reason": "review package threshold failed"}
+        self.review_token = {"critical": critical, "major": major, "minor": minor}
+        return self.advance("automated_review_package")
+
     def write_artifact(self, event: dict) -> None:
         if event["name"] == ".ai/interview/plan.md":
             self.dpaa_level = event.get("dpaa_level")
-
-    def confirm_code_review_guard(self) -> None:
-        self.review_token = {"critical": 0, "major": 0, "minor": 0}
 
     def bash(self, command: str) -> dict[str, str | bool]:
         if not re.search(r"(^|&&|;)\s*git\s+push\b", command):
@@ -134,6 +132,8 @@ def test_llm_like_transcript_replays_complete_workflow_with_gates():
         elif event["kind"] == "artifact":
             harness.write_artifact(event)
             continue
+        elif event["kind"] == "review_package":
+            result = harness.submit_review_package(event["critical"], event["major"], event["minor"])
         elif event["kind"] == "tool_call" and event["tool"] == "bash":
             result = harness.bash(event["command"])
         elif event["kind"] == "message":
@@ -153,9 +153,9 @@ def test_llm_like_transcript_replays_complete_workflow_with_gates():
         ("plan", "plan_review", "natural_language_approval"),
         ("plan_review", "implement", "natural_language_approval"),
         ("implement", "code_review", "natural_language_approval"),
-        ("code_review", "review_approved", "natural_language_approval"),
-        ("review_approved", "document", "natural_language_approval"),
-        ("document", "commit", "natural_language_approval"),
+        ("code_review", "review_approved", "automated_review_package"),
+        ("review_approved", "document", "automated_review_package"),
+        ("document", "commit", "automated_review_package"),
         ("commit", "push", "natural_language_approval"),
     ]
     assert harness.review_token is None, "push review token must be single-use"

@@ -27,7 +27,6 @@ export const AUTO_ADVANCE_FROM_PHASES = new Set<WorkflowPhase>([
   "interview",
   "plan",
   "implement",
-  "code_review",
   "review_approved",
   "document",
 ]);
@@ -81,8 +80,8 @@ export async function advanceWorkflow(workflow: WorkflowInstance | null, reason:
 
     // Preparation/review phases advance automatically to the next approval boundary.
     // Risky boundaries (plan_review→implement, commit→push) still require a user
-    // approval that starts from that phase. implement→code_review and
-    // code_review→review_approved are automated after implementation/review/quality flow.
+    // approval that starts from that phase. implement→code_review is automated;
+    // code_review→review_approved is triggered after a submitted review package passes gates.
     if (!AUTO_ADVANCE_FROM_PHASES.has(next)) break;
   }
 

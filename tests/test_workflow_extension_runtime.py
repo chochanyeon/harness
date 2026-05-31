@@ -98,7 +98,7 @@ def test_workflow_extension_runtime_auto_advances_low_risk_phase_boundaries(tmp_
     assert "Workflow 전이: review_approved → document → commit" in joined
 
 
-def test_workflow_extension_runtime_auto_advances_implementation_review_and_commit_after_quality_passes(tmp_path):
+def test_workflow_extension_runtime_moves_implement_to_code_review_then_review_package_advances(tmp_path):
     script = textwrap.dedent(
         r'''
         const path = require('path');
@@ -117,16 +117,27 @@ def test_workflow_extension_runtime_auto_advances_implementation_review_and_comm
           await pi.commands.workflow.handler('start Runtime review automation', ctx);
           await pi.commands.workflow.handler('state implement', ctx);
           await pi.commands.workflow.handler('approve', ctx);
-          console.log(JSON.stringify({ notifications: notifications.map((item) => item.text) }));
+          const beforePackage = notifications.map((item) => item.text).join('\n');
+          const tool = pi.tools.submit_review_package;
+          const result = await tool.execute('review-1', {
+            mainReviewSummary: 'Main self-review found no remaining blockers.',
+            reviewerReviewSummary: 'Independent reviewer/subagent review found no critical or major issues.',
+            qualityGateSummary: 'codeQualityGuard passed.',
+            critical: 0,
+            major: 0,
+            minor: 1,
+          }, undefined, undefined, ctx);
+          console.log(JSON.stringify({ notifications: notifications.map((item) => item.text), beforePackage, toolResult: result.content[0].text, toolNames: Object.keys(pi.tools) }));
         })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
         '''
     )
     data = _run_node_runtime(script, tmp_path)
-    joined = "\n".join(data["notifications"])
 
-    assert "Workflow 전이: implement → code_review → review_approved → document → commit" in joined
-    assert "Automated review approved" in joined
-    assert "Code quality guard satisfied" in joined
+    assert "submit_review_package" in data["toolNames"]
+    assert "Workflow 전이: implement → code_review" in data["beforePackage"]
+    assert "review_approved" not in data["beforePackage"]
+    assert "Workflow 전이: code_review → review_approved → document → commit" in data["toolResult"]
+    assert "Automated review approved" in data["toolResult"]
 
 
 def test_extension_modification_requires_interactive_user_approval(tmp_path):
@@ -226,13 +237,20 @@ def test_workflow_extension_runtime_blocks_failed_code_quality_guard(tmp_path):
         (async () => {
           await pi.commands.workflow.handler('start Runtime code quality', ctx);
           await pi.commands.workflow.handler('state code_review', ctx);
-          await pi.commands.workflow.handler('approve', ctx);
-          console.log(JSON.stringify({ notifications: notifications.map((item) => item.text) }));
+          const result = await pi.tools.submit_review_package.execute('review-fail', {
+            mainReviewSummary: 'Main self-review complete.',
+            reviewerReviewSummary: 'Independent reviewer found no threshold blockers.',
+            qualityGateSummary: 'codeQualityGuard attempted.',
+            critical: 0,
+            major: 0,
+            minor: 0,
+          }, undefined, undefined, ctx);
+          console.log(JSON.stringify({ notifications: notifications.map((item) => item.text), toolResult: result.content[0].text }));
         })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
         '''
     )
     data = _run_node_runtime(script, tmp_path)
-    joined = "\n".join(data["notifications"])
+    joined = "\n".join(data["notifications"]) + "\n" + data["toolResult"]
 
     assert "CODE QUALITY GATE BLOCKED" in joined
     assert "Mechanical code quality guard failed" in joined

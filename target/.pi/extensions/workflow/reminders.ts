@@ -7,6 +7,7 @@ import { getGitRoot } from "./git";
 export type ReminderRuntimeSignals = {
   recentVerificationCommands?: Array<{ command: string; timestamp: number; phase?: string }>;
   codeQualityGuardSatisfied?: boolean;
+  reviewPackageSubmitted?: boolean;
 };
 
 export type WorkflowReminder = {
@@ -111,9 +112,9 @@ function scanVerificationItems(root: string, phase: string, signals: ReminderRun
 
 function scanReviewPackageItems(phase: string, signals: ReminderRuntimeSignals): string[] {
   if (phase !== "code_review") return [];
-  if (signals.codeQualityGuardSatisfied) return [];
+  if (signals.reviewPackageSubmitted) return [];
   return [
-    "No automated review package has been recorded yet. Before review_approved, prepare main-agent self-review, independent reviewer/subagent findings, severity counts (Critical/Major/Minor), fixes performed, and quality-gate results.",
+    "No automated review package has been recorded yet. Before review_approved, run main-agent self-review, independent reviewer/subagent review, quality gates, then call submit_review_package with Critical/Major/Minor counts and summaries.",
   ];
 }
 

@@ -21,12 +21,12 @@ interview → plan → plan_review → implement → code_review → review_appr
 Rules:
 
 - Work only in the current phase.
-- Ask the user before crossing approval-required boundaries. Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review → review_approved`, and `review_approved → document → commit`.
+- Ask the user before crossing approval-required boundaries. Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review`, and `review_approved → document → commit`. In `code_review`, run main self-review, independent reviewer/subagent review, and quality gates, then call `submit_review_package`.
 - If a guard blocks, report the blocker and wait.
 - If a workflow reminder is injected, address it explicitly; do not silently skip missing documentation, verification, review-package, commit-summary, or field-log evidence reminders.
 - Do not simulate guard results, write token files, or claim approval on behalf of the user.
 - Modifying `.pi/extensions/**` or `target/.pi/extensions/**` requires explicit interactive user approval for that tool call; never create file-based approval markers.
-- Code review guard satisfaction is recorded by the extension only after the automated review/quality flow passes; do not simulate token files or claim gate results without running the required checks.
+- Code review guard satisfaction is recorded by the extension only after `submit_review_package` and quality gates pass; do not simulate token files or claim gate results without running the required checks.
 
 ## Scope Rules
 

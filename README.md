@@ -1,162 +1,545 @@
 # harness
 
-Pi workflow harness source repository.
+[English README](README.en.md)
 
-Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. In an initialized project, only `AGENTS.md` and `.pi/` are placed at the project root; workflow internals, DPAA, and reference docs live under `.pi/`.
+Pi 기반 LLM 개발 세션에 **workflow 거버넌스**, **기계적 guard**, **external memory**, **field failure log**를 추가하는 하네스입니다.
 
-## Initialize in another project
+이 저장소는 하네스 개발용 source repo입니다. 실제 프로젝트에 설치되는 런타임 템플릿은 `target/` 아래에 격리되어 있습니다. 따라서 이 저장소 루트에서 작업해도 하네스 extension/skill/context가 자동 로드되지 않습니다.
 
-From the target project's directory, run the one-liner for your OS.
+설치된 프로젝트의 루트에는 기본적으로 다음만 노출됩니다.
 
-Windows PowerShell:
+```text
+AGENTS.md
+.pi/
+```
+
+workflow 내부 구현, DPAA, skills, personas, schemas 등은 `.pi/` 아래에 위치합니다.
+
+---
+
+## 구성 요소
+
+```text
+harness
+├─ workflow component
+│  ├─ .pi/extensions/workflow.ts
+│  ├─ .pi/extensions/workflow/
+│  ├─ .pi/WORKFLOW.md
+│  ├─ .pi/dpaa/
+│  ├─ .pi/workflows/
+│  ├─ .pi/skills/
+│  └─ .pi/schemas/harness-field-log-event.schema.json
+│
+└─ memory component
+   ├─ .pi/extensions/memory.ts
+   └─ .pi/schemas/harness-memory-entry.schema.json
+```
+
+### Workflow component
+
+개발 단계를 관리하고, 중요한 경계에서 guard를 실행합니다.
+
+주요 역할:
+
+- workflow phase 관리
+- DPAA plan ambiguity gate
+- code quality gate
+- push policy scan
+- workspace mismatch 방지
+- field failure log 생성
+- mechanical reminders 주입
+- extension 수정 시 사용자 승인 요구
+
+### Memory component
+
+LLM 개발 세션에서 장기 기억을 사용할 수 있게 하는 작은 external memory layer입니다.
+
+주요 역할:
+
+- durable project fact/decision 저장
+- 관련 memory top-N만 prompt에 주입
+- 어떤 memory가 주입됐는지 explain
+- feedback/metrics 기록
+- secret-like memory 저장 거부
+
+---
+
+## 설치
+
+설치할 프로젝트 루트에서 실행합니다.
+
+### Windows PowerShell
 
 ```powershell
 $p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p
 ```
 
-macOS/Linux:
+### macOS/Linux
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh
 ```
 
-Then start Pi from the same project directory:
+설치 후 같은 프로젝트 루트에서 Pi를 실행합니다.
 
-```powershell
+```bash
 pi
 ```
 
-The initializer clones `https://github.com/cycho21/harness.git` into a temp directory, copies missing files from `target/`, then removes the temp clone. Existing files are skipped by default.
-
-After initialization, self-check the install:
+설치 상태 확인:
 
 ```text
 /workflow doctor
 ```
 
-DPAA dependencies are installed automatically into `.pi/.venv/` the first time the DPAA gate runs. The generated venv is ignored by `.pi/.gitignore`.
-
-Harness failures are logged locally under `.project-memory/harness/events.jsonl` when gates block or are explicitly skipped. Review and export redacted logs with:
+기본 설치는 전체 설치입니다.
 
 ```text
-/workflow failures
-/workflow failures export
+--component all
+= workflow + memory
 ```
 
-External memory is stored separately under `.project-memory/memory/`. It starts as a small, user-governed memory layer: manually remember durable facts, search/list them, disable incorrect entries, and inspect what was injected into the prompt. Retrieval/injection tracking is recorded as ids/hashes/counts rather than raw prompts. The extension also adds `.project-memory/` to `.git/info/exclude` on first write so local memory is not accidentally committed.
+---
 
-Current MVP commands:
+## component별 설치
 
-```text
-/memory remember <durable project fact or decision>
-/memory list
-/memory search <query>
-/memory explain
-/memory stats
-/memory feedback <id> helpful|irrelevant|wrong|stale
-```
+필요하면 workflow 또는 memory만 따로 설치할 수 있습니다.
 
-Planned later: candidate extraction, approve/reject workflow, merge/supersede, export, and AGENTS.md promotion. These are intentionally not automatic in the MVP.
-
-Install only one component when needed:
+### workflow만 설치
 
 ```bash
-# workflow only
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component workflow
+```
 
-# memory only
+### memory만 설치
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
 ```
 
-Optional arguments:
-
-Windows PowerShell:
+Windows PowerShell 예:
 
 ```powershell
-# Preview only
-$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p -DryRun
-
-# Use a specific branch/tag
-$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Ref main
-
-# Overwrite existing files intentionally
-$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Force
-
-# Install only one component
 $p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Component memory
 ```
 
-macOS/Linux:
+---
 
-```bash
-# Preview only
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --dry-run
+## 업데이트
 
-# Use a specific branch/tag
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --ref main
+설치된 프로젝트 루트에서 실행합니다.
 
-# Overwrite existing files intentionally
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --force
-
-# Install only one component
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
-```
-
-## Update an installed harness
-
-Run from the project root.
-
-Windows PowerShell:
+### Windows PowerShell
 
 ```powershell
 $p=Join-Path $env:TEMP 'update-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p
 ```
 
-macOS/Linux:
+### macOS/Linux
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.sh | sh
 ```
 
-Updates overwrite upstream-managed harness runtime files only. Project-owned files such as `AGENTS.md`, `.pi/config/`, and `.pi/local/` are preserved.
-
-Update only one component when needed:
+component별 업데이트:
 
 ```bash
+# workflow만 업데이트
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.sh | sh -s -- --component workflow
+
+# memory만 업데이트
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.sh | sh -s -- --component memory
 ```
 
+업데이트는 upstream-managed 파일만 덮어씁니다. 프로젝트 소유 파일은 보존됩니다.
+
+---
+
+## Workflow 개요
+
+기본 phase는 다음과 같습니다.
+
+```text
+interview
+→ plan
+→ plan_review
+→ implement
+→ code_review
+→ review_approved
+→ document
+→ commit
+→ push
+→ done
+```
+
+현재 승인 모델은 “모든 phase마다 승인”이 아니라 **위험 경계에서만 승인**하는 구조입니다.
+
+### 자동 진행 구간
+
+```text
+interview → plan → plan_review
+implement → code_review
+review_approved → document → commit
+```
+
+### 사용자 승인이 필요한 경계
+
+```text
+plan_review → implement
+commit → push
+```
+
+추가로 다음은 별도 사용자 확인이 필요합니다.
+
+```text
+/workflow skip <gate> <reason>
+/workflow state <phase>
+/workflow abort
+git push 위험 변경 재확인
+.pi/extensions/** 수정
+```
+
+---
+
+## Workflow 상세
+
+| Phase | 의미 | 다음 단계 조건 |
+|---|---|---|
+| `interview` | 요구사항/모호성 확인 | 자동으로 `plan`까지 진행 가능 |
+| `plan` | 구현 계획/DPAA artifact 작성 | 자동으로 `plan_review`까지 진행 |
+| `plan_review` | 계획 검토/승인 대기 | 사용자 승인 + DPAA PASS 필요 |
+| `implement` | 승인된 계획만 구현 | 구현 완료 후 `code_review` 자동 진입 가능 |
+| `code_review` | main review + 독립 reviewer/subagent review + quality gate | `submit_review_package` 통과 필요 |
+| `review_approved` | 리뷰 패키지와 품질 gate 통과 | 자동으로 `document` 진행 |
+| `document` | 필요한 문서/feature docs 작성 | 자동으로 `commit` 준비 가능 |
+| `commit` | diff 요약, 검증 요약, commit message 준비 | 사용자 승인 + policy scan 후 `push` |
+| `push` | 원격 반영 준비 완료 | git push guard 통과 후 push |
+| `done` | workflow 완료 | 새 workflow 시작 가능 |
+
+---
+
+## Review package
+
+`code_review → review_approved`는 단순 사용자 승인으로 넘어가지 않습니다. LLM은 review phase에서 다음을 수행하고 `submit_review_package` tool을 호출해야 합니다.
+
+필수 내용:
+
+```text
+mainReviewSummary
+reviewerReviewSummary    # 독립 reviewer/subagent 리뷰 요약
+qualityGateSummary
+critical
+major
+minor
+```
+
+통과 조건:
+
+```text
+Critical = 0
+Major ≤ 2
+main review summary 존재
+independent reviewer/subagent summary 존재
+quality gate summary 존재
+codeQualityGuard 통과
+```
+
+통과하면 자동으로 다음 체인이 진행됩니다.
+
+```text
+code_review → review_approved → document → commit
+```
+
+---
+
+## Mechanical reminders
+
+하네스는 일부 항목을 hard gate로 막지 않고, 기계적으로 확인한 결과를 LLM prompt에 reminder로 주입합니다.
+
+예:
+
+```text
+[Workflow Mechanical Reminders]
+...
+[/Workflow Mechanical Reminders]
+```
+
+현재 reminder 종류:
+
+1. Documentation reminder
+   - `docs/feat/*.md`
+   - `docs/feat/INDEX.md`
+   - `docs/feat/html/*.html`
+   - `docs/feat/html/index.html`
+   - md보다 오래된 html
+
+2. Verification reminder
+   - commit phase에서 변경 파일이 있는데 최근 test/lint/typecheck/build 실행 흔적이 없을 때
+
+3. Review package reminder
+   - code_review phase에서 review package가 아직 제출되지 않았을 때
+
+4. Commit summary reminder
+   - commit phase에서 변경 파일이 있는데 diff summary / risk summary / commit message 준비가 필요할 때
+
+5. Field-log evidence reminder
+   - harness runtime/tooling 변경인데 field failure log 근거가 없을 때
+
+reminder는 기본적으로 차단하지 않습니다. 대신 LLM은 반드시 처리하거나, 해당 항목이 필요 없는 이유를 명시해야 합니다.
+
+---
+
+## Hard guards
+
+hard guard는 자동 진행 중에도 우회할 수 없습니다.
+
+| Guard | 위치 | 의미 |
+|---|---|---|
+| DPAA | `plan_review → implement` | 계획 모호성/검증 가능성 검사 |
+| Code quality | review package 제출 시 | `codeQualityGuard` 또는 설정된 품질 명령 실행 |
+| Workspace | `git push` | workflow 시작 workspace/branch와 현재 상태 일치 검사 |
+| Push policy scan | `commit → push`, `git push` | 위험 변경 확인 |
+| Push execution | `git push` | push phase token 필요 |
+| Push review | `git push` | review token 필요, single-use |
+| Extension modification approval | `.pi/extensions/**` 수정 | 사용자 승인 없는 extension 수정 차단 |
+
+예외적으로 gate를 건너뛰려면 명시적 skip이 필요합니다.
+
+```text
+/workflow skip <dpaa|code-quality|push-review|policy-scan> <reason>
+```
+
+---
+
+## Push 정책
+
+`commit → push`로 넘어갈 때 push 의사와 위험 변경을 함께 확인합니다.
+
+```text
+commit → push
+  └─ 위험 변경 있으면 policy scan confirmation
+```
+
+실제 `git push` 시에는 다시 scan합니다.
+
+```text
+동일 workspace risk signature → 추가 확인 없이 통과
+변경사항이 달라짐 → 다시 확인 또는 차단
+```
+
+즉 같은 위험 변경에 대해 중복으로 묻지 않지만, 승인 후 workspace가 바뀌면 다시 확인합니다.
+
+---
+
+## Extension 수정 보호
+
+다음 경로를 수정하려면 사용자 승인이 필요합니다.
+
+```text
+.pi/extensions/**
+target/.pi/extensions/**
+```
+
+조회는 허용됩니다.
+
+```text
+rg/read/grep 등
+```
+
+하지만 수정성 tool call은 승인 없이는 차단됩니다.
+
+```text
+edit/write/apply_patch
+bash rm/mv/cp/sed -i/tee/> 등
+```
+
+승인은 파일이 아니라 extension in-memory에서 해당 tool call 1회에만 적용됩니다. 승인 파일이나 token 파일은 신뢰하지 않습니다.
+
+---
+
+## Field failure logs
+
+하네스가 적용된 프로젝트에서는 gate 실패/skip/정책 차단 등 factual failure event를 로컬에 기록합니다.
+
+```text
+.project-memory/harness/events.jsonl
+.project-memory/harness/exports/
+```
+
+확인:
+
+```text
+/workflow failures
+```
+
+redacted export:
+
+```text
+/workflow failures export
+```
+
+`.project-memory/`는 첫 write 시 `.git/info/exclude`에 추가되어 실수로 commit되지 않도록 보호됩니다.
+
+---
+
+## External memory
+
+memory component는 별도 저장소를 사용합니다.
+
+```text
+.project-memory/memory/
+  entries.jsonl
+  metrics.jsonl
+  feedback.jsonl
+  injection-state.json
+```
+
+현재 MVP 명령:
+
+```text
+/memory remember <durable project fact or decision>
+/memory list
+/memory search <query>
+/memory show <id>
+/memory disable <id>
+/memory enable <id>
+/memory delete <id>
+/memory explain
+/memory stats
+/memory feedback <id> helpful|irrelevant|wrong|stale
+/memory missed <query-or-description>
+```
+
+원칙:
+
+```text
+모든 memory를 매번 주입하지 않음
+관련 top-N만 deterministic하게 주입
+metrics에는 raw prompt가 아니라 hash/id/count 중심으로 기록
+secret-like memory는 저장 거부
+```
+
+아직 의도적으로 자동화하지 않은 것:
+
+```text
+candidate 자동 추출
+approve/reject workflow
+merge/supersede/compact
+AGENTS.md promotion
+semantic/vector retrieval
+```
+
+---
+
 ## Customization boundary
 
-- Upstream-managed: `.pi/extensions/`, `.pi/dpaa/`, `.pi/workflows/`, `.pi/skills/`, `.pi/personas/`, `.pi/WORKFLOW.md`, `.pi/GOVERNANCE.md`, `.pi/pyproject.toml`, `.pi/schemas/`
-- Project-owned: `AGENTS.md`, `.pi/config/`, `.pi/local/`, `.pi/LOCAL.md`
-- Generated/ignored: `.pi/.venv/`, `.pi/.cache/`, `.pi/dpaa-runs/`
+### Upstream-managed
 
-See `.pi/LOCAL.md` after initialization for the same boundary inside the project.
+업데이트 시 하네스가 관리하고 덮어쓸 수 있는 영역입니다.
 
-## Preview the bundled target template
+```text
+.pi/extensions/
+.pi/dpaa/
+.pi/workflows/
+.pi/skills/
+.pi/personas/
+.pi/WORKFLOW.md
+.pi/GOVERNANCE.md
+.pi/pyproject.toml
+.pi/schemas/
+```
 
-`target/` is the template that gets copied into another project. To preview that template locally without initializing another repository:
+### Project-owned
 
-```powershell
+프로젝트가 소유하고 유지하는 영역입니다.
+
+```text
+AGENTS.md
+.pi/config/
+.pi/local/
+.pi/LOCAL.md
+```
+
+### Generated / ignored
+
+```text
+.pi/.venv/
+.pi/.cache/
+.pi/dpaa-runs/
+.project-memory/
+```
+
+---
+
+## 주요 명령
+
+### Workflow
+
+```text
+/workflow start <title>
+/workflow status
+/workflow approve
+/workflow doctor
+/workflow failures
+/workflow failures export
+/workflow list
+/workflow load <id>
+/workflow unload
+/workflow undo
+/workflow redo
+/workflow history
+/workflow checkpoint
+/workflow checkpoints
+/workflow restore <id>
+/workflow state <phase>
+/workflow skip <gate> <reason>
+/workflow abort
+/workflow dpaa-audit
+```
+
+### Memory
+
+```text
+/memory remember <text>
+/memory list
+/memory search <query>
+/memory show <id>
+/memory disable <id>
+/memory enable <id>
+/memory explain
+/memory stats
+/memory feedback <id> helpful|irrelevant|wrong|stale
+/memory missed <description>
+```
+
+---
+
+## 개발 repo에서 템플릿 미리보기
+
+이 repo에서 설치 템플릿을 미리 보려면:
+
+```bash
 cd target
 pi
 ```
 
-For normal usage, run the initializer from the project you want to equip with the harness, then run `pi` from that project root.
+일반 사용에서는 대상 프로젝트 루트에서 initializer를 실행한 뒤 그 프로젝트에서 `pi`를 실행합니다.
 
-Key runtime entrypoints:
+---
 
-- `target/AGENTS.md`
-- `target/.pi/WORKFLOW.md`
-- `target/.pi/extensions/workflow.ts`
-- `target/.pi/extensions/memory.ts`
-- `target/.pi/skills/`
-- `target/.pi/personas/`
-- `target/.pi/GOVERNANCE.md`
-- `target/.pi/dpaa/`
-- `target/.pi/pyproject.toml`
-- `target/.pi/workflows/`
-- `target/.pi/schemas/harness-field-log-event.schema.json`
-- `target/.pi/schemas/harness-memory-entry.schema.json`
+## 다음 개선 후보
+
+다음 항목은 의도적으로 이후 작업으로 남겨두었습니다.
+
+```text
+external memory 고도화
+field log import/analyze workflow
+macOS/Linux real E2E 검증
+review automation 심화
+```
+
+자세한 내용은:
+
+```text
+docs/deferred-improvements.md
+```

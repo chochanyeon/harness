@@ -34,7 +34,7 @@ interview
 
 - Follow `/workflow status`; work only in the current phase.
 - Ask before crossing approval-required boundaries: `plan_review → implement`, `commit → push`, gate skip/state/abort, and git push confirmation.
-- Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review → review_approved`, and `review_approved → document → commit`.
+- Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review`, and `review_approved → document → commit`. `code_review → review_approved` is triggered by `submit_review_package` after main review, independent reviewer/subagent review, and quality gates pass.
 - The extension injects mechanical reminders instead of blocking for easy-to-forget deliverables: documentation markdown/HTML/indexes, verification evidence before commit, review package summary in code review, commit summary/message, and field-log evidence for harness-runtime changes. Address each reminder or explicitly state why it is not applicable.
 - Natural-language approval is accepted only from the interactive user.
 - If a guard blocks, report the blocker and wait. Do not bypass or simulate guard results.
@@ -48,7 +48,7 @@ interview
 |------|------------------------|-------|
 | DPAA | `plan_review → implement` | Checks the plan and blocks ambiguous implementation. |
 | Code quality | `code_review → review_approved` | Runs `codeQualityGuard` / `HARNESS_CODE_QUALITY_GUARD_CMD`. |
-| Code review | `code_review → review_approved` | Automated review package must satisfy Critical=0 and Major≤2 before token issue. |
+| Code review | `code_review → review_approved` | `submit_review_package` must include main self-review, independent reviewer/subagent review, quality-gate summary, Critical=0, and Major≤2 before token issue. |
 | Workspace | `git push` | Blocks wrong git root/branch and `git -C` push bypass. |
 | Policy scan | `commit → push`, rechecked at `git push` | Prompts user for risky build/config/migration/Docker/CI/delete/large-change pushes. The approval is reused if the workspace risk signature is unchanged. |
 | Push execution | `git push` | Requires `push` phase and in-memory push guard. |

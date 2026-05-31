@@ -111,6 +111,15 @@ Core defaults:
 
 For new architecture decisions, create/update ADRs only after user approval.
 
+## Gate Handling
+
+When a workflow gate blocks, do not simply report the block and stop. Read the gate message and act:
+
+- **If the cause is clear and fixable** (e.g. ambiguous plan sentence, missing metric, placeholder left in plan): propose a concrete fix, apply it after user confirmation, then re-run `/workflow approve`.
+- **If the cause requires user input** (e.g. unclear requirement, architectural decision): explain the specific finding to the user, ask a targeted question, and wait for the answer before updating the plan.
+- **Never silently skip or simulate a gate result.** Use `/workflow skip <gate> <reason>` only after explaining the reason to the user and receiving explicit approval.
+- Gate messages are written in English and directed at you (the LLM). Present the relevant findings to the user in Korean.
+
 ## Documentation
 
 Whenever a code or configuration change is made to this repository:

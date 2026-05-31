@@ -50,7 +50,7 @@ function Get-RelativePath([string]$Base, [string]$Path) {
 }
 
 function Test-ComponentSelected([string]$Rel) {
-    $normalized = $Rel.Replace('\\', '/')
+    $normalized = $Rel.Replace('\', '/')
     $components = $Component
     if ($components -contains "all") { $components = @("workflow", "memory") }
 

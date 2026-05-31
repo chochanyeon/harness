@@ -43,7 +43,9 @@ Harness failures are logged locally under `.project-memory/harness/events.jsonl`
 /workflow failures export
 ```
 
-External memory is stored separately under `.project-memory/memory/`. It starts as a small, user-governed memory layer: manually remember durable facts, search/list them, disable incorrect entries, and inspect what was injected into the prompt. Retrieval/injection tracking is recorded as ids/hashes/counts rather than raw prompts.
+External memory is stored separately under `.project-memory/memory/`. It starts as a small, user-governed memory layer: manually remember durable facts, search/list them, disable incorrect entries, and inspect what was injected into the prompt. Retrieval/injection tracking is recorded as ids/hashes/counts rather than raw prompts. The extension also adds `.project-memory/` to `.git/info/exclude` on first write so local memory is not accidentally committed.
+
+Current MVP commands:
 
 ```text
 /memory remember <durable project fact or decision>
@@ -53,6 +55,8 @@ External memory is stored separately under `.project-memory/memory/`. It starts 
 /memory stats
 /memory feedback <id> helpful|irrelevant|wrong|stale
 ```
+
+Planned later: candidate extraction, approve/reject workflow, merge/supersede, export, and AGENTS.md promotion. These are intentionally not automatic in the MVP.
 
 Install only one component when needed:
 

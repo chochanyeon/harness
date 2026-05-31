@@ -74,6 +74,11 @@ export default function (pi: ExtensionAPI) {
 
       if (command === "remember") {
         if (!body) return ctx.ui.notify("Usage: /memory remember <durable memory text>", "warning");
+        if (mayContainSecret(body)) {
+          appendMetric({ operation: "remember", rejected: "secret-like-input", requestHash: sha256(body) });
+          return ctx.ui.notify("Memory not saved: secret-like text was detected. Redact the secret first, then run /memory remember again.", "warning");
+        }
+        ensureProjectMemoryIgnored();
         const entry = createMemory(body);
         appendJsonl(entriesFile(), entry);
         appendAudit("create", entry.memoryId, { source: "remember" });
@@ -102,6 +107,12 @@ export default function (pi: ExtensionAPI) {
       if (command === "disable" || command === "enable" || command === "delete") {
         const id = rest[0];
         if (!id) return ctx.ui.notify(`Usage: /memory ${command} <id>`, "warning");
+        const existing = findEntry(id);
+        if (!existing) return ctx.ui.notify(`Memory not found: ${id}`, "warning");
+        if (command === "enable") {
+          const blockers = enableBlockers(existing);
+          if (blockers.length > 0) return ctx.ui.notify(`Memory ${id} cannot be enabled:\n- ${blockers.join("\n- ")}`, "warning");
+        }
         const status: MemoryStatus = command === "enable" ? "active" : command === "delete" ? "deprecated" : "disabled";
         const updated = updateEntry(id, (entry) => ({
           ...entry,
@@ -176,10 +187,25 @@ function sha256(value: string): string { return crypto.createHash("sha256").upda
 function sha256Prefixed(value: string): string { return `sha256:${sha256(value)}`; }
 
 function ensureDir(file: string): void { fs.mkdirSync(path.dirname(file), { recursive: true }); }
-function appendJsonl(file: string, value: any): void { ensureDir(file); fs.appendFileSync(file, `${JSON.stringify(value)}\n`, "utf-8"); }
+function appendJsonl(file: string, value: any): void { ensureProjectMemoryIgnored(); ensureDir(file); fs.appendFileSync(file, `${JSON.stringify(value)}\n`, "utf-8"); }
 function readJsonl(file: string): any[] { if (!fs.existsSync(file)) return []; return fs.readFileSync(file, "utf-8").split(/\r?\n/).filter(Boolean).map((line) => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean); }
 function writeJson(file: string, value: any): void { ensureDir(file); fs.writeFileSync(file, JSON.stringify(value, null, 2), "utf-8"); }
 function readJson(file: string): any | null { try { return JSON.parse(fs.readFileSync(file, "utf-8")); } catch { return null; } }
+
+function ensureProjectMemoryIgnored(): void {
+  const root = projectRoot();
+  const exclude = path.join(root, ".git", "info", "exclude");
+  try {
+    if (!fs.existsSync(path.join(root, ".git"))) return;
+    fs.mkdirSync(path.dirname(exclude), { recursive: true });
+    const current = fs.existsSync(exclude) ? fs.readFileSync(exclude, "utf-8") : "";
+    if (!/^\.project-memory\/$/m.test(current)) {
+      fs.appendFileSync(exclude, `${current.endsWith("\n") || current.length === 0 ? "" : "\n"}.project-memory/\n`, "utf-8");
+    }
+  } catch {
+    // Ignore protection is best-effort; memory storage still works in non-git dirs.
+  }
+}
 
 function readEntries(): MemoryEntry[] { return readJsonl(entriesFile()) as MemoryEntry[]; }
 function findEntry(id: string): MemoryEntry | null { return readEntries().find((entry) => entry.memoryId === id) ?? null; }
@@ -259,7 +285,16 @@ function extractPhases(value: string): string[] {
   const found = phases.filter((phase) => lower.includes(phase));
   return found.length ? found : ["any"];
 }
-function mayContainSecret(value: string): boolean { return /(api[_-]?key|secret|token|password|BEGIN PRIVATE KEY)/i.test(value); }
+function mayContainSecret(value: string): boolean { return /(api[_-]?key|secret|token|password|passwd|authorization|bearer\s+[a-z0-9._-]+|BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY|AKIA[0-9A-Z]{16})/i.test(value); }
+
+function enableBlockers(entry: MemoryEntry): string[] {
+  const blockers: string[] = [];
+  if (entry.privacy.containsSecrets || entry.privacy.sensitivity === "secret" || mayContainSecret(`${entry.content.summary} ${entry.content.details ?? ""}`)) blockers.push("secret-like content is present; create a redacted replacement instead");
+  if (entry.lifecycle.staleness === "stale") blockers.push("memory is marked stale; edit or replace it before enabling");
+  if (entry.lifecycle.conflictsWith.length > 0) blockers.push(`memory conflicts with: ${entry.lifecycle.conflictsWith.join(", ")}`);
+  if (entry.governance.supersededBy) blockers.push(`memory is superseded by ${entry.governance.supersededBy}`);
+  return blockers;
+}
 
 function searchMemory(query: string, options: { includeDisabled: boolean; limit: number }): MemoryMatch[] {
   const queryTokens = tokenize(query);

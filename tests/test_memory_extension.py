@@ -21,6 +21,7 @@ def _run_node_memory(script: str, tmp_path: Path) -> dict:
         cwd=ROOT,
         env=env,
         text=True,
+        encoding="utf-8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=30,
@@ -75,10 +76,13 @@ def test_memory_runtime_remember_inject_explain_and_feedback(tmp_path):
           const prompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'push policy scan 우회 문제 고쳐줘' });
           await pi.commands.memory.handler('explain', ctx);
           const root = process.env.HARNESS_MEMORY_ROOT;
+          fs.mkdirSync(path.join(root, '.git'), { recursive: true });
           const metrics = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'metrics.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
           const entry = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse)[0];
           await pi.commands.memory.handler(`feedback ${entry.memoryId} helpful`, ctx);
           const feedback = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'feedback.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          await pi.commands.memory.handler('remember api_key=SECRET123 should not be stored', ctx);
+          const exclude = fs.readFileSync(path.join(root, '.git', 'info', 'exclude'), 'utf8');
           console.log(JSON.stringify({
             commandNames: Object.keys(pi.commands),
             prompt: prompt.systemPrompt,
@@ -86,6 +90,7 @@ def test_memory_runtime_remember_inject_explain_and_feedback(tmp_path):
             metrics,
             feedback,
             entry,
+            exclude,
           }));
         })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
         '''
@@ -105,3 +110,5 @@ def test_memory_runtime_remember_inject_explain_and_feedback(tmp_path):
     assert "requestHash" in inject_metrics[-1]
     assert "push policy scan 우회" not in json.dumps(inject_metrics, ensure_ascii=False)
     assert data["feedback"][-1]["kind"] == "helpful"
+    assert ".project-memory/" in data["exclude"]
+    assert "SECRET123" not in json.dumps(data, ensure_ascii=False)

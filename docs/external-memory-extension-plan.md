@@ -466,27 +466,33 @@ Do not store:
 
 ## User Commands
 
-MVP commands:
+Implemented MVP commands:
 
 ```text
 /memory list
 /memory search <query>
 /memory show <id>
 /memory remember <text>
+/memory delete <id>      # marks deprecated; not hard-delete
+/memory disable <id>
+/memory enable <id>      # blocked for stale/conflicting/secret-like memories
+/memory explain
+/memory stats
+/memory feedback <id> helpful|irrelevant|wrong|stale
+/memory missed <query-or-description>
+```
+
+Planned lifecycle/quality commands:
+
+```text
 /memory candidates
 /memory approve <id>
 /memory reject <id>
 /memory edit <id>
-/memory delete <id>
-/memory disable <id>
-/memory enable <id>
-/memory explain
-/memory feedback <id> helpful|irrelevant|wrong|stale
-/memory missed <query-or-description>
 /memory export
 ```
 
-Lifecycle/quality commands:
+Later commands:
 
 ```text
 /memory conflicts
@@ -513,28 +519,28 @@ Search all non-rejected memory. Include candidates/deprecated only with flags la
 Show full entry plus audit summary, status, provenance, and whether it is injectable.
 
 ### `/memory remember <text>`
-Create explicit active memory from user text unless privacy checks fail.
+Create explicit active memory from user text unless privacy checks fail. Secret-like input is rejected before storage; users must redact it first.
 
-### `/memory candidates`
+### `/memory candidates` planned
 List unapproved candidates.
 
-### `/memory approve <id>`
+### `/memory approve <id>` planned
 Move candidate to active after checking duplicates/conflicts.
 
-### `/memory reject <id>`
+### `/memory reject <id>` planned
 Mark candidate rejected.
 
-### `/memory edit <id>`
-Interactive edit if UI available; otherwise print editable JSON guidance.
+### `/memory edit <id>` planned
+Interactive edit if UI available; otherwise use future field-specific edit commands.
 
 ### `/memory delete <id>`
-Tombstone or remove based on policy. Audit the delete.
+Mark deprecated instead of hard-deleting in MVP. Audit the action.
 
 ### `/memory disable <id>`
 Keep entry but prevent auto-injection.
 
 ### `/memory enable <id>`
-Re-enable injection only after conflict/staleness checks.
+Re-enable injection only after secret/staleness/conflict/supersession checks.
 
 ### `/memory explain`
 Show memories injected into the latest prompt, why they matched, and their stable render hashes.
@@ -587,7 +593,8 @@ Redaction:
 
 - absolute paths -> `<PROJECT_ROOT>`
 - URLs -> `<URL>` unless explicitly public docs
-- secrets -> refuse storage or mark `containsSecrets=true`, `autoInject=never`
+- secrets -> refuse storage for `/memory remember`; future import paths may store only redacted summaries with `containsSecrets=true`, `autoInject=never`
+- on first write, add `.project-memory/` to `.git/info/exclude` as a local non-template safety guard
 
 ## Retrieval Evaluation
 

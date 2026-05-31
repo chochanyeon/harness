@@ -51,6 +51,20 @@ function projectRoot(): string {
   return process.env.HARNESS_FIELD_LOG_ROOT || getGitRoot() || process.cwd();
 }
 
+function ensureProjectMemoryIgnored(root: string): void {
+  const exclude = path.join(root, ".git", "info", "exclude");
+  try {
+    if (!fs.existsSync(path.join(root, ".git"))) return;
+    fs.mkdirSync(path.dirname(exclude), { recursive: true });
+    const current = fs.existsSync(exclude) ? fs.readFileSync(exclude, "utf-8") : "";
+    if (!/^\.project-memory\/$/m.test(current)) {
+      fs.appendFileSync(exclude, `${current.endsWith("\n") || current.length === 0 ? "" : "\n"}.project-memory/\n`, "utf-8");
+    }
+  } catch {
+    // Best-effort only; logging must not block gates.
+  }
+}
+
 function fieldLogDir(root: string = projectRoot()): string {
   return path.join(root, MEMORY_DIR);
 }
@@ -218,6 +232,7 @@ function buildFieldLogEvent(input: WriteFieldLogInput) {
 export function writeFieldLogEvent(input: WriteFieldLogInput): string | null {
   try {
     const root = projectRoot();
+    ensureProjectMemoryIgnored(root);
     const event = buildFieldLogEvent(input);
     const file = fieldLogPath(root);
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -260,6 +275,7 @@ export function formatRecentFieldLogs(limitCount = 10): string {
 
 export function exportFieldLogs(): string {
   const root = projectRoot();
+  ensureProjectMemoryIgnored(root);
   const source = fieldLogPath(root);
   fs.mkdirSync(exportDir(root), { recursive: true });
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");

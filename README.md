@@ -56,12 +56,16 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --force
 ```
 
-## Run the harness inside this repository
+## Preview the bundled target template
+
+`target/` is the template that gets copied into another project. To preview that template locally without initializing another repository:
 
 ```powershell
 cd target
 pi
 ```
+
+For normal usage, run the initializer from the project you want to equip with the harness, then run `pi` from that project root.
 
 Key runtime entrypoints:
 

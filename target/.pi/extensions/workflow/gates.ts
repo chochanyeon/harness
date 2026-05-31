@@ -12,6 +12,7 @@ import { writeFieldLogEvent } from "./field-log";
 const HARNESS_ROOT = path.resolve(__dirname, "../../..");
 const PI_ROOT = path.join(HARNESS_ROOT, ".pi");
 const DPAA_VENV_DIR = path.join(PI_ROOT, ".venv");
+const CORENLP_DIR = path.join(PI_ROOT, "corenlp");
 
 export type WorkflowGate = "dpaa" | "code-quality" | "push-review" | "policy-scan";
 
@@ -101,6 +102,58 @@ const skipTokens: Array<{
 export function addSkipToken(gate: WorkflowGate, reason: string): void {
   skipTokens.push({ gate, reason, issuedAt: Date.now(), expiresAt: Date.now() + 10 * 60_000 });
 }
+
+// ─── SBADR helpers ───────────────────────────────────────────────────────────
+
+function isCoreNlpInstalled(): boolean {
+  if (!fs.existsSync(CORENLP_DIR)) return false;
+  return fs.readdirSync(CORENLP_DIR).some(
+    (f) => f.startsWith("stanford-corenlp-") && f.endsWith(".jar") && !f.includes("javadoc") && !f.includes("sources") && !f.includes("models"),
+  );
+}
+
+function installCoreNlp(): void {
+  const isWin = process.platform === "win32";
+  const script = path.join(PI_ROOT, isWin ? "setup_corenlp.ps1" : "setup_corenlp.sh");
+  if (!fs.existsSync(script)) throw new Error(`CoreNLP setup script not found: ${script}`);
+  const cmd = isWin
+    ? `powershell -NoProfile -ExecutionPolicy Bypass -File "${escapeForDoubleQuotedArg(script)}"`
+    : `bash "${escapeForDoubleQuotedArg(script)}"`;
+  execSync(cmd, { stdio: "inherit", encoding: "utf-8" });
+}
+
+interface SbadrReport {
+  verdict: string;
+  score: number;
+  sentence_count: number;
+  ambiguous_count: number;
+  findings: Array<{ type: string; sentence_text: string; detail: string; suggestion: string }>;
+}
+
+function runSbadrAnalysis(pythonCommand: string, planPath: string): { ok: boolean; report: SbadrReport | null; error?: string } {
+  const reportPath = path.join(os.tmpdir(), `sbadr-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+  try {
+    execSync(
+      `${quoteCommand(pythonCommand)} -m sbadr.cli analyze "${escapeForDoubleQuotedArg(planPath)}" --output "${escapeForDoubleQuotedArg(reportPath)}" --no-text`,
+      {
+        cwd: HARNESS_ROOT,
+        encoding: "utf-8",
+        env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONPATH: process.env.PYTHONPATH ? `${PI_ROOT}${path.delimiter}${process.env.PYTHONPATH}` : PI_ROOT },
+        stdio: "pipe",
+      },
+    );
+  } catch { /* SBADR exits non-zero on WARN/FAIL; report still written */ }
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8")) as SbadrReport;
+    return { ok: report.verdict !== "FAIL", report };
+  } catch (err) {
+    return { ok: true, report: null, error: String(err) };
+  } finally {
+    fs.rmSync(reportPath, { force: true });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function runPreTransitionGate(workflow: WorkflowInstance, from: WorkflowPhase, to: WorkflowPhase): Promise<{ ok: boolean; message: string }> {
   if (from === "plan_review" && to === "implement") {
@@ -327,7 +380,49 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
   }
 
   if (report.level === "PASS") {
-    return { ok: true, message: "DPAA check passed" };
+    // ── SBADR analysis ────────────────────────────────────────────────────────
+    if (!isCoreNlpInstalled()) {
+      console.error("[harness] Stanford CoreNLP not found. Installing (~500 MB)...");
+      try {
+        installCoreNlp();
+      } catch (err) {
+        console.error(`[harness] CoreNLP install failed: ${err}. Skipping SBADR.`);
+        return { ok: true, message: "DPAA check passed (SBADR skipped: CoreNLP install failed)" };
+      }
+    }
+    console.error("[harness] Running SBADR syntactic ambiguity analysis (CoreNLP startup may take ~60s)...");
+    const sbadr = runSbadrAnalysis(pythonCommand, checkedPlanPath);
+    if (!sbadr.report) {
+      return { ok: true, message: `DPAA check passed (SBADR skipped: ${sbadr.error ?? "report unreadable"})` };
+    }
+    const sr = sbadr.report;
+    if (sr.verdict === "FAIL") {
+      const findings = sr.findings.slice(0, 5).map((f, i) =>
+        `${i + 1}. [${f.type}] "${f.sentence_text.slice(0, 80)}"
+   → ${f.detail}
+   💡 ${f.suggestion}`,
+      );
+      return {
+        ok: false,
+        message: [
+          formatGateBlocked({
+            gate: "SBADR",
+            why: `SBADR detected critical syntactic ambiguity in the English plan (score=${sr.score.toFixed(3)}, ${sr.ambiguous_count}/${sr.sentence_count} sentences ambiguous).`,
+            next: ["Review the ambiguous sentences below", "Rephrase to remove structural ambiguity", "Run /workflow approve again"],
+            skip: "/workflow skip dpaa <reason>",
+          }),
+          "",
+          "상위 Findings",
+          "──────────────────────────────────────",
+          ...findings,
+        ].join("\n"),
+      };
+    }
+    const sbadrNote = sr.verdict === "WARN"
+      ? `\n⚠️  SBADR WARN: ${sr.ambiguous_count}/${sr.sentence_count} sentences have potential syntactic ambiguity (score=${sr.score.toFixed(3)}). Review before implementation.`
+      : "";
+    return { ok: true, message: `DPAA check passed${sbadrNote}` };
+    // ── end SBADR ─────────────────────────────────────────────────────────────
   }
 
   writeFieldLogEvent({

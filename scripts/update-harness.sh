@@ -81,6 +81,7 @@ managed_paths_for() {
         .pi/dpaa \
         .pi/sbadr \
         .pi/setup_corenlp.sh \
+        .pi/setup_corenlp.ps1 \
         .pi/workflows \
         .pi/skills \
         .pi/personas \

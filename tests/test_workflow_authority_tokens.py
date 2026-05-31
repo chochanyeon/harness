@@ -41,5 +41,6 @@ def test_policy_approval_audit_and_natural_approval_messages_are_explicit():
     assert "Interactive user approval was received, but transition was blocked" in text
     assert "DPAA guard satisfied: DPAA guard satisfied token recorded in current-session memory" in text
     assert "Code quality guard satisfied: code quality guard satisfied token recorded in current-session memory" in text
+    assert "Automated review approved: code review token recorded after review/quality gates passed" in text
     assert "Push execution guard satisfied: push execution guard satisfied token recorded in current-session memory" in text
     assert "[Workflow Authority Memory]" in text

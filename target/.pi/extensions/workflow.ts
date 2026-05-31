@@ -33,6 +33,7 @@ import {
   formatHarnessDoctor,
   formatLatestDpaaAudit,
   formatRecentFieldLogs,
+  formatWorkflowReminders,
   formatLoadedWorkflowPrompt,
   formatLoadedWorkflowTemplate,
   formatPushPolicyScanBlocked,
@@ -56,6 +57,7 @@ import {
   resolveWorkspaceCheckpoint,
   restoreWorkspaceCheckpoint,
   saveWorkflow,
+  scanWorkflowReminders,
   scanPushPolicy,
   scanWorkflowPrerequisites,
   shouldOfferInputCheckpoint,
@@ -89,9 +91,129 @@ export default function (pi: ExtensionAPI) {
     dpaaGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
     codeQualityGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
     pushExecutionGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
-    policyApprovals: [] as Array<{ timestamp: number; totalChanged: number; categories: string[] }>,
+    policyApprovals: [] as Array<{ timestamp: number; totalChanged: number; categories: string[]; signature: string }>,
     lastInputCheckpointSignature: null as string | null,
+    recentVerificationCommands: [] as Array<{ command: string; timestamp: number; phase?: string }>,
   };
+
+  function normalizePathText(value: string): string {
+    return value.replace(/\\/g, "/");
+  }
+
+  function mentionsExtensionPath(value: string): boolean {
+    const normalized = normalizePathText(value);
+    return /(^|[\s"'=:(])(?:target\/)?\.pi\/extensions(?:\/|$)/.test(normalized) || normalized.includes("/.pi/extensions/") || normalized.includes("/target/.pi/extensions/");
+  }
+
+  function collectStrings(value: unknown): string[] {
+    if (typeof value === "string") return [value];
+    if (Array.isArray(value)) return value.flatMap(collectStrings);
+    if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).flatMap(collectStrings);
+    return [];
+  }
+
+  function isLikelyMutatingBash(command: string): boolean {
+    if (!mentionsExtensionPath(command)) return false;
+    return /(^|[;&|]\s*)(rm|mv|cp|touch|mkdir|rmdir|sed\s+-i|perl\s+-pi|python3?|node|npx|tsx)\b/.test(command)
+      || /(>|>>|\btee\b)/.test(command);
+  }
+
+  function requiresExtensionMutationApproval(toolName: string, input: unknown): boolean {
+    const lower = toolName.toLowerCase();
+    const strings = collectStrings(input);
+    if (!strings.some(mentionsExtensionPath)) return false;
+    if (lower === "bash") return strings.some(isLikelyMutatingBash);
+    if (/^(edit|write|multi.?edit|apply.?patch)$/.test(lower)) return true;
+    return false;
+  }
+
+  function formatExtensionMutationApprovalReason(toolName: string, input: unknown): string {
+    const targets = collectStrings(input).filter(mentionsExtensionPath).slice(0, 5);
+    return [
+      "── 🧩 EXTENSION MODIFICATION APPROVAL REQUIRED ─────",
+      "",
+      "  Modifying harness extension files requires explicit user approval.",
+      "  Approval is checked in extension memory for this tool call only; no approval file/token is trusted.",
+      "",
+      `  Tool: ${toolName}`,
+      ...targets.map((target) => `  Target: ${target.slice(0, 240)}`),
+      "",
+      "─────────────────────────────────────────────────────",
+    ].join("\n");
+  }
+
+  async function ensureExtensionMutationApproved(toolName: string, input: unknown, ctx: any): Promise<{ ok: true } | { ok: false; reason: string }> {
+    if (!requiresExtensionMutationApproval(toolName, input)) return { ok: true };
+    const reason = formatExtensionMutationApprovalReason(toolName, input);
+    if (!ctx.hasUI) {
+      return { ok: false, reason: [reason, "", "대화형 사용자 승인이 필요하지만 현재 UI를 사용할 수 없어 extension 수정을 차단했습니다."].join("\n") };
+    }
+    const approved = await ctx.ui.confirm(
+      "Harness extension 수정 승인 확인",
+      [
+        reason,
+        "",
+        "위 harness extension 파일 수정을 진행하시겠습니까?",
+        "",
+        "예: 이번 tool call에 한해 extension 수정을 허용합니다.",
+        "아니오: extension 수정을 차단합니다.",
+      ].join("\n"),
+    );
+    return approved ? { ok: true } : { ok: false, reason: "Harness extension modification blocked: user did not approve this tool call." };
+  }
+
+  function pushPolicySignature(policyScan: ReturnType<typeof scanPushPolicy>): string {
+    return JSON.stringify({
+      totalChanged: policyScan.totalChanged,
+      findings: policyScan.findings
+        .map((finding) => ({ category: finding.category, files: [...finding.files].sort() }))
+        .sort((a, b) => a.category.localeCompare(b.category)),
+    });
+  }
+
+  async function confirmPushPolicyForPushPhase(ctx: any): Promise<boolean> {
+    const policySkip = consumeSkipToken("policy-scan");
+    if (policySkip) return true;
+
+    const policyScan = scanPushPolicy();
+    if (policyScan.ok) return true;
+
+    const signature = pushPolicySignature(policyScan);
+    const lastApproval = state.policyApprovals.at(-1);
+    if (lastApproval?.signature === signature) return true;
+
+    if (!ctx.hasUI) {
+      ctx.ui.notify([
+        formatPushPolicyScanBlocked(policyScan),
+        "",
+        "push 단계 진입에는 위험 변경 사항에 대한 사용자 확인이 필요하지만 현재 UI를 사용할 수 없습니다.",
+        "대화형 세션에서 다시 시도하거나, 사용자에게 명시 승인받은 뒤 `/workflow skip policy-scan <reason>`을 실행하세요.",
+      ].join("\n"), "warning");
+      return false;
+    }
+
+    const approved = await ctx.ui.confirm(
+      "Push policy scan 승인 확인",
+      [
+        formatPushPolicyScanBlocked(policyScan),
+        "",
+        "위 위험 변경 사항을 확인했으며 push 단계로 계속 진행하시겠습니까?",
+        "",
+        "예: 현재 workspace 상태에 대한 policy approval을 기록하고 push 단계로 진행합니다.",
+        "아니오: push 단계 진입을 중단하고 변경 검토를 요구합니다.",
+      ].join("\n"),
+    );
+    if (!approved) return false;
+
+    state.policyApprovals.push({
+      timestamp: Date.now(),
+      totalChanged: policyScan.totalChanged,
+      categories: policyScan.findings.map((finding) => finding.category),
+      signature,
+    });
+    if (state.policyApprovals.length > 20) state.policyApprovals.shift();
+    return true;
+  }
 
   // ── resources_discover: register bundled harness skills ───────────────────
   pi.on("resources_discover", async () => {
@@ -213,47 +335,28 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (command === "approve") {
-        if (state.workflow?.phase === "code_review" && !state.codeReviewGuardSatisfiedToken) {
-          if (!ctx.hasUI) {
-            ctx.ui.notify("Code review guard requires interactive user confirmation before review_approved.", "warning");
-            return;
-          }
-          const approved = await ctx.ui.confirm(
-            "Code review guard 승인 확인",
-            [
-              "Code review guard를 만족했습니까?",
-              "",
-              "조건:",
-              "- Critical 이슈 = 0",
-              "- Major 이슈 ≤ 2",
-              "- 필요한 수정과 재리뷰 반복이 완료됨",
-              "- LLM이 결과를 작성/제출하지 않고 사용자가 직접 확인함",
-              "",
-              "예: code review guard satisfied token을 in-memory에 발급하고 codeQualityGuard를 실행합니다.",
-              "아니오: review_approved 전이를 차단하고 code_review에 머뭅니다.",
-            ].join("\n"),
-          );
-          if (!approved) return;
-          state.codeReviewGuardSatisfiedToken = { critical: 0, major: 0, minor: 0, timestamp: Date.now() };
-        }
-        const from = state.workflow?.phase ?? null;
+        if (state.workflow?.phase === "commit" && !(await confirmPushPolicyForPushPhase(ctx))) return;
         const workflowId = state.workflow?.id ?? null;
         const result = await advanceWorkflow(state.workflow, "user_approved");
         if (!result.ok) {
           ctx.ui.notify(result.message, "warning");
           return;
         }
-        const to = state.workflow?.phase ?? null;
+        const transitions = result.transitions ?? [];
         const notices: string[] = [result.message];
-        if (workflowId && from === "plan_review" && to === "implement") {
+        if (workflowId && transitions.some((item) => item.from === "plan_review" && item.to === "implement")) {
           state.dpaaGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "user_approved" };
           notices.push("DPAA guard satisfied: DPAA guard satisfied token recorded in current-session memory.");
         }
-        if (workflowId && from === "code_review" && to === "review_approved") {
-          state.codeQualityGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "user_approved" };
+        if (workflowId && transitions.some((item) => item.from === "code_review" && item.to === "review_approved")) {
+          state.codeQualityGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "automated_review_passed" };
+          state.codeReviewGuardSatisfiedToken = { critical: 0, major: 0, minor: 0, timestamp: Date.now() };
+          state.recentVerificationCommands.push({ command: "codeQualityGuard", timestamp: Date.now(), phase: "code_review" });
+          if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
+          notices.push("Automated review approved: code review token recorded after review/quality gates passed.");
           notices.push("Code quality guard satisfied: code quality guard satisfied token recorded in current-session memory.");
         }
-        if (workflowId && from === "commit" && to === "push") {
+        if (workflowId && transitions.some((item) => item.from === "commit" && item.to === "push")) {
           state.pushExecutionGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "user_approved" };
           notices.push("Push execution guard satisfied: push execution guard satisfied token recorded in current-session memory.");
         }
@@ -529,17 +632,18 @@ export default function (pi: ExtensionAPI) {
     if (!isApprovalText(event.text)) return { action: "continue" };
 
     const from = state.workflow.phase;
-    if (from === "code_review" && !state.codeReviewGuardSatisfiedToken) {
+    if (state.workflow.phase === "commit" && !(await confirmPushPolicyForPushPhase(ctx))) {
       return {
         action: "transform",
         text: [
           event.text,
           "",
-          "[Workflow] Interactive user approval was received, but Code review guard is not satisfied.",
-          "The user must explicitly confirm the code review guard via /workflow approve before review_approved.",
+          "[Workflow] Interactive user approval was received, but push policy scan requires confirmation before entering push phase.",
+          "Review the policy scan warning and approve again after resolving or accepting the risk.",
         ].join("\n"),
       };
     }
+
     const workflowId = state.workflow.id;
     const result = await advanceWorkflow(state.workflow, "natural_language_approval");
     if (!result.ok) {
@@ -554,19 +658,24 @@ export default function (pi: ExtensionAPI) {
       };
     }
 
-    const to = state.workflow.phase;
+    const transitions = result.transitions ?? [{ from, to: state.workflow.phase }];
+    const path = transitions.map((item, index) => index === 0 ? `'${item.from}' → '${item.to}'` : `→ '${item.to}'`).join(" ");
     const notices: string[] = [
-      `[Workflow] Interactive user approval advanced the workflow: '${from}' → '${to}'.`,
+      `[Workflow] Interactive user approval advanced the workflow: ${path}.`,
     ];
-    if (from === "plan_review" && to === "implement") {
+    if (transitions.some((item) => item.from === "plan_review" && item.to === "implement")) {
       state.dpaaGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "natural_language_approval" };
       notices.push("[Workflow] DPAA guard satisfied: DPAA guard satisfied token recorded in current-session memory.");
     }
-    if (from === "code_review" && to === "review_approved") {
-      state.codeQualityGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "natural_language_approval" };
+    if (transitions.some((item) => item.from === "code_review" && item.to === "review_approved")) {
+      state.codeQualityGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "automated_review_passed" };
+      state.codeReviewGuardSatisfiedToken = { critical: 0, major: 0, minor: 0, timestamp: Date.now() };
+      state.recentVerificationCommands.push({ command: "codeQualityGuard", timestamp: Date.now(), phase: "code_review" });
+      if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
+      notices.push("[Workflow] Automated review approved: code review token recorded after review/quality gates passed.");
       notices.push("[Workflow] Code quality guard satisfied: code quality guard satisfied token recorded in current-session memory.");
     }
-    if (from === "commit" && to === "push") {
+    if (transitions.some((item) => item.from === "commit" && item.to === "push")) {
       state.pushExecutionGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "natural_language_approval" };
       notices.push("[Workflow] Push execution guard satisfied: push execution guard satisfied token recorded in current-session memory.");
     }
@@ -584,9 +693,16 @@ export default function (pi: ExtensionAPI) {
 
   // ── Gate: tool_call(bash) → git push 차단 ─────────────────────────────────
   pi.on("tool_call", async (event, ctx) => {
+    const extensionApproval = await ensureExtensionMutationApproved(event.toolName, event.input, ctx);
+    if (!extensionApproval.ok) return { block: true, reason: extensionApproval.reason };
+
     if (event.toolName !== "bash") return;
 
     const cmd = String((event.input as any).command ?? "");
+    if (/\b(pytest|npm\s+(test|run\s+(test|lint|typecheck|build))|pnpm\s+(test|lint|typecheck|build)|yarn\s+(test|lint|typecheck|build)|gradle(w|\.bat)?\s+.*(test|check|build|codeQualityGuard)|mvn\s+.*(test|verify|package)|go\s+test|cargo\s+(test|clippy)|tsc\b|eslint\b|ruff\b|mypy\b)\b/i.test(cmd)) {
+      state.recentVerificationCommands.push({ command: cmd, timestamp: Date.now(), phase: state.workflow?.phase });
+      if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
+    }
     if (!isGitPush(cmd)) return;
 
     if (state.workflow) {
@@ -699,7 +815,9 @@ export default function (pi: ExtensionAPI) {
     const policySkip = consumeSkipToken("policy-scan");
     if (!policySkip) {
       const policyScan = scanPushPolicy();
-      if (!policyScan.ok) {
+      const policySignature = pushPolicySignature(policyScan);
+      const policyAlreadyApproved = state.policyApprovals.at(-1)?.signature === policySignature;
+      if (!policyScan.ok && !policyAlreadyApproved) {
         if (!ctx.hasUI) {
           writeFieldLogEvent({
             type: "policy.blocked",
@@ -763,6 +881,7 @@ export default function (pi: ExtensionAPI) {
           timestamp: Date.now(),
           totalChanged: policyScan.totalChanged,
           categories: policyScan.findings.map((finding) => finding.category),
+          signature: policySignature,
         });
         if (state.policyApprovals.length > 20) state.policyApprovals.shift();
       }
@@ -923,6 +1042,10 @@ export default function (pi: ExtensionAPI) {
       formatWorkflowPrompt(state.workflow),
       authLines,
       formatLoadedWorkflowPrompt(state.loadedWorkflowTemplate),
+      formatWorkflowReminders(scanWorkflowReminders(state.workflow, {
+        recentVerificationCommands: state.recentVerificationCommands,
+        codeQualityGuardSatisfied: Boolean(state.workflow && state.codeQualityGuardSatisfiedToken?.workflowId === state.workflow.id),
+      })),
     ].join("\n");
 
     return { systemPrompt: event.systemPrompt + injection };

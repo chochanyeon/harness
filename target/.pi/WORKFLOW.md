@@ -19,22 +19,26 @@ interview
 
 | Phase | LLM job | Guard / exit condition |
 |------|---------|------------------------|
-| `interview` | Clarify requirements and unknowns. | User approves moving to planning. |
-| `plan` | Write/update spec + plan artifacts. | User approves plan review. |
-| `plan_review` | Present plan and resolve ambiguity. | DPAA must PASS before `implement`. |
-| `implement` | Implement only the approved plan. | User approves code review. |
-| `code_review` | Review/fix/re-review loop. | User confirms code review guard; extension runs `codeQualityGuard`. |
-| `review_approved` | Ensure findings are addressed/accepted. | User approves documentation. |
-| `document` | Update required docs/Swagger/feature notes. | User approves commit. |
-| `commit` | Present summary and commit message. | User approves push. |
-| `push` | Push only after extension guards pass. | Successful push, then mark done. |
+| `interview` | Clarify requirements and unknowns. | Auto-advances to `plan` after user approval starts forward progress. |
+| `plan` | Write/update spec + plan artifacts. | Auto-advances to `plan_review`; this means "ready for plan review", not plan approval. |
+| `plan_review` | Present plan and resolve ambiguity. | User approval + DPAA PASS required before `implement`. |
+| `implement` | Implement only the approved plan. | Auto-starts review/quality flow after implementation work is ready. |
+| `code_review` | Main-agent and reviewer-agent review/fix/re-review loop. | Auto-advances to `review_approved` after review/quality gates pass. |
+| `review_approved` | Review gates passed. | Auto-advances to `document`. |
+| `document` | Update required docs/Swagger/feature notes. | Auto-advances to `commit`; this means "ready to prepare commit", not permission to push. |
+| `commit` | Present summary and commit message. | User approval required before `push`; push policy scan is confirmed here when risky changes are present. |
+| `push` | Push only after extension guards pass. | Successful push, then mark done. If workspace risk signature changed after approval, policy scan asks again. |
 | `done` | No active work. | Start a new workflow if needed. |
 
 ## Operating Rules for the LLM
 
 - Follow `/workflow status`; work only in the current phase.
-- Ask before advancing phases. Natural-language approval is accepted only from the interactive user.
+- Ask before crossing approval-required boundaries: `plan_review → implement`, `commit → push`, gate skip/state/abort, and git push confirmation.
+- Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review → review_approved`, and `review_approved → document → commit`.
+- The extension injects mechanical reminders instead of blocking for easy-to-forget deliverables: documentation markdown/HTML/indexes, verification evidence before commit, review package summary in code review, commit summary/message, and field-log evidence for harness-runtime changes. Address each reminder or explicitly state why it is not applicable.
+- Natural-language approval is accepted only from the interactive user.
 - If a guard blocks, report the blocker and wait. Do not bypass or simulate guard results.
+- Modifying `.pi/extensions/**` or `target/.pi/extensions/**` requires explicit interactive user approval for that tool call. The approval is extension in-memory only; do not create approval files.
 - Do not create approval artifacts or token files. Guard satisfaction is extension memory only.
 - Keep changes surgical: touch only files required by the current phase/task.
 
@@ -44,9 +48,9 @@ interview
 |------|------------------------|-------|
 | DPAA | `plan_review → implement` | Checks the plan and blocks ambiguous implementation. |
 | Code quality | `code_review → review_approved` | Runs `codeQualityGuard` / `HARNESS_CODE_QUALITY_GUARD_CMD`. |
-| Code review | `code_review → review_approved` | User must explicitly confirm Critical=0 and Major≤2. |
+| Code review | `code_review → review_approved` | Automated review package must satisfy Critical=0 and Major≤2 before token issue. |
 | Workspace | `git push` | Blocks wrong git root/branch and `git -C` push bypass. |
-| Policy scan | `git push` | Prompts user for risky build/config/migration/Docker/CI/delete/large-change pushes. |
+| Policy scan | `commit → push`, rechecked at `git push` | Prompts user for risky build/config/migration/Docker/CI/delete/large-change pushes. The approval is reused if the workspace risk signature is unchanged. |
 | Push execution | `git push` | Requires `push` phase and in-memory push guard. |
 
 Skip tokens exist only for exceptional, user-confirmed cases via `/workflow skip <gate> <reason>`.

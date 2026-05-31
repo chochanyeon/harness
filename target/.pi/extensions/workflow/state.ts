@@ -23,6 +23,17 @@ export function createWorkflow(title: string): WorkflowInstance {
   };
 }
 
+export const AUTO_ADVANCE_FROM_PHASES = new Set<WorkflowPhase>([
+  "interview",
+  "plan",
+  "implement",
+  "code_review",
+  "review_approved",
+  "document",
+]);
+
+export type WorkflowAdvanceTransition = { from: WorkflowPhase; to: WorkflowPhase; message: string };
+
 export function getNextPhase(phase: WorkflowPhase): WorkflowPhase | null {
   const index = WORKFLOW_PHASES.indexOf(phase);
   return index >= 0 ? WORKFLOW_PHASES[index + 1] ?? null : null;
@@ -44,21 +55,40 @@ export function transitionWorkflow(workflow: WorkflowInstance, to: WorkflowPhase
   workflow.updatedAt = Date.now();
 }
 
-export async function advanceWorkflow(workflow: WorkflowInstance | null, reason: string): Promise<{ ok: boolean; message: string }> {
+export async function advanceWorkflow(workflow: WorkflowInstance | null, reason: string): Promise<{ ok: boolean; message: string; transitions?: WorkflowAdvanceTransition[] }> {
   if (!workflow) return { ok: false, message: "진행 중인 workflow가 없습니다. /workflow start 를 먼저 실행하세요." };
   const workspace = validateWorkflowWorkspace(workflow);
   if (!workspace.ok) return { ok: false, message: formatWorkspaceMismatch(workspace) };
 
-  const from = workflow.phase;
-  const next = getNextPhase(from);
-  if (!next) return { ok: false, message: `이미 마지막 단계입니다: ${workflow.phase}` };
+  const transitions: WorkflowAdvanceTransition[] = [];
 
-  const gate = await runPreTransitionGate(workflow, from, next);
-  if (!gate.ok) return gate;
+  while (true) {
+    const from = workflow.phase;
+    const next = getNextPhase(from);
+    if (!next) {
+      if (transitions.length === 0) return { ok: false, message: `이미 마지막 단계입니다: ${workflow.phase}` };
+      break;
+    }
 
-  transitionWorkflow(workflow, next, reason);
+    const gate = await runPreTransitionGate(workflow, from, next);
+    if (!gate.ok) {
+      if (transitions.length === 0) return gate;
+      break;
+    }
+
+    transitionWorkflow(workflow, next, reason);
+    transitions.push({ from, to: next, message: gate.message });
+
+    // Preparation/review phases advance automatically to the next approval boundary.
+    // Risky boundaries (plan_review→implement, commit→push) still require a user
+    // approval that starts from that phase. implement→code_review and
+    // code_review→review_approved are automated after implementation/review/quality flow.
+    if (!AUTO_ADVANCE_FROM_PHASES.has(next)) break;
+  }
+
   saveWorkflow(workflow);
-  return { ok: true, message: `Workflow 전이: ${from} → ${workflow.phase}` };
+  const path = transitions.map((item, index) => index === 0 ? `${item.from} → ${item.to}` : `→ ${item.to}`).join(" ");
+  return { ok: true, message: `Workflow 전이: ${path}`, transitions };
 }
 
 export function loadPersistedWorkflow(): WorkflowInstance | null {

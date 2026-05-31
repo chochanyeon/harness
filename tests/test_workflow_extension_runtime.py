@@ -68,6 +68,146 @@ def test_workflow_extension_runtime_registers_and_allows_restored_push(tmp_path)
     assert "Push execution guard satisfied token: present" in data["prompt"]
 
 
+def test_workflow_extension_runtime_auto_advances_low_risk_phase_boundaries(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime auto advance', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          await pi.commands.workflow.handler('state review_approved', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          console.log(JSON.stringify({ notifications: notifications.map((item) => item.text) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+    joined = "\n".join(data["notifications"])
+
+    assert "Workflow 전이: interview → plan → plan_review" in joined
+    assert "Workflow 전이: review_approved → document → commit" in joined
+
+
+def test_workflow_extension_runtime_auto_advances_implementation_review_and_commit_after_quality_passes(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+        process.env.HARNESS_CODE_QUALITY_GUARD_CMD = 'node -e "process.exit(0)"';
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime review automation', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          console.log(JSON.stringify({ notifications: notifications.map((item) => item.text) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+    joined = "\n".join(data["notifications"])
+
+    assert "Workflow 전이: implement → code_review → review_approved → document → commit" in joined
+    assert "Automated review approved" in joined
+    assert "Code quality guard satisfied" in joined
+
+
+def test_extension_modification_requires_interactive_user_approval(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const confirms = [];
+        const ctxApprove = { hasUI: true, ui: { notify: () => {}, confirm: async (title, text) => { confirms.push({ title, text }); return true; } } };
+        const ctxNoUi = { hasUI: false, ui: { notify: () => {}, confirm: async () => { throw new Error('no ui'); } } };
+
+        (async () => {
+          const readResult = await pi.events.tool_call({ toolName: 'bash', input: { command: 'rg foo .pi/extensions/workflow.ts' } }, ctxApprove);
+          const editResult = await pi.events.tool_call({ toolName: 'edit', input: { path: '.pi/extensions/workflow.ts', edits: [] } }, ctxApprove);
+          const noUiResult = await pi.events.tool_call({ toolName: 'write', input: { path: '.pi/extensions/memory.ts', content: 'x' } }, ctxNoUi);
+          console.log(JSON.stringify({
+            readAllowed: readResult === undefined,
+            editAllowed: editResult === undefined,
+            noUiBlocked: Boolean(noUiResult && noUiResult.block),
+            noUiReason: noUiResult && noUiResult.reason,
+            confirmTitles: confirms.map((item) => item.title),
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["readAllowed"] is True
+    assert data["editAllowed"] is True
+    assert data["noUiBlocked"] is True
+    assert "EXTENSION MODIFICATION APPROVAL REQUIRED" in data["noUiReason"]
+    assert data["confirmTitles"] == ["Harness extension 수정 승인 확인"]
+
+
+def test_commit_to_push_policy_confirmation_is_reused_for_git_push(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    subprocess.run(["git", "init"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (project / "build.gradle").write_text("plugins {}\n", encoding="utf-8")
+
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        process.chdir({json.dumps(str(project))});
+
+        const extension = {json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow.ts"))};
+        const pi = {{ events: {{}}, commands: {{}}, tools: {{}}, on(name, fn) {{ this.events[name] = fn; }}, registerCommand(name, spec) {{ this.commands[name] = spec; }}, registerTool(spec) {{ this.tools[spec.name] = spec; }} }};
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        jiti(extension).default(pi);
+
+        const notifications = [];
+        const confirms = [];
+        const ctx = {{ hasUI: true, ui: {{ notify: (text, level) => notifications.push({{ text, level }}), confirm: async (title, text) => {{ confirms.push({{ title, text }}); return true; }} }} }};
+
+        (async () => {{
+          await pi.commands.workflow.handler('start Runtime push policy approval', ctx);
+          await pi.commands.workflow.handler('state commit', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          const pushResult = await pi.events.tool_call({{ toolName: 'bash', input: {{ command: 'git push origin HEAD' }} }}, ctx);
+          console.log(JSON.stringify({{
+            pushAllowed: pushResult === undefined,
+            confirmTitles: confirms.map((item) => item.title),
+            notifications: notifications.map((item) => item.text),
+          }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["pushAllowed"] is True
+    assert data["confirmTitles"].count("Push policy scan 승인 확인") == 1
+    assert "Workflow state 수동 변경 승인 확인" in data["confirmTitles"]
+
+
 def test_workflow_extension_runtime_blocks_failed_code_quality_guard(tmp_path):
     script = textwrap.dedent(
         r'''

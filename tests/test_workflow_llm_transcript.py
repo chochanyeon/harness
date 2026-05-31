@@ -26,7 +26,7 @@ def _assert_transcript_covers_real_extension_gates() -> None:
     # disappear, the transcript would no longer represent the extension runtime.
     for needle in [
         'pi.registerCommand("workflow"',
-        'Code review guard 승인 확인',
+        'Automated review approved',
         'pi.on("input"',
         'event.source !== "interactive"',
         'pi.on("tool_call"',
@@ -68,12 +68,26 @@ class ReplayHarness:
         if from_phase == "plan_review" and to_phase == "implement" and self.dpaa_level != "PASS":
             return {"allowed": False, "reason": "DPAA gate blocked before plan_review → implement"}
 
-        if from_phase == "code_review" and to_phase == "review_approved" and not self.review_token:
-            self.confirm_code_review_guard()
-        self.phase = to_phase
-        self.history.append((from_phase, to_phase, reason))
-        if from_phase == "commit" and to_phase == "push":
-            self.push_phase_token = True
+        transitions = []
+        while True:
+            from_phase = self.phase
+            current_index = self.phases.index(from_phase)
+            if current_index == len(self.phases) - 1:
+                break
+            to_phase = self.phases[current_index + 1]
+            if from_phase == "plan_review" and to_phase == "implement" and self.dpaa_level != "PASS":
+                if not transitions:
+                    return {"allowed": False, "reason": "DPAA gate blocked before plan_review → implement"}
+                break
+            if from_phase == "code_review" and to_phase == "review_approved" and not self.review_token:
+                self.confirm_code_review_guard()
+            self.phase = to_phase
+            self.history.append((from_phase, to_phase, reason))
+            transitions.append((from_phase, to_phase))
+            if from_phase == "commit" and to_phase == "push":
+                self.push_phase_token = True
+            if to_phase not in {"plan", "code_review", "review_approved", "document"}:
+                break
         return {"allowed": True, "phase": self.phase}
 
     def write_artifact(self, event: dict) -> None:

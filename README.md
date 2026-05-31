@@ -36,6 +36,13 @@ After initialization, self-check the install:
 
 DPAA dependencies are installed automatically into `.pi/.venv/` the first time the DPAA gate runs. The generated venv is ignored by `.pi/.gitignore`.
 
+Harness failures are logged locally under `.project-memory/harness/events.jsonl` when gates block or are explicitly skipped. Review and export redacted logs with:
+
+```text
+/workflow failures
+/workflow failures export
+```
+
 Optional arguments:
 
 Windows PowerShell:
@@ -112,3 +119,4 @@ Key runtime entrypoints:
 - `target/.pi/dpaa/`
 - `target/.pi/pyproject.toml`
 - `target/.pi/workflows/`
+- `target/.pi/schemas/harness-field-log-event.schema.json`

@@ -18,6 +18,7 @@ def test_workflow_prerequisite_scan_checks_runtime_build_and_checkstyle_files():
         ".pi/workflows",
         ".pi/dpaa",
         ".pi/pyproject.toml",
+        ".pi/schemas/harness-field-log-event.schema.json",
         "build.gradle",
         "build.gradle.kts",
         "pom.xml",

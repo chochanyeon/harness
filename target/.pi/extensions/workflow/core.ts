@@ -8,3 +8,4 @@ export * from "./gates";
 export * from "./state";
 export * from "./format";
 export * from "./catalog";
+export * from "./field-log";

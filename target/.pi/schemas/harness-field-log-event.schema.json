@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cycho21/harness/schemas/harness-field-log-event.schema.json",
+  "title": "Harness Field Log Event",
+  "description": "Append-only event schema for logs produced inside projects that use the harness. The schema is optimized so an LLM in the harness development repository can analyze recurring failures and implement harness improvements with minimal extra context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "timestamp",
+    "harness",
+    "project",
+    "workflow",
+    "event",
+    "failure",
+    "llmAnalysisPacket",
+    "privacy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "eventId": {
+      "type": "string",
+      "description": "Stable unique event id, e.g. hlog_20260531_abcdef."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "harness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "gitCommit", "runtime"],
+      "properties": {
+        "version": { "type": "string" },
+        "gitCommit": { "type": "string" },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "platform"],
+          "properties": {
+            "host": { "type": "string", "examples": ["pi", "claude-code"] },
+            "platform": { "type": "string", "examples": ["win32", "darwin", "linux"] },
+            "nodeVersion": { "type": "string" },
+            "pythonVersion": { "type": "string" }
+          }
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anonymousId", "repoKind", "branch"],
+      "properties": {
+        "anonymousId": {
+          "type": "string",
+          "description": "Stable anonymized project id. Do not store customer/project names."
+        },
+        "repoKind": {
+          "type": "string",
+          "enum": ["java-spring", "node", "python", "go", "mixed", "unknown"]
+        },
+        "branch": { "type": "string" },
+        "worktree": { "type": "string" },
+        "gitHead": { "type": "string" }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId", "phase"],
+      "properties": {
+        "workflowId": { "type": "string" },
+        "phase": {
+          "type": "string",
+          "enum": ["interview", "plan", "plan_review", "implement", "code_review", "review_approved", "document", "commit", "push", "done", "none"]
+        },
+        "fromPhase": { "type": "string" },
+        "toPhase": { "type": "string" },
+        "loadedWorkflowTemplate": { "type": "string" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "category", "severity", "status"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "gate.failed",
+            "gate.skipped",
+            "tool.failed",
+            "test.failed",
+            "phase.violation",
+            "policy.blocked",
+            "doctor.failed",
+            "update.failed",
+            "user.correction",
+            "rollback.performed",
+            "lesson.proposed",
+            "failure.resolved"
+          ]
+        },
+        "category": {
+          "type": "string",
+          "enum": ["dpaa", "code-quality", "push-policy", "workspace", "phase", "init", "update", "doctor", "test", "tool", "prompt", "user-correction", "unknown"]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "warning", "major", "critical", "blocker"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["open", "resolved", "accepted-risk", "superseded"]
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "expected", "actual", "impact", "evidence"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "One-sentence failure summary suitable for clustering."
+        },
+        "expected": { "type": "string" },
+        "actual": { "type": "string" },
+        "impact": { "type": "string" },
+        "rootCause": { "type": ["string", "null"] },
+        "resolution": { "type": ["string", "null"] },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["primaryMessage"],
+          "properties": {
+            "primaryMessage": { "type": "string" },
+            "exitCode": { "type": ["integer", "null"] },
+            "command": { "type": ["string", "null"] },
+            "findingCodes": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path", "role"],
+                "properties": {
+                  "path": { "type": "string" },
+                  "role": {
+                    "type": "string",
+                    "enum": ["input", "output", "changed", "config", "log", "test", "unknown"]
+                  },
+                  "sha256": { "type": "string" }
+                }
+              }
+            },
+            "logExcerpt": {
+              "type": ["string", "null"],
+              "description": "Short redacted excerpt only. Full raw logs should not be embedded."
+            }
+          }
+        }
+      }
+    },
+    "llmAnalysisPacket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["problemForHarnessRepo", "reproductionHint", "improvementKind", "candidateChange", "acceptanceCriteria"],
+      "properties": {
+        "problemForHarnessRepo": {
+          "type": "string",
+          "description": "Describe the harness weakness, not just the project failure."
+        },
+        "reproductionHint": {
+          "type": "string",
+          "description": "Minimal reproduction or scenario that a harness-developing LLM can recreate."
+        },
+        "improvementKind": {
+          "type": "string",
+          "enum": ["schema", "dpaa-rule", "workflow-rule", "doctor-check", "init-update", "prompt-instruction", "test-coverage", "docs", "unknown"]
+        },
+        "candidateChange": {
+          "type": "string",
+          "description": "Concrete suggested harness repo change."
+        },
+        "targetFilesHint": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Likely harness repo files to inspect/change."
+        },
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "negativeExamples": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redactionLevel", "containsSensitiveData", "exportableToHarnessRepo"],
+      "properties": {
+        "redactionLevel": {
+          "type": "string",
+          "enum": ["none", "paths-only", "full"]
+        },
+        "containsSensitiveData": { "type": "boolean" },
+        "exportableToHarnessRepo": { "type": "boolean" },
+        "redactionNotes": { "type": "string" }
+      }
+    }
+  }
+}

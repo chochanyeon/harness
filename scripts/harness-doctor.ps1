@@ -20,7 +20,7 @@ function Test-Python($Command) {
 
 Add-Check "AGENTS.md" (Test-Path -LiteralPath (Join-Path $rootPath "AGENTS.md"))
 Add-Check ".pi" (Test-Path -LiteralPath (Join-Path $rootPath ".pi") -PathType Container)
-foreach ($p in @(".pi/WORKFLOW.md", ".pi/extensions/workflow.ts", ".pi/extensions/workflow", ".pi/skills", ".pi/personas", ".pi/workflows", ".pi/dpaa", ".pi/pyproject.toml")) {
+foreach ($p in @(".pi/WORKFLOW.md", ".pi/extensions/workflow.ts", ".pi/extensions/workflow", ".pi/skills", ".pi/personas", ".pi/workflows", ".pi/dpaa", ".pi/pyproject.toml", ".pi/schemas/harness-field-log-event.schema.json")) {
     Add-Check $p (Test-Path -LiteralPath (Join-Path $rootPath $p))
 }
 Add-Check "git" ([bool](Get-Command git -ErrorAction SilentlyContinue))

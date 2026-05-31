@@ -36,6 +36,7 @@ export function scanWorkflowPrerequisites(root: string = HARNESS_ROOT): Workflow
     ".pi/workflows",
     ".pi/dpaa",
     ".pi/pyproject.toml",
+    ".pi/schemas/harness-field-log-event.schema.json",
   ];
   const missingRequired = required.filter((item) => !exists(item));
 

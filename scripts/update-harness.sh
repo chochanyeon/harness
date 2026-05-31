@@ -65,7 +65,8 @@ for MANAGED in \
   .pi/workflows \
   .pi/skills \
   .pi/personas \
-  .pi/pyproject.toml
+  .pi/pyproject.toml \
+  .pi/schemas
   do
     SRC_ROOT="$TEMPLATE/$MANAGED"
     [ -e "$SRC_ROOT" ] || continue

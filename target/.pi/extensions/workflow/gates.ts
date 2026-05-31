@@ -6,6 +6,7 @@ import type { WorkflowInstance, WorkflowPhase, DpaaReport, DpaaRunReceipt } from
 import { createArtifactSnapshot, escapeForDoubleQuotedArg, findPlanForDpaa, updateSnapshotWithDpaa, writeDpaaReceipt } from "./artifacts";
 import { getBranch, getGitRoot } from "./git";
 import { table } from "./ui";
+import { writeFieldLogEvent } from "./field-log";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow/gates.ts
 const HARNESS_ROOT = path.resolve(__dirname, "../../..");
@@ -114,6 +115,19 @@ export async function runPreTransitionGate(workflow: WorkflowInstance, from: Wor
 export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; message: string } {
   const skip = consumeSkipToken("code-quality");
   if (skip) {
+    writeFieldLogEvent({
+      type: "gate.skipped",
+      category: "code-quality",
+      severity: "warning",
+      status: "accepted-risk",
+      workflow,
+      summary: "Code quality gate was skipped by explicit user approval.",
+      expected: "Code quality gate runs before review_approved.",
+      actual: `Skip token consumed: ${skip.reason}`,
+      impact: "Harness may need better project-specific code quality configuration if skips repeat.",
+      primaryMessage: skip.reason,
+      improvementKind: "doctor-check",
+    });
     return { ok: true, message: `Code quality guard skipped by user approval: ${skip.reason}` };
   }
 
@@ -142,6 +156,21 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
     const err = error as { stdout?: string; stderr?: string; status?: number };
     const output = [err.stdout, err.stderr].filter(Boolean).join("\n").trim();
     const tail = output.split(/\r?\n/).slice(-80).join("\n");
+    writeFieldLogEvent({
+      type: "gate.failed",
+      category: "code-quality",
+      severity: "blocker",
+      workflow,
+      summary: "Code quality guard failed before review approval.",
+      expected: "codeQualityGuard exits successfully before code_review → review_approved.",
+      actual: `Command failed: ${command}. Exit: ${err.status ?? "unknown"}`,
+      impact: "Workflow cannot advance to review_approved until quality failures are fixed or explicitly skipped.",
+      primaryMessage: output || `Command failed: ${command}`,
+      exitCode: err.status ?? null,
+      command,
+      logExcerpt: tail,
+      improvementKind: "doctor-check",
+    });
     return {
       ok: false,
       message: [
@@ -167,11 +196,41 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
 export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to: WorkflowPhase): { ok: boolean; message: string } {
   const skip = consumeSkipToken("dpaa");
   if (skip) {
+    writeFieldLogEvent({
+      type: "gate.skipped",
+      category: "dpaa",
+      severity: "warning",
+      status: "accepted-risk",
+      workflow,
+      fromPhase: from,
+      toPhase: to,
+      summary: "DPAA gate was skipped by explicit user approval.",
+      expected: "DPAA validates the plan before implementation.",
+      actual: `Skip token consumed: ${skip.reason}`,
+      impact: "Repeated DPAA skips may indicate false positives or missing workflow affordances.",
+      primaryMessage: skip.reason,
+      improvementKind: "dpaa-rule",
+    });
     return { ok: true, message: `DPAA gate skipped by user approval: ${skip.reason}` };
   }
 
   const planPath = findPlanForDpaa();
   if (!planPath) {
+    writeFieldLogEvent({
+      type: "gate.failed",
+      category: "dpaa",
+      severity: "blocker",
+      workflow,
+      fromPhase: from,
+      toPhase: to,
+      summary: "DPAA gate could not find a plan file.",
+      expected: "A DPAA-readable plan exists before plan_review → implement.",
+      actual: "No .ai/interview/plan.md or docs/superpowers/plans/*.md was found.",
+      impact: "Workflow cannot enter implementation because there is no deterministic plan input.",
+      primaryMessage: "No plan file was found for DPAA.",
+      improvementKind: "workflow-rule",
+      targetFilesHint: ["target/.pi/extensions/workflow/artifacts.ts", "target/.pi/skills/dpaa/SKILL.md", "tests/test_workflow_prerequisites.py"],
+    });
     return {
       ok: false,
       message: formatGateBlocked({
@@ -191,11 +250,27 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
   try {
     pythonCommand = ensureDpaaPythonCommand();
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    writeFieldLogEvent({
+      type: "gate.failed",
+      category: "dpaa",
+      severity: "blocker",
+      workflow,
+      fromPhase: from,
+      toPhase: to,
+      summary: "DPAA Python environment preparation failed.",
+      expected: "Harness auto-creates .pi/.venv and installs DPAA dependencies.",
+      actual: message,
+      impact: "Workflow cannot run DPAA until Python or dependency setup is fixed.",
+      primaryMessage: message,
+      improvementKind: "doctor-check",
+      targetFilesHint: ["target/.pi/extensions/workflow/gates.ts", "target/.pi/extensions/workflow/catalog.ts", "scripts/harness-doctor.sh", "scripts/harness-doctor.ps1"],
+    });
     return {
       ok: false,
       message: formatGateBlocked({
         gate: "DPAA",
-        why: `Failed to prepare DPAA Python environment: ${error instanceof Error ? error.message : String(error)}`,
+        why: `Failed to prepare DPAA Python environment: ${message}`,
         next: ["Install Python 3.10+", "Ensure `python` or `python3` is available", "Run /workflow approve again"],
         skip: "/workflow skip dpaa <reason>",
       }),
@@ -226,9 +301,26 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
     if (snapshot) updateSnapshotWithDpaa(snapshot, report, reportPath, exitCode);
     receipt = writeDpaaReceipt({ workflow, from, to, planPath: checkedPlanPath, reportPath, report, exitCode, snapshot });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    writeFieldLogEvent({
+      type: "gate.failed",
+      category: "dpaa",
+      severity: "blocker",
+      workflow,
+      fromPhase: from,
+      toPhase: to,
+      summary: "DPAA report could not be read after execution.",
+      expected: "DPAA writes a JSON report for the gate to parse.",
+      actual: message,
+      impact: "Workflow cannot determine whether DPAA passed or failed.",
+      primaryMessage: message,
+      command: `${pythonCommand} -m dpaa.cli`,
+      files: [{ path: checkedPlanPath, role: "input" }],
+      improvementKind: "test-coverage",
+    });
     return {
       ok: false,
-      message: `Failed to read DPAA report: ${error instanceof Error ? error.message : String(error)}`,
+      message: `Failed to read DPAA report: ${message}`,
     };
   } finally {
     fs.rmSync(reportPath, { force: true });
@@ -237,6 +329,26 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
   if (report.level === "PASS") {
     return { ok: true, message: "DPAA check passed" };
   }
+
+  writeFieldLogEvent({
+    type: "gate.failed",
+    category: "dpaa",
+    severity: report.level === "FAIL" ? "blocker" : "major",
+    workflow,
+    fromPhase: from,
+    toPhase: to,
+    summary: `DPAA returned ${report.level} before implementation.`,
+    expected: "DPAA PASS is required before plan_review → implement.",
+    actual: `DPAA level=${report.level}, penalty=${report.overall}, findings=${report.findings.length}`,
+    impact: "Implementation is blocked until the plan/spec ambiguity is resolved or explicitly skipped.",
+    primaryMessage: report.findings[0]?.message ?? `DPAA returned ${report.level}`,
+    exitCode,
+    command: `${pythonCommand} -m dpaa.cli`,
+    findingCodes: report.findings.map((finding) => `${finding.layer}.${finding.rule}`).slice(0, 20),
+    files: [{ path: checkedPlanPath, role: "input" }],
+    logExcerpt: report.findings.slice(0, 5).map((finding) => `[${finding.layer}/${finding.rule}] ${finding.message} -> ${finding.suggestion}`).join("\n"),
+    improvementKind: "dpaa-rule",
+  });
 
   const findings = report.findings.slice(0, 5).map((finding, index) => {
     const line = finding.line ? `line ${finding.line}` : "line unknown";

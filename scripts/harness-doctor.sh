@@ -23,6 +23,7 @@ check ".pi/personas" ".pi/personas"
 check ".pi/workflows" ".pi/workflows"
 check ".pi/dpaa" ".pi/dpaa"
 check ".pi/pyproject.toml" ".pi/pyproject.toml"
+check ".pi/schemas/harness-field-log-event.schema.json" ".pi/schemas/harness-field-log-event.schema.json"
 check_cmd "git" git
 if python_ok python || python_ok python3; then printf '[OK]   python >= 3.10\n'; else printf '[FAIL] python >= 3.10\n'; fail=1; fi
 if [ -x "$ROOT/.pi/.venv/bin/python" ] || [ -x "$ROOT/.pi/.venv/Scripts/python.exe" ]; then printf '[OK]   DPAA venv\n'; else printf '[WARN] DPAA venv missing; auto-created on first DPAA gate\n'; fi

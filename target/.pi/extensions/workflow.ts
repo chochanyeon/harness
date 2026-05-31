@@ -29,8 +29,10 @@ import {
   createWorkspaceCheckpoint,
   formatArtifactSnapshotCreated,
   formatGateBlocked,
+  exportFieldLogs,
   formatHarnessDoctor,
   formatLatestDpaaAudit,
+  formatRecentFieldLogs,
   formatLoadedWorkflowPrompt,
   formatLoadedWorkflowTemplate,
   formatPushPolicyScanBlocked,
@@ -60,6 +62,7 @@ import {
   shortInputReason,
   undoWorkflow,
   redoWorkflow,
+  writeFieldLogEvent,
   validateWorkflowWorkspace,
   transitionWorkflow,
   WORKFLOW_PHASES,
@@ -101,7 +104,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("workflow", {
     description: "Manage the advisory interview → plan → implementation → review → document → commit → push workflow state.",
     getArgumentCompletions: (prefix) => {
-      const commands = ["start", "approve", "status", "doctor", "list", "load", "unload", "undo", "redo", "history", "abort", "state", "snapshot", "checkpoint", "checkpoints", "restore", "skip", "dpaa-audit"];
+      const commands = ["start", "approve", "status", "doctor", "failures", "list", "load", "unload", "undo", "redo", "history", "abort", "state", "snapshot", "checkpoint", "checkpoints", "restore", "skip", "dpaa-audit"];
       const workflowIds = listWorkflowTemplates().map((template) => template.id);
       return [...commands, ...workflowIds]
         .filter((value) => value.startsWith(prefix))
@@ -144,6 +147,17 @@ export default function (pi: ExtensionAPI) {
 
       if (command === "doctor") {
         ctx.ui.notify(formatHarnessDoctor(), "info");
+        return;
+      }
+
+      if (command === "failures") {
+        if (rest[0] === "export") {
+          const exported = exportFieldLogs();
+          ctx.ui.notify(`Harness field logs exported: ${path.relative(process.cwd(), exported)}`, "info");
+          return;
+        }
+        const limit = Number.parseInt(rest[0] ?? "10", 10);
+        ctx.ui.notify(formatRecentFieldLogs(Number.isFinite(limit) ? limit : 10), "info");
         return;
       }
 
@@ -353,6 +367,19 @@ export default function (pi: ExtensionAPI) {
         ));
         if (!ok) return;
         addSkipToken(gate, reason);
+        writeFieldLogEvent({
+          type: "gate.skipped",
+          category: gate === "policy-scan" ? "push-policy" : gate === "code-quality" ? "code-quality" : gate === "dpaa" ? "dpaa" : "workspace",
+          severity: "warning",
+          status: "accepted-risk",
+          workflow: state.workflow,
+          summary: `${gate} gate skip token was issued by explicit user approval.`,
+          expected: "Harness gates run unless the user explicitly approves a one-time exception.",
+          actual: `Skip token issued: ${reason}`,
+          impact: "Repeated skip tokens may indicate guard false positives or missing workflow affordances.",
+          primaryMessage: reason,
+          improvementKind: gate === "dpaa" ? "dpaa-rule" : "workflow-rule",
+        });
         ctx.ui.notify(`${gate} gate skip token issued (one-time, TTL 10 minutes)`, "warning");
         return;
       }
@@ -564,6 +591,19 @@ export default function (pi: ExtensionAPI) {
 
     if (state.workflow) {
       if (hasGitDashC(cmd)) {
+        writeFieldLogEvent({
+          type: "phase.violation",
+          category: "workspace",
+          severity: "blocker",
+          workflow: state.workflow,
+          summary: "git push used git -C during an active workflow.",
+          expected: "Push commands run from the workflow-bound worktree/cwd.",
+          actual: "git push command used -C to target a path.",
+          impact: "Push is blocked to prevent bypassing workflow workspace binding.",
+          primaryMessage: cmd,
+          command: cmd,
+          improvementKind: "workflow-rule",
+        });
         return {
           block: true,
           reason: [
@@ -582,6 +622,19 @@ export default function (pi: ExtensionAPI) {
 
       const workspace = validateWorkflowWorkspace(state.workflow);
       if (!workspace.ok) {
+        writeFieldLogEvent({
+          type: "phase.violation",
+          category: "workspace",
+          severity: "blocker",
+          workflow: state.workflow,
+          summary: "Workflow workspace mismatch blocked git push.",
+          expected: "Current cwd/git root/branch match the workflow start workspace.",
+          actual: workspace.problems.join(", "),
+          impact: "Push is blocked to prevent cross-branch or cross-worktree mistakes.",
+          primaryMessage: formatWorkspaceMismatch(workspace),
+          command: cmd,
+          improvementKind: "workflow-rule",
+        });
         return {
           block: true,
           reason: formatWorkspaceMismatch(workspace),
@@ -589,6 +642,19 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (state.workflow.phase !== "push") {
+        writeFieldLogEvent({
+          type: "phase.violation",
+          category: "phase",
+          severity: "blocker",
+          workflow: state.workflow,
+          summary: "git push was attempted outside the push phase.",
+          expected: "git push is allowed only during the push phase.",
+          actual: `Current phase: ${state.workflow.phase}`,
+          impact: "Push is blocked until review/document/commit phases are completed.",
+          primaryMessage: `Current phase: ${state.workflow.phase}; required phase: push`,
+          command: cmd,
+          improvementKind: "workflow-rule",
+        });
         return {
           block: true,
           reason: [
@@ -606,6 +672,19 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (state.pushExecutionGuardSatisfiedToken?.workflowId !== state.workflow.id) {
+        writeFieldLogEvent({
+          type: "gate.failed",
+          category: "phase",
+          severity: "blocker",
+          workflow: state.workflow,
+          summary: "Push phase authority token was missing.",
+          expected: "The current Pi session has an in-memory push execution guard token.",
+          actual: "Push phase authority token absent.",
+          impact: "Push is blocked because persisted state alone is not trusted as authority.",
+          primaryMessage: "Missing push execution guard satisfied token.",
+          command: cmd,
+          improvementKind: "workflow-rule",
+        });
         return {
           block: true,
           reason: formatGateBlocked({
@@ -622,6 +701,20 @@ export default function (pi: ExtensionAPI) {
       const policyScan = scanPushPolicy();
       if (!policyScan.ok) {
         if (!ctx.hasUI) {
+          writeFieldLogEvent({
+            type: "policy.blocked",
+            category: "push-policy",
+            severity: "blocker",
+            workflow: state.workflow,
+            summary: "Push policy scan blocked git push without interactive UI.",
+            expected: "Risky push requires interactive user confirmation or explicit skip token.",
+            actual: `Policy findings: ${policyScan.findings.map((finding) => finding.category).join(", ")}`,
+            impact: "Push is blocked until a user reviews risky files.",
+            primaryMessage: formatPushPolicyScanBlocked(policyScan),
+            command: cmd,
+            files: policyScan.findings.flatMap((finding) => finding.files.slice(0, 20).map((file) => ({ path: file, role: "changed" as const }))),
+            improvementKind: "workflow-rule",
+          });
           return {
             block: true,
             reason: [
@@ -646,6 +739,20 @@ export default function (pi: ExtensionAPI) {
         );
 
         if (!approved) {
+          writeFieldLogEvent({
+            type: "policy.blocked",
+            category: "push-policy",
+            severity: "major",
+            workflow: state.workflow,
+            summary: "User rejected push policy scan confirmation.",
+            expected: "User approves risky push only after reviewing flagged changes.",
+            actual: "User did not approve the push policy warning.",
+            impact: "Push is blocked and changes require review or reduction.",
+            primaryMessage: formatPushPolicyScanBlocked(policyScan),
+            command: cmd,
+            files: policyScan.findings.flatMap((finding) => finding.files.slice(0, 20).map((file) => ({ path: file, role: "changed" as const }))),
+            improvementKind: "workflow-rule",
+          });
           return {
             block: true,
             reason: "git push blocked: 사용자가 Push policy scan 경고에 대해 '예'로 승인하지 않았습니다.",
@@ -669,6 +776,19 @@ export default function (pi: ExtensionAPI) {
 
     // ── Gate 1: code code review guard satisfied token 없음 ───────────────────────────
     if (!state.codeReviewGuardSatisfiedToken) {
+      writeFieldLogEvent({
+        type: "gate.failed",
+        category: "push-policy",
+        severity: "blocker",
+        workflow: state.workflow,
+        summary: "Push review token was missing before git push.",
+        expected: "Code review guard token exists before push.",
+        actual: "Code review guard token absent.",
+        impact: "Push is blocked until code review guard is confirmed.",
+        primaryMessage: "Missing push review token.",
+        command: cmd,
+        improvementKind: "workflow-rule",
+      });
       return {
         block: true,
         reason: formatGateBlocked({
@@ -684,6 +804,19 @@ export default function (pi: ExtensionAPI) {
     const ageMin = (Date.now() - state.codeReviewGuardSatisfiedToken.timestamp) / 60_000;
     if (ageMin > 60) {
       const elapsed = Math.floor(ageMin);
+      writeFieldLogEvent({
+        type: "gate.failed",
+        category: "push-policy",
+        severity: "blocker",
+        workflow: state.workflow,
+        summary: "Push review token expired before git push.",
+        expected: "Code review guard token is used within 60 minutes.",
+        actual: `${elapsed} minutes elapsed since token issue.`,
+        impact: "Push is blocked until review guard is refreshed.",
+        primaryMessage: `Push review token expired after ${elapsed} minutes.`,
+        command: cmd,
+        improvementKind: "workflow-rule",
+      });
       state.codeReviewGuardSatisfiedToken = null;
       return {
         block: true,
@@ -700,6 +833,19 @@ export default function (pi: ExtensionAPI) {
     const { critical, major } = state.codeReviewGuardSatisfiedToken;
     if (critical > 0 || major > 2) {
       const r = state.codeReviewGuardSatisfiedToken;
+      writeFieldLogEvent({
+        type: "gate.failed",
+        category: "push-policy",
+        severity: "blocker",
+        workflow: state.workflow,
+        summary: "Push review token did not meet severity threshold.",
+        expected: "Critical=0 and Major<=2 before push.",
+        actual: `Critical=${r.critical}, Major=${r.major}`,
+        impact: "Push is blocked until review findings are fixed or accepted through an explicit exception.",
+        primaryMessage: `Review threshold failed: Critical=${r.critical}, Major=${r.major}`,
+        command: cmd,
+        improvementKind: "workflow-rule",
+      });
       state.codeReviewGuardSatisfiedToken = null;
       return {
         block: true,

@@ -13,6 +13,7 @@ def _run_node_runtime(script: str, tmp_path: Path) -> dict:
     env = os.environ.copy()
     env["NODE_PATH"] = str(PI_NODE_MODULES)
     env["PI_CODING_AGENT_DIR"] = str(tmp_path / ".pi-agent")
+    env["HARNESS_FIELD_LOG_ROOT"] = str(tmp_path / "field-log-root")
     result = subprocess.run(
         ["node", "-e", script],
         cwd=ROOT,

@@ -22,7 +22,8 @@ $ManagedPaths = @(
     ".pi/workflows",
     ".pi/skills",
     ".pi/personas",
-    ".pi/pyproject.toml"
+    ".pi/pyproject.toml",
+    ".pi/schemas"
 )
 $ExcludeDirs = @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", ".cache")
 $ExcludeFiles = @(".DS_Store")

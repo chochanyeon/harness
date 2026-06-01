@@ -1080,6 +1080,28 @@ export default function (pi: ExtensionAPI) {
     }
 
     ctx.ui.notify(`Harness Gates 로드 | ${parts.join(" | ")}`, "info");
+
+    ctx.ui.addAutocompleteProvider((current) => ({
+      async getSuggestions(lines, cursorLine, cursorCol, options) {
+        const line = lines[cursorLine] ?? "";
+        const beforeCursor = line.slice(0, cursorCol);
+        const match = beforeCursor.match(/^\/workflow\s+state\s+(\S*)$/);
+        if (!match) {
+          return current.getSuggestions(lines, cursorLine, cursorCol, options);
+        }
+        const prefix = match[1] ?? "";
+        const items = WORKFLOW_PHASES
+          .filter((phase) => phase.startsWith(prefix))
+          .map((phase) => ({ value: phase, label: phase }));
+        return { prefix, items };
+      },
+      applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+        return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+      },
+      shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
+        return current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
+      },
+    }));
   });
 
   function formatGuardMemoryStatus(): string {

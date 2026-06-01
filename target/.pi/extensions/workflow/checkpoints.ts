@@ -16,12 +16,13 @@ export function createWorkspaceCheckpoint(workflow: WorkflowInstance, reason: st
   const dir = path.join(getWorkspaceCheckpointRoot(workflow.id), id);
   fs.mkdirSync(dir, { recursive: true });
 
-  const stagedPatch = execFileSync("git", ["-C", root, "diff", "--binary", "--cached"]);
-  const unstagedPatch = execFileSync("git", ["-C", root, "diff", "--binary"]);
+  const MAX = 100 * 1024 * 1024;
+  const stagedPatch = execFileSync("git", ["-C", root, "diff", "--binary", "--cached"], { maxBuffer: MAX });
+  const unstagedPatch = execFileSync("git", ["-C", root, "diff", "--binary"], { maxBuffer: MAX });
   fs.writeFileSync(path.join(dir, "staged.patch"), stagedPatch);
   fs.writeFileSync(path.join(dir, "unstaged.patch"), unstagedPatch);
 
-  const untracked = execFileSync("git", ["-C", root, "ls-files", "--others", "--exclude-standard", "-z"], { encoding: "utf-8" })
+  const untracked = execFileSync("git", ["-C", root, "ls-files", "--others", "--exclude-standard", "-z"], { encoding: "utf-8", maxBuffer: MAX })
     .split("\0")
     .filter(Boolean);
   const untrackedDir = path.join(dir, "untracked");
@@ -113,7 +114,7 @@ export function restoreWorkspaceCheckpoint(checkpointDir: string | undefined): s
 
 export function getWorkspaceStatusSignature(root: string | null | undefined): string | null {
   if (!root || !fs.existsSync(root)) return null;
-  const status = execFileSync("git", ["-C", root, "status", "--porcelain=v1", "-z"], { encoding: "utf-8" });
+  const status = execFileSync("git", ["-C", root, "status", "--porcelain=v1", "-z"], { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 });
   if (!status) return null;
   return createHash("sha256").update(status).digest("hex");
 }

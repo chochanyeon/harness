@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { WorkflowInstance, WorkflowPhase, DpaaReport, DpaaRunReceipt } from "./types";
 import { createArtifactSnapshot, escapeForDoubleQuotedArg, findPlanForDpaa, updateSnapshotWithDpaa, writeDpaaReceipt } from "./artifacts";
 import { getBranch, getGitRoot } from "./git";
-import { table } from "./ui";
+import { banner, table } from "./ui";
 import { writeFieldLogEvent } from "./field-log";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow/gates.ts
@@ -683,7 +683,7 @@ export function consumeSkipToken(gate: WorkflowGate): { reason: string } | null 
 
 export function formatGateBlocked(args: { gate: string; why: string; next: string[]; skip?: string }): string {
   return [
-    `── 🚦 ${args.gate.toUpperCase()} GATE BLOCKED ─────`,
+    banner(`🚦 ${args.gate.toUpperCase()} GATE BLOCKED`),
     "",
     "Why blocked:",
     `  ${args.why}`,
@@ -700,7 +700,6 @@ export function formatGateBlocked(args: { gate: string; why: string; next: strin
     "",
     "Caution:",
     "  Do not bypass this gate without explicit user approval.",
-    "──────────────────────────────────────",
   ].join("\n");
 }
 

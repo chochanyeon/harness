@@ -35,14 +35,11 @@ import {
   formatLatestDpaaAudit,
   formatRecentFieldLogs,
   formatWorkflowReminders,
-  formatLoadedWorkflowPrompt,
-  formatLoadedWorkflowTemplate,
   formatPushPolicyScanBlocked,
   formatWorkflowPrerequisiteScan,
   formatWorkflowHistory,
   formatWorkflowPrompt,
   formatWorkflowStatus,
-  formatWorkflowTemplateList,
   formatWorkspaceCheckpoints,
   formatWorkspaceMismatch,
   getBranch,
@@ -52,9 +49,7 @@ import {
   hasGitDashC,
   isApprovalText,
   isGitPush,
-  listWorkflowTemplates,
   loadPersistedWorkflow,
-  readWorkflowTemplate,
   resolveWorkspaceCheckpoint,
   restoreWorkspaceCheckpoint,
   saveWorkflow,
@@ -71,7 +66,6 @@ import {
   WORKFLOW_PHASES,
   type WorkflowInstance,
   type WorkflowPhase,
-  type WorkflowTemplate,
 } from "./workflow/core";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow.ts
@@ -88,7 +82,6 @@ export default function (pi: ExtensionAPI) {
       timestamp: number;
     } | null,
     workflow: null as WorkflowInstance | null,
-    loadedWorkflowTemplate: null as WorkflowTemplate | null,
     dpaaGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
     codeQualityGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
     pushExecutionGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
@@ -289,9 +282,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("workflow", {
     description: "Manage the advisory interview → plan → implementation → review → document → commit → push workflow state.",
     getArgumentCompletions: (prefix) => {
-      const commands = ["start", "approve", "status", "doctor", "failures", "list", "templates", "load", "unload", "undo", "redo", "history", "abort", "state", "snapshot", "checkpoint", "checkpoints", "restore", "skip", "dpaa-audit"];
-      const workflowIds = listWorkflowTemplates().map((template) => template.id);
-      return [...commands, ...workflowIds]
+      const commands = ["start", "approve", "status", "doctor", "failures", "list", "load", "undo", "redo", "history", "abort", "state", "snapshot", "checkpoint", "checkpoints", "restore", "skip", "dpaa-audit"];
+      return commands
         .filter((value) => value.startsWith(prefix))
         .map((value) => ({ value, label: value }));
     },
@@ -359,7 +351,7 @@ export default function (pi: ExtensionAPI) {
         if (!(await ensurePrerequisites())) return;
         state.workflow = createWorkflow(rest.join(" "));
         saveWorkflow(state.workflow);
-        ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatLoadedWorkflowTemplate(state.loadedWorkflowTemplate)].join("\n"), "info");
+        ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
         return;
       }
 
@@ -369,37 +361,18 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      if (command === "templates") {
-        ctx.ui.notify(formatWorkflowTemplateList(listWorkflowTemplates()), "info");
-        return;
-      }
-
       if (command === "load") {
-        const id = rest[0];
-        if (!id) {
-          ctx.ui.notify("사용법: /workflow load <id>\n목록 확인: /workflow list", "warning");
+        if (state.workflow && state.workflow.phase !== "done") {
+          ctx.ui.notify(`이미 진행 중인 workflow가 있습니다: ${state.workflow.phase}\n먼저 /workflow abort로 종료하거나 /workflow status로 확인하세요.`, "warning");
           return;
         }
-        const template = readWorkflowTemplate(id);
-        if (!template) {
-          ctx.ui.notify(`workflow template을 찾지 못했습니다: ${id}\n목록 확인: /workflow list`, "warning");
+        const persisted = loadPersistedWorkflow();
+        if (!persisted) {
+          ctx.ui.notify("불러올 저장된 workflow 인스턴스가 없습니다.", "warning");
           return;
         }
-        if (!(await ensurePrerequisites())) return;
-        state.loadedWorkflowTemplate = template;
-        ctx.ui.notify([
-          formatLoadedWorkflowTemplate(template),
-          "",
-          "이 workflow는 extension memory에만 load되었습니다.",
-          "LLM system prompt에는 다음 agent turn부터 주입됩니다.",
-          "workflow phase 권한은 변경하지 않습니다. 단계 진행은 /workflow start, /workflow approve, 자연어 승인 등 기존 규칙을 따릅니다.",
-        ].join("\n"), "info");
-        return;
-      }
-
-      if (command === "unload") {
-        state.loadedWorkflowTemplate = null;
-        ctx.ui.notify("Loaded workflow template을 memory에서 제거했습니다.", "info");
+        state.workflow = persisted;
+        ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
         return;
       }
 
@@ -586,13 +559,13 @@ export default function (pi: ExtensionAPI) {
 
       if (command === "status") {
         if (state.workflow) {
-          ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatGuardMemoryStatus(), "", formatLoadedWorkflowTemplate(state.loadedWorkflowTemplate)].join("\n"), "info");
+          ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatGuardMemoryStatus()].join("\n"), "info");
           return;
         }
 
         const persisted = loadPersistedWorkflow();
         if (!persisted) {
-          ctx.ui.notify([formatWorkflowStatus(null), "", formatGuardMemoryStatus(), "", formatLoadedWorkflowTemplate(state.loadedWorkflowTemplate)].join("\n"), "info");
+          ctx.ui.notify([formatWorkflowStatus(null), "", formatGuardMemoryStatus()].join("\n"), "info");
           return;
         }
 
@@ -600,8 +573,6 @@ export default function (pi: ExtensionAPI) {
           formatWorkflowStatus(null),
           "",
           formatGuardMemoryStatus(),
-          "",
-          formatLoadedWorkflowTemplate(state.loadedWorkflowTemplate),
           "",
           "참고: 이전 workflow 기록이 파일에 남아 있지만 자동 복구하지 않습니다.",
           "파일 기록은 표시/감사용이며 gate 통과 권한으로 신뢰하지 않습니다.",
@@ -674,13 +645,11 @@ export default function (pi: ExtensionAPI) {
           tokenNotices.length > 0 ? `수동 state 복구 완료: ${tokenNotices.join(", ")}` : "수동 state 복구 완료: 발급할 권한 token 없음",
           "",
           formatGuardMemoryStatus(),
-          "",
-          formatLoadedWorkflowTemplate(state.loadedWorkflowTemplate),
         ].join("\n"), "warning");
         return;
       }
 
-      ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatGuardMemoryStatus(), "", formatLoadedWorkflowTemplate(state.loadedWorkflowTemplate)].join("\n"), "info");
+      ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatGuardMemoryStatus()].join("\n"), "info");
     },
   });
 
@@ -1148,7 +1117,6 @@ export default function (pi: ExtensionAPI) {
       `Branch: ${branch}`,
       formatWorkflowPrompt(state.workflow),
       authLines,
-      formatLoadedWorkflowPrompt(state.loadedWorkflowTemplate),
       formatWorkflowReminders(scanWorkflowReminders(state.workflow, {
         recentVerificationCommands: state.recentVerificationCommands,
         codeQualityGuardSatisfied: Boolean(state.workflow && state.codeQualityGuardSatisfiedToken?.workflowId === state.workflow.id),

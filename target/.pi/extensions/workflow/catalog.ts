@@ -9,14 +9,6 @@ const HARNESS_ROOT = path.resolve(__dirname, "../../..");
 const PI_ROOT = path.join(HARNESS_ROOT, ".pi");
 const WORKFLOW_DIR = path.join(PI_ROOT, "workflows");
 
-export type WorkflowTemplate = {
-  id: string;
-  title: string;
-  path: string;
-  content: string;
-  summary: string;
-};
-
 export type WorkflowPrerequisiteScan = {
   ok: boolean;
   root: string;
@@ -130,76 +122,4 @@ export function formatHarnessDoctor(): string {
   ].join("\n");
 }
 
-export function listWorkflowTemplates(): WorkflowTemplate[] {
-  if (!fs.existsSync(WORKFLOW_DIR)) return [];
-  return fs.readdirSync(WORKFLOW_DIR)
-    .filter((name) => name.endsWith(".md"))
-    .sort()
-    .map((name) => readWorkflowTemplate(path.basename(name, ".md")))
-    .filter((template): template is WorkflowTemplate => template !== null);
-}
 
-export function readWorkflowTemplate(id: string): WorkflowTemplate | null {
-  const safeId = id.trim().replace(/\.md$/, "");
-  if (!/^[a-zA-Z0-9._-]+$/.test(safeId)) return null;
-
-  const file = path.join(WORKFLOW_DIR, `${safeId}.md`);
-  if (!fs.existsSync(file)) return null;
-
-  const content = fs.readFileSync(file, "utf-8");
-  const lines = content.split(/\r?\n/);
-  const title = lines.find((line) => line.startsWith("# "))?.replace(/^#\s+/, "").trim() || safeId;
-  const summary = lines
-    .filter((line) => line.trim() && !line.startsWith("#") && !line.startsWith("```"))
-    .slice(0, 3)
-    .join(" ")
-    .slice(0, 180);
-
-  return { id: safeId, title, path: file, content, summary };
-}
-
-export function formatWorkflowTemplateList(templates: WorkflowTemplate[]): string {
-  if (templates.length === 0) {
-    return [
-      banner("📚 Workflow 목록 없음"),
-      `디렉터리: ${WORKFLOW_DIR}`,
-    ].join("\n");
-  }
-
-  return [
-    banner("📚 Workflow 목록"),
-    table([
-      ["ID", "Title", "Summary"],
-      ...templates.map((template) => [template.id, template.title, template.summary || "-"]),
-    ]),
-    "",
-    "메모리에 불러오기: /workflow load <id>",
-  ].join("\n");
-}
-
-export function formatLoadedWorkflowTemplate(template: WorkflowTemplate | null): string {
-  if (!template) return "📚 Loaded workflow: 없음";
-  return [
-    banner("📚 Loaded workflow"),
-    table([
-      ["항목", "값"],
-      ["ID", template.id],
-      ["Title", template.title],
-      ["Path", path.relative(process.cwd(), template.path)],
-    ]),
-  ].join("\n");
-}
-
-export function formatLoadedWorkflowPrompt(template: WorkflowTemplate | null): string {
-  if (!template) return "";
-  return [
-    "",
-    "[Loaded Workflow Template]",
-    `ID: ${template.id}`,
-    `Title: ${template.title}`,
-    "The user explicitly loaded this workflow into memory with /workflow load.",
-    "Follow this workflow as procedural guidance unless the user overrides it.",
-    "",
-    template.content,
-  ].join("\n");
-}

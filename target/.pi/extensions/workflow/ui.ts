@@ -24,15 +24,32 @@ export function padDisplay(value: string, width: number): string {
 export function displayWidth(value: string): number {
   let width = 0;
   for (const char of Array.from(value)) {
-    width += isWideChar(char) ? 2 : 1;
+    const code = char.codePointAt(0) ?? 0;
+    if (isZeroWidthCode(code)) continue;
+    width += isWideCode(code) ? 2 : 1;
   }
   return width;
 }
 
+function isZeroWidthCode(code: number): boolean {
+  return (
+    (code >= 0xfe00 && code <= 0xfe0f) || // Variation Selectors (e.g. U+FE0F after ⚠)
+    code === 0x200b || // Zero Width Space
+    code === 0x200c || // Zero Width Non-Joiner
+    code === 0x200d || // Zero Width Joiner
+    (code >= 0xe0100 && code <= 0xe01ef) // Variation Selectors Supplement
+  );
+}
+
+/** @deprecated Use displayWidth() instead of calling isWideChar() directly */
 export function isWideChar(char: string): boolean {
-  const code = char.codePointAt(0) ?? 0;
+  return isWideCode(char.codePointAt(0) ?? 0);
+}
+
+function isWideCode(code: number): boolean {
   return (
     (code >= 0x1100 && code <= 0x11ff) ||
+    (code >= 0x2600 && code <= 0x27bf) || // Misc Symbols & Dingbats (⚪✅⚠❌ 등)
     (code >= 0x2e80 && code <= 0xa4cf) ||
     (code >= 0xac00 && code <= 0xd7a3) ||
     (code >= 0xf900 && code <= 0xfaff) ||

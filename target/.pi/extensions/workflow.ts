@@ -283,9 +283,15 @@ export default function (pi: ExtensionAPI) {
     description: "Manage the advisory interview → plan → implementation → review → document → commit → push workflow state.",
     getArgumentCompletions: (prefix) => {
       const commands = ["start", "approve", "status", "doctor", "failures", "list", "load", "undo", "redo", "history", "abort", "state", "snapshot", "checkpoint", "checkpoints", "restore", "skip", "dpaa-audit"];
+      const persisted = loadPersistedWorkflow();
       return commands
         .filter((value) => value.startsWith(prefix))
-        .map((value) => ({ value, label: value }));
+        .map((value) => {
+          if (value === "load" && persisted) {
+            return { value, label: `load  ← [${persisted.phase}] ${persisted.title}` };
+          }
+          return { value, label: value };
+        });
     },
     handler: async (args, ctx) => {
       const [command = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
@@ -372,7 +378,7 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         state.workflow = persisted;
-        ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
+        ctx.ui.notify([`✅ Workflow 인스턴스를 메모리에 로드했습니다: [${persisted.phase}] ${persisted.title}`, "", formatWorkflowStatus(state.workflow)].join("\n"), "info");
         return;
       }
 

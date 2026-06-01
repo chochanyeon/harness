@@ -30,6 +30,9 @@ param(
 
     [switch]$KeepTemp
 )
+# Note: Stanford CoreNLP (~500 MB) is installed automatically when the workflow
+# component is selected. Requires Java 17+ and internet access.
+# To skip CoreNLP, omit the workflow component: -Component memory
 
 $ErrorActionPreference = "Stop"
 $ExcludeDirs = @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", ".cache")
@@ -147,6 +150,23 @@ try {
 
     Write-Host ""
     Write-Host ("Done. copied={0} overwritten={1} skipped={2}" -f $copied, $overwritten, $skipped)
+
+    # Install Stanford CoreNLP if workflow component was selected
+    $includesWorkflow = $Component -contains "all" -or $Component -contains "workflow"
+    if (-not $DryRun -and $includesWorkflow) {
+        $corenlpScript = Join-Path $destPath ".pi\setup_corenlp.ps1"
+        if (Test-Path -LiteralPath $corenlpScript) {
+            Write-Host ""
+            Write-Host "Installing Stanford CoreNLP (~500 MB)..."
+            try {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $corenlpScript
+                if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
+            } catch {
+                Write-Warning "CoreNLP installation failed: $_. Run .pi\setup_corenlp.ps1 manually to retry."
+            }
+        }
+    }
+
     Write-Host "Next: run 'pi' from the destination project root."
 }
 finally {

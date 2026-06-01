@@ -41,11 +41,6 @@ function isZeroWidthCode(code: number): boolean {
   );
 }
 
-/** @deprecated Use displayWidth() instead of calling isWideChar() directly */
-export function isWideChar(char: string): boolean {
-  return isWideCode(char.codePointAt(0) ?? 0);
-}
-
 function isWideCode(code: number): boolean {
   return (
     (code >= 0x1100 && code <= 0x11ff) ||

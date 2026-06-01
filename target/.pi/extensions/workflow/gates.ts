@@ -169,12 +169,14 @@ function runSbadrAnalysis(pythonCommand: string, planPath: string): { ok: boolea
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function runPreTransitionGate(workflow: WorkflowInstance, from: WorkflowPhase, to: WorkflowPhase): Promise<{ ok: boolean; message: string }> {
+export async function runPreTransitionGate(workflow: WorkflowInstance, from: WorkflowPhase, to: WorkflowPhase): Promise<{ ok: boolean; message: string; gate?: WorkflowGate }> {
   if (from === "plan_review" && to === "implement") {
-    return runDpaaGate(workflow, from, to);
+    const result = await runDpaaGate(workflow, from, to);
+    return result.ok ? result : { ...result, gate: "dpaa" };
   }
   if (from === "code_review" && to === "review_approved") {
-    return runCodeQualityGate(workflow);
+    const result = runCodeQualityGate(workflow);
+    return result.ok ? result : { ...result, gate: "code-quality" };
   }
   return { ok: true, message: "" };
 }

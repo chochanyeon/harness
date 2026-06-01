@@ -5,8 +5,10 @@ import * as path from "node:path";
 export function isApprovalText(text: string): boolean {
   const normalized = text.trim().toLowerCase();
   if (!normalized) return false;
-  const approvals = ["응", "네", "예", "좋아", "좋습니다", "진행해", "진행해줘", "계속해", "다음", "승인", "approve", "approved", "ok", "okay", "go ahead", "continue"];
-  return approvals.some((token) => normalized === token || normalized.includes(token));
+  const exactApprovals = ["응", "네", "예", "좋아", "좋습니다", "진행해", "진행해줘", "계속해", "승인", "approve", "approved", "ok", "okay", "go ahead", "lgtm"];
+  const containsApprovals = ["진행해", "continue", "go ahead", "proceed"];
+  return exactApprovals.some((token) => normalized === token) ||
+    containsApprovals.some((token) => normalized.includes(token));
 }
 
 export function isGitPush(cmd: string): boolean {

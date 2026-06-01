@@ -79,8 +79,7 @@
           "enum": ["interview", "plan", "plan_review", "implement", "code_review", "review_approved", "document", "commit", "push", "done", "none"]
         },
         "fromPhase": { "type": "string" },
-        "toPhase": { "type": "string" },
-        "loadedWorkflowTemplate": { "type": "string" }
+        "toPhase": { "type": "string" }
       }
     },
     "event": {

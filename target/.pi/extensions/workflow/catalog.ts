@@ -28,7 +28,6 @@ export function scanWorkflowPrerequisites(root: string = HARNESS_ROOT): Workflow
     ".pi/workflows",
     ".pi/dpaa",
     ".pi/sbadr",
-    ".pi/setup_corenlp.sh",
     ".pi/pyproject.toml",
     ".pi/schemas/harness-field-log-event.schema.json",
   ];
@@ -110,7 +109,8 @@ export function formatHarnessDoctor(): string {
     ["DPAA import", dpaaImport ? "OK" : "MISSING (auto-installed on first DPAA gate)"],
     ["SBADR import", sbadrImport ? "OK" : "MISSING (auto-installed on first DPAA gate)"],
     ["java >= 17", javaOk ? "OK" : "MISSING (required for SBADR/CoreNLP)"],
-    ["CoreNLP", coreNlpInstalled ? "OK" : "MISSING (auto-installed on first DPAA gate; run .pi/setup_corenlp.sh to install manually)"],
+    ["CoreNLP", coreNlpInstalled ? "OK" : `MISSING (auto-installed on first DPAA gate; run ${process.platform === "win32" ? ".pi/setup_corenlp.ps1" : ".pi/setup_corenlp.sh"} to install manually)`],
+    ["setup_corenlp", fs.existsSync(path.join(PI_ROOT, process.platform === "win32" ? "setup_corenlp.ps1" : "setup_corenlp.sh")) ? "OK" : "MISSING"],
     ["project AGENTS.md", fs.existsSync(path.join(HARNESS_ROOT, "AGENTS.md")) ? "OK" : "FAIL"],
   ];
 

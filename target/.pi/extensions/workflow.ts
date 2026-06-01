@@ -169,7 +169,12 @@ export default function (pi: ExtensionAPI) {
 
   async function confirmPushPolicyForPushPhase(ctx: any): Promise<boolean> {
     const policySkip = consumeSkipToken("policy-scan");
-    if (policySkip) return true;
+    if (policySkip) {
+      const scan = scanPushPolicy();
+      state.policyApprovals.push({ timestamp: Date.now(), totalChanged: scan.totalChanged, categories: scan.findings.map((f) => f.category), signature: pushPolicySignature(scan) });
+      if (state.policyApprovals.length > 20) state.policyApprovals.shift();
+      return true;
+    }
 
     const policyScan = scanPushPolicy();
     if (policyScan.ok) return true;
@@ -379,6 +384,10 @@ export default function (pi: ExtensionAPI) {
 
         if (!(await ensurePrerequisites())) return;
         state.workflow = createWorkflow(rest.join(" "));
+        state.codeReviewGuardSatisfiedToken = null;
+        state.policyApprovals = [];
+        state.reviewPackageToken = null;
+        state.gateFailures = new Map();
         saveWorkflow(state.workflow);
         ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
         return;
@@ -386,7 +395,7 @@ export default function (pi: ExtensionAPI) {
 
       if (command === "list") {
         const activeOrPersisted = state.workflow ?? loadPersistedWorkflow();
-        ctx.ui.notify(formatWorkflowStatus(activeOrPersisted), "info");
+        ctx.ui.notify([formatWorkflowStatus(activeOrPersisted), "", formatGuardMemoryStatus()].join("\n"), "info");
         return;
       }
 
@@ -414,10 +423,16 @@ export default function (pi: ExtensionAPI) {
         const workflowId = state.workflow?.id ?? null;
         const result = await advanceWorkflow(state.workflow, "user_approved");
         if (!result.ok) {
+          if (result.gate) { state.gateFailures.set(result.gate, (state.gateFailures.get(result.gate) ?? 0) + 1); }
           ctx.ui.notify(result.message, "warning");
           return;
         }
         const transitions = result.transitions ?? [];
+        transitions.forEach((t) => {
+          if (t.from === "plan_review" && t.to === "implement") state.gateFailures.delete("dpaa");
+          if (t.from === "code_review" && t.to === "review_approved") state.gateFailures.delete("code-quality");
+          if (t.from === "commit" && t.to === "push") state.gateFailures.delete("push-review");
+        });
         const notices: string[] = [result.message];
         if (workflowId && transitions.some((item) => item.from === "plan_review" && item.to === "implement")) {
           state.dpaaGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "user_approved" };
@@ -528,7 +543,7 @@ export default function (pi: ExtensionAPI) {
       if (command === "skip") {
         const VALID_GATES = ["dpaa", "code-quality", "push-review", "policy-scan"] as const;
         const GATE_DESC: Record<string, string> = {
-          "dpaa": "DPAA 앙리버시티 gate (plan_review → implement 전환 시 실행)",
+          "dpaa": "DPAA 모호성 분석 gate (plan_review → implement 전환 시 실행)",
           "code-quality": "Checkstyle/PMD/테스트 gate (code_review → review_approved 전환 시 실행)",
           "push-review": "push 전 code review token 확인 gate",
           "policy-scan": "push 전 위험 변경 파일 scan gate",
@@ -606,6 +621,10 @@ export default function (pi: ExtensionAPI) {
         state.dpaaGuardSatisfiedToken = null;
         state.codeQualityGuardSatisfiedToken = null;
         state.pushExecutionGuardSatisfiedToken = null;
+        state.codeReviewGuardSatisfiedToken = null;
+        state.policyApprovals = [];
+        state.reviewPackageToken = null;
+        state.gateFailures = new Map();
         clearPersistedWorkflow();
         ctx.ui.notify("Workflow를 종료했습니다.", "info");
         return;
@@ -986,7 +1005,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    // ── Gate 1: code code review guard satisfied token 없음 ───────────────────────────
+    // ── Gate 1: code review guard satisfied token 없음 ───────────────────────────
     if (!state.codeReviewGuardSatisfiedToken) {
       writeFieldLogEvent({
         type: "gate.failed",
@@ -1001,6 +1020,7 @@ export default function (pi: ExtensionAPI) {
         command: cmd,
         improvementKind: "workflow-rule",
       });
+      state.gateFailures.set("push-review", (state.gateFailures.get("push-review") ?? 0) + 1);
       return {
         block: true,
         reason: formatGateBlocked({

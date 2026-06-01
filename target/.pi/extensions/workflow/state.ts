@@ -54,7 +54,7 @@ export function transitionWorkflow(workflow: WorkflowInstance, to: WorkflowPhase
   workflow.updatedAt = Date.now();
 }
 
-export async function advanceWorkflow(workflow: WorkflowInstance | null, reason: string): Promise<{ ok: boolean; message: string; transitions?: WorkflowAdvanceTransition[] }> {
+export async function advanceWorkflow(workflow: WorkflowInstance | null, reason: string): Promise<{ ok: boolean; message: string; gate?: string; transitions?: WorkflowAdvanceTransition[] }> {
   if (!workflow) return { ok: false, message: "진행 중인 workflow가 없습니다. /workflow start 를 먼저 실행하세요." };
   const workspace = validateWorkflowWorkspace(workflow);
   if (!workspace.ok) return { ok: false, message: formatWorkspaceMismatch(workspace) };
@@ -71,7 +71,7 @@ export async function advanceWorkflow(workflow: WorkflowInstance | null, reason:
 
     const gate = await runPreTransitionGate(workflow, from, next);
     if (!gate.ok) {
-      if (transitions.length === 0) return gate;
+      if (transitions.length === 0) return { ok: false, message: gate.message, gate: gate.gate };
       break;
     }
 
@@ -142,7 +142,14 @@ export function undoWorkflow(workflow: WorkflowInstance | null): { ok: boolean; 
   if (!last) return { ok: false, message: "되돌릴 workflow 전이가 없습니다." };
 
   last.checkpointAfter = createWorkspaceCheckpoint(workflow, `${last.to}-before-undo`);
-  const restored = restoreWorkspaceCheckpoint(last.checkpointBefore);
+  let restored: string | undefined;
+  try {
+    restored = restoreWorkspaceCheckpoint(last.checkpointBefore);
+  } catch (err) {
+    // restore 실패 시 pop된 history 복구
+    workflow.history.push(last);
+    return { ok: false, message: `Workspace restore 실패로 undo를 중단했습니다: ${err instanceof Error ? err.message : String(err)}` };
+  }
 
   workflow.phase = last.from;
   workflow.undone.push(last);
@@ -163,7 +170,14 @@ export function redoWorkflow(workflow: WorkflowInstance | null): { ok: boolean; 
   if (!next) return { ok: false, message: "다시 실행할 workflow 전이가 없습니다." };
 
   next.checkpointBefore = createWorkspaceCheckpoint(workflow, `${next.from}-before-redo`);
-  const restored = restoreWorkspaceCheckpoint(next.checkpointAfter);
+  let restored: string | undefined;
+  try {
+    restored = restoreWorkspaceCheckpoint(next.checkpointAfter);
+  } catch (err) {
+    // restore 실패 시 pop된 undone 복구
+    workflow.undone.push(next);
+    return { ok: false, message: `Workspace restore 실패로 redo를 중단했습니다: ${err instanceof Error ? err.message : String(err)}` };
+  }
 
   workflow.phase = next.to;
   workflow.history.push(next);

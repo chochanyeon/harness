@@ -166,7 +166,7 @@ function buildFieldLogEvent(input: WriteFieldLogInput) {
     eventId,
     timestamp: new Date().toISOString(),
     harness: {
-      version: "0.1.0",
+      version: commandOutput(`git -C "${HARNESS_ROOT}" rev-parse --short HEAD`) ?? "unknown",
       gitCommit: commandOutput("git rev-parse --short HEAD") ?? "unknown",
       runtime: {
         host: "pi",
@@ -187,7 +187,6 @@ function buildFieldLogEvent(input: WriteFieldLogInput) {
       phase: workflow?.phase ?? "none",
       fromPhase: input.fromPhase,
       toPhase: input.toPhase,
-      loadedWorkflowTemplate: undefined,
     },
     event: {
       type: input.type,

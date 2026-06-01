@@ -16,7 +16,6 @@ export type WorkflowReminder = {
   sections: Array<{ title: string; items: string[] }>;
 };
 
-export type DocumentationReminder = WorkflowReminder;
 
 function projectRoot(workflow?: WorkflowInstance | null): string {
   return workflow?.gitRoot ?? getGitRoot() ?? process.cwd();
@@ -176,13 +175,4 @@ export function formatWorkflowReminders(reminder: WorkflowReminder | null): stri
   ].join("\n");
 }
 
-export function scanDocumentationReminder(workflow?: WorkflowInstance | null): DocumentationReminder | null {
-  const reminder = scanWorkflowReminders(workflow, {});
-  if (!reminder) return null;
-  const sections = reminder.sections.filter((section) => section.title === "Documentation");
-  return sections.length > 0 ? { ...reminder, sections } : null;
-}
 
-export function formatDocumentationReminder(reminder: DocumentationReminder | null): string {
-  return formatWorkflowReminders(reminder);
-}

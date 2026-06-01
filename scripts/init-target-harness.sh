@@ -21,7 +21,7 @@ Options:
   --source-subdir DIR Template directory inside repo (default: target)
   --force             Overwrite existing files
   --dry-run           Print planned changes without writing files
-  --component NAME    Component to initialize: all, workflow, memory (repeatable; default: all)
+  --component NAME    Component to initialize: all, workflow, memory, claude-workflow (repeatable; default: all)
   --keep-temp         Keep temporary clone directory
   -h, --help          Show this help
 
@@ -102,6 +102,10 @@ component_selected_with() {
     memory)
       case "$rel" in
         AGENTS.md|.pi/.gitignore|.pi/LOCAL.md|.pi/extensions/memory.ts|.pi/schemas/harness-memory-entry.schema.json) return 0 ;;
+      esac ;;
+    claude-workflow)
+      case "$rel" in
+        .claude/settings.json|.claude/hooks/workflow-gate.cjs|.claude/commands/workflow/*|.harness/.gitignore|.harness/README.md|.harness/state.json|.harness/workflow.json|.harness/proposal/*|.harness/authority/*|.ai/interview/*|.pi/dpaa/*|.pi/sbadr/*|.pi/pyproject.toml|.pi/setup_corenlp.sh|.pi/setup_corenlp.ps1) return 0 ;;
       esac ;;
     *) echo "Unknown component: $component" >&2; exit 2 ;;
   esac

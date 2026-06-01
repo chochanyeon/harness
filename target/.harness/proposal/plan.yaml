@@ -1,0 +1,13 @@
+# Workflow gate plan proposal.
+# Claude may edit this file during PLAN.
+objective: ""
+scope:
+  - ""
+allowed_files:
+  - ""
+forbidden_files:
+  - ".claude/**"
+  - ".harness/state.json"
+  - ".harness/authority/**"
+test_plan:
+  - ""

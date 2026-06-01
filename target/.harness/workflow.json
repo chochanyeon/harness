@@ -1,0 +1,12 @@
+{
+  "id": "wf-template",
+  "title": "workflow",
+  "phase": "interview",
+  "cwd": ".",
+  "gitRoot": null,
+  "branch": "unknown",
+  "history": [],
+  "undone": [],
+  "startedAt": 0,
+  "updatedAt": 0
+}

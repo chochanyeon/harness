@@ -4,7 +4,7 @@
 
 Pi workflow harness source repository.
 
-Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. In an initialized project, only `AGENTS.md` and `.pi/` are placed at the project root; workflow internals, DPAA, and reference docs live under `.pi/`.
+Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. In an initialized project, `AGENTS.md`, `.pi/`, and optional Claude Code workflow-gate files under `.claude/` and `.harness/` are placed at the project root.
 
 ## Initialize in another project
 
@@ -80,7 +80,25 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 
 # memory only
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
+
+# Claude Code workflow gate only
+curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude-workflow
 ```
+
+The Claude Code component installs `.claude/settings.json` with hooks and the built-in Bash sandbox enabled:
+
+- `PreToolUse` blocks file-tool writes to `.claude/**`, `.harness/state.json`, `.harness/authority/**`, and other protected gate paths.
+- `PostToolUse` reevaluates artifacts and advances workflow state automatically when exit conditions pass.
+- `sandbox.enabled` restricts Bash subprocess access to gate state/authority files at the OS sandbox layer.
+- The component also installs DPAA/SBADR runtime files (`.pi/dpaa`, `.pi/sbadr`) plus codeQualityGuard, push policy scan, checkpoint/restore, and field-log support.
+
+Operating model:
+
+- Sandbox ON: Bash cannot access `.harness/.authority-runtime/**`, `.harness/state.json`, or `.harness/authority/**`, so session authority tokens act as a stronger guardrail.
+- Sandbox OFF: file-tool denies and PreToolUse command checks still run, but Bash-level bypasses are possible; treat the gate as UX guidance only.
+- Use `--dangerously-skip-permissions` or unattended runs only inside WSL2, a devcontainer, a custom container, or a VM.
+
+Note: Claude Code's built-in Bash sandbox does not support native Windows. On Windows, run Claude Code in WSL2, a devcontainer, a custom container, or a VM for sandbox enforcement.
 
 Optional arguments:
 
@@ -97,7 +115,7 @@ $p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubu
 $p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Force
 
 # Install only one component
-$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Component memory
+$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Component claude-workflow
 ```
 
 macOS/Linux:
@@ -113,7 +131,7 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --force
 
 # Install only one component
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
+curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude-workflow
 ```
 
 ## Update an installed harness

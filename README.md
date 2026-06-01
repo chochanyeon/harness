@@ -120,11 +120,13 @@ pi
 = workflow + memory
 ```
 
+Claude Code용 workflow gate는 명시적으로 `--component claude-workflow`를 지정해 설치합니다.
+
 ---
 
 ## component별 설치
 
-필요하면 workflow 또는 memory만 따로 설치할 수 있습니다.
+필요하면 workflow, memory, claude-workflow만 따로 설치할 수 있습니다.
 
 ### workflow만 설치
 
@@ -138,10 +140,31 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
 ```
 
+### Claude Code workflow gate만 설치
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude-workflow
+```
+
+설치되는 `.claude/settings.json`은 Claude Code hook과 Bash sandbox를 함께 설정합니다.
+
+- `PreToolUse`: `.claude/**`, `.harness/state.json`, `.harness/authority/**` 등 gate 파일에 대한 file tool 수정을 차단
+- `PostToolUse`: 산출물 조건을 재평가해 workflow state 자동 전이
+- `sandbox.enabled`: Bash subprocess의 gate state/authority 파일 접근을 OS sandbox로 제한
+- DPAA/SBADR 런타임(`.pi/dpaa`, `.pi/sbadr`)과 `codeQualityGuard`, push policy scan, checkpoint/restore, field-log 기능을 함께 설치
+
+운영 모델:
+
+- sandbox ON: Bash가 `.harness/.authority-runtime/**`, `.harness/state.json`, `.harness/authority/**`에 접근하지 못하므로 session authority token을 신뢰 가능한 guardrail로 사용합니다.
+- sandbox OFF: file tool 차단과 PreToolUse 문자열 검사는 남지만 Bash 우회 가능성이 있으므로 UX guardrail로만 봅니다.
+- `--dangerously-skip-permissions` 또는 unattended 실행은 WSL2/devcontainer/custom container/VM 안에서만 권장합니다.
+
+주의: Claude Code 내장 Bash sandbox는 native Windows를 지원하지 않습니다. Windows에서는 WSL2, devcontainer, custom container, VM 중 하나에서 Claude Code를 실행하는 구성을 권장합니다.
+
 Windows PowerShell 예:
 
 ```powershell
-$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Component memory
+$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Component claude-workflow
 ```
 
 ---
@@ -170,6 +193,9 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update
 
 # memory만 업데이트
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.sh | sh -s -- --component memory
+
+# Claude Code workflow gate만 업데이트
+curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.sh | sh -s -- --component claude-workflow
 ```
 
 업데이트는 upstream-managed 파일만 덮어씁니다. 프로젝트 소유 파일은 보존됩니다.

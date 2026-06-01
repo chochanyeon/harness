@@ -1,0 +1,80 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(.claude/**)",
+      "Write(.claude/**)",
+      "Edit(.harness/state.json)",
+      "Write(.harness/state.json)",
+      "Edit(.harness/workflow.json)",
+      "Write(.harness/workflow.json)",
+      "Read(.harness/.authority-runtime/**)",
+      "Edit(.harness/.authority-runtime/**)",
+      "Write(.harness/.authority-runtime/**)",
+      "Edit(.harness/authority/**)",
+      "Write(.harness/authority/**)",
+      "Edit(.harness/policy.yaml)",
+      "Write(.harness/policy.yaml)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "denyWrite": [
+        ".claude",
+        ".harness/state.json",
+        ".harness/workflow.json",
+        ".harness/.authority-runtime",
+        ".harness/authority",
+        ".harness/policy.yaml"
+      ],
+      "denyRead": [
+        ".harness/.authority-runtime",
+        ".harness/authority"
+      ],
+      "allowRead": [
+        "."
+      ]
+    }
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-gate.cjs\" user-prompt",
+            "timeout": 30,
+            "statusMessage": "Checking workflow prompt"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-gate.cjs\" check-tool-call",
+            "timeout": 30,
+            "statusMessage": "Checking workflow gate"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-gate.cjs\" reevaluate",
+            "timeout": 30,
+            "statusMessage": "Reevaluating workflow state"
+          }
+        ]
+      }
+    ]
+  }
+}

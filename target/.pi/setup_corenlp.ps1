@@ -26,11 +26,10 @@ Write-Host "──────────────────────�
 if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
     throw "java not found. Install Java 17+ and retry."
 }
-# java -version writes to stderr. Use cmd /c to capture it as plain text,
-# avoiding PowerShell ErrorRecord / NativeCommandError issues entirely.
-$javaVerRaw = cmd /c "java -version 2>&1"
-$javaVer = ($javaVerRaw | Select-String '"(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
-if ([int]$javaVer -lt 17) {
+# java -version writes to stderr; merge streams with 2>&1 and join to a single string.
+$javaVerRaw = (& java -version 2>&1) -join " "
+if ($javaVerRaw -match '"(\d+)') { $javaVer = [int]$Matches[1] } else { $javaVer = 0 }
+if ($javaVer -lt 17) {
     throw "Java 17+ required (found Java $javaVer)."
 }
 

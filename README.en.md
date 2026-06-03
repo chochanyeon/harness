@@ -4,7 +4,7 @@
 
 Pi workflow harness source repository.
 
-Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. In an initialized project, `AGENTS.md`, `.pi/`, and optional Claude Code workflow-gate files under `.claude/` and `.harness/` are placed at the project root. Claude Code and Pi share workflow policy declarations through `.harness/workflow-policy.json` while keeping runtime-specific adapters separate.
+Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. The source repo includes a project-local dogfooding theme at `.pi/themes/workflow-console.json`; select `workflow-console` in Pi's `/settings` for a muted high-visibility TUI. In an initialized project, `AGENTS.md`, `.pi/`, and optional Claude Code workflow-gate files under `.claude/` and `.harness/` are placed at the project root. Claude Code and Pi share workflow policy declarations through `.harness/workflow-policy.json` while keeping runtime-specific adapters separate.
 
 ## Initialize in another project
 

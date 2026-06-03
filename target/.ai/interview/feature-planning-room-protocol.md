@@ -134,11 +134,66 @@ If only one user is present, ask whether they want to answer as all roles or let
 
 ## Survey-Style CLI Interaction
 
-Use survey packets as the default CLI format. A survey packet is a grouped questionnaire for one round or one role. It should let the user answer many items in one response.
+Use survey packets as the default CLI format. A survey packet is a predefined questionnaire for one round or one role.
+
+Important CLI rule: define the packet catalog up front, but ask only one small item at a time by default. Do not force the user to scroll up and down through a long questionnaire. Batch answers are allowed only when the user explicitly asks to answer many items at once.
+
+### Survey Packet Catalog
+
+Start a planning room by showing the packet catalog only, not all questions:
+
+```text
+설문 패킷
+0. Setup / 참석자 확인
+1. Product Frame
+2. Design / UX Frame
+3. Frontend Frame
+4. Backend Frame
+5. Cross-Role Contract
+6. Conflict Resolution
+7. Final Review
+
+진행 방식: 각 패킷 안의 질문을 하나씩 보여드리고 답을 받은 뒤 다음 질문으로 넘어갑니다.
+```
+
+### One-at-a-Time Question Flow
+
+Within each packet, show one question or one very small section per turn:
+
+```text
+[Packet 1: Product Frame]
+진행: P1/8
+필수 여부: 필수
+답변 형식: short text
+
+P1. 대상 사용자는 누구인가요?
+답변:
+```
+
+After the user answers:
+
+1. Parse the current answer.
+2. Summarize the captured value in one or two lines.
+3. Update open decisions/ambiguities.
+4. Ask the next question in the same packet.
+
+Show a compact progress indicator every turn:
+
+```text
+Room Board
+- Packet: Product Frame
+- Progress: P2/8
+- Open blocker/high ambiguities: 1
+- Next: P2 — 제외 사용자
+```
+
+### Batch Answer Escape Hatch
+
+If the user says they want to answer a packet in bulk, then show the full packet and accept batched answers. Otherwise, keep the default one-at-a-time flow.
 
 ### Survey Packet Format
 
-Use stable question IDs so answers can be referenced later:
+Use stable question IDs so answers can be referenced later. This full-packet format is mainly for preview, export, or explicit bulk-answer mode:
 
 ```text
 [Survey Packet: Round <n> — <role/topic>]
@@ -225,13 +280,15 @@ Every packet must distinguish required and optional questions:
 
 Do not block finalization on unanswered optional questions unless the answer becomes necessary for DPAA/SBADR clarity.
 
-### Survey Batch Size
+### Survey Packet Size
 
-Keep each packet answerable in one CLI response:
+Keep packet definitions manageable, but do not display the full packet during normal CLI flow:
 
 - Normal packet: 5–10 questions.
 - Heavy technical packet: up to 12 questions if most are choice/table questions.
 - If more questions are needed, split into another packet.
+- Normal display: one question at a time.
+- Bulk display: only when the user explicitly requests it.
 
 ### Follow-up Style
 
@@ -390,10 +447,10 @@ Before finalization, rewrite English artifacts into SBADR-friendly text:
 
 For CLI/slash-command operation:
 
-1. Show the current round and intended respondent.
-2. Ask grouped survey packets by role instead of free-form interview questions.
+1. Show the current packet, progress, and intended respondent.
+2. Define survey packets by role, but ask one question or one very small section at a time by default.
 3. Use stable question IDs and answer types.
-4. Allow the user to answer with compact forms such as `P1=2, P2=A/C, P3=...`, and allow multiple subjective answers in one message using `ID=value` or `ID:` blocks.
+4. Allow compact or batched answers such as `P1=2, P2=A/C, P3=...` only when the user explicitly wants bulk answering.
 5. After each answer, summarize newly resolved decisions and newly opened questions.
 6. Keep a compact room board in the response:
 

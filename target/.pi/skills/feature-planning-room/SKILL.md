@@ -25,7 +25,9 @@ The shared protocol is the source of truth so Pi and Claude Code behave consiste
 - Act as a facilitator, not as a single-role interviewer.
 - Identify participant roles before deep questioning.
 - Run round-based discussion: setup, product, design, frontend, backend, integration, conflict resolution, finalization.
-- Use survey-style CLI packets by default: stable question IDs, answer types, choices, required/optional markers, and batch answers.
+- Use survey-style CLI packets by default: stable question IDs, answer types, choices, and required/optional markers.
+- Show the survey packet catalog first, then ask one question or one very small section at a time so the user does not need to scroll up and down.
+- Allow bulk/batched answers only when the user explicitly requests bulk answering.
 - Ask role-to-role questions and surface conflicts explicitly.
 - Maintain GUI-ready `session-state.json` and `session-events.jsonl` concepts in the artifacts, including survey-question and survey-response events.
 - Use DPAA and SBADR lenses before finalizing artifacts.

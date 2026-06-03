@@ -187,6 +187,123 @@ def test_workflow_extension_runtime_auto_advances_low_risk_phase_boundaries(tmp_
     assert "Workflow 전이: review_approved → document → commit" in joined
 
 
+def test_workflow_extension_runtime_queues_continuation_after_auto_transition(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const sentMessages = [];
+        const pi = {
+          events: {},
+          commands: {},
+          tools: {},
+          on(name, fn) { this.events[name] = fn; },
+          registerCommand(name, spec) { this.commands[name] = spec; },
+          registerTool(spec) { this.tools[spec.name] = spec; },
+          sendUserMessage(text, options) { sentMessages.push({ text, options }); },
+        };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, isIdle: () => false, hasPendingMessages: () => false, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime continuation', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          console.log(JSON.stringify({ sentMessages, notifications: notifications.map((item) => item.text) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert len(data["sentMessages"]) == 1
+    assert data["sentMessages"][0]["options"] == {"deliverAs": "followUp"}
+    assert "Continue the workflow from the current phase" in data["sentMessages"][0]["text"]
+    assert "Current phase: code_review" in data["sentMessages"][0]["text"]
+    assert "Do not cross a user-approval boundary automatically" in data["sentMessages"][0]["text"]
+    assert "harness-workflow-continuation:" in data["sentMessages"][0]["text"]
+
+
+def test_workflow_extension_runtime_cancelled_continuation_prompt_is_consumed(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const sentMessages = [];
+        const pi = {
+          events: {},
+          commands: {},
+          tools: {},
+          on(name, fn) { this.events[name] = fn; },
+          registerCommand(name, spec) { this.commands[name] = spec; },
+          registerTool(spec) { this.tools[spec.name] = spec; },
+          sendUserMessage(text, options) { sentMessages.push({ text, options }); },
+        };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, isIdle: () => false, hasPendingMessages: () => false, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime stale continuation', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          const stalePrompt = sentMessages[0].text;
+          await pi.commands.workflow.handler('state implement', ctx);
+          const staleInputResult = await pi.events.input({ source: 'extension', text: stalePrompt }, ctx);
+          console.log(JSON.stringify({ sentMessages, staleInputResult }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert len(data["sentMessages"]) == 1
+    assert "Current phase: plan_review" in data["sentMessages"][0]["text"]
+    assert data["staleInputResult"] == {"action": "handled"}
+
+
+def test_workflow_extension_runtime_skips_continuation_when_messages_pending(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const sentMessages = [];
+        const pi = {
+          events: {},
+          commands: {},
+          tools: {},
+          on(name, fn) { this.events[name] = fn; },
+          registerCommand(name, spec) { this.commands[name] = spec; },
+          registerTool(spec) { this.tools[spec.name] = spec; },
+          sendUserMessage(text, options) { sentMessages.push({ text, options }); },
+        };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, isIdle: () => false, hasPendingMessages: () => true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime pending continuation', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          console.log(JSON.stringify({ sentMessages }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["sentMessages"] == []
+
+
 def test_workflow_extension_runtime_moves_implement_to_code_review_then_review_package_advances(tmp_path):
     script = textwrap.dedent(
         r'''

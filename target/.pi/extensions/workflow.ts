@@ -66,12 +66,20 @@ import {
   transitionWorkflow,
   isSharedWorkflowPhase,
   sharedWorkflowPhases,
+  isSharedAutoAdvancePhase,
   type WorkflowInstance,
   type WorkflowPhase,
 } from "./workflow/core";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow.ts
 const HARNESS_ROOT = path.resolve(__dirname, "../..");
+const WORKFLOW_CONTINUATION_MARKER_PREFIX = "harness-workflow-continuation:";
+
+type WorkflowContinuationPending = {
+  workflowId: string;
+  phase: WorkflowPhase;
+  marker: string;
+};
 
 export default function (pi: ExtensionAPI) {
   // ── In-memory state ────────────────────────────────────────────────────────
@@ -92,6 +100,8 @@ export default function (pi: ExtensionAPI) {
     lastInputCheckpointSignature: null as string | null,
     recentVerificationCommands: [] as Array<{ command: string; timestamp: number; phase?: string }>,
     reviewPackageToken: null as null | { workflowId: string; timestamp: number; critical: number; major: number; minor: number; mainSummary: string; reviewerSummary: string; qualitySummary: string },
+    workflowContinuationPending: null as WorkflowContinuationPending | null,
+    cancelledWorkflowContinuationMarkers: new Set<string>(),
   };
 
   function normalizePathText(value: string): string {
@@ -138,6 +148,81 @@ export default function (pi: ExtensionAPI) {
       "",
       "─────────────────────────────────────────────────────",
     ].join("\n");
+  }
+
+  function workflowContinuationMarker(workflow: WorkflowInstance): string {
+    return `${workflow.id}:${workflow.phase}:${workflow.updatedAt}`;
+  }
+
+  function workflowContinuationMarkerComment(marker: string): string {
+    return `<!-- ${WORKFLOW_CONTINUATION_MARKER_PREFIX}${marker} -->`;
+  }
+
+  function extractWorkflowContinuationMarker(text: string): string | undefined {
+    const escaped = WORKFLOW_CONTINUATION_MARKER_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`<!--\\s*${escaped}([^\\s>]+)\\s*-->`).exec(text)?.[1];
+  }
+
+  function cancelWorkflowContinuationPending(): void {
+    if (state.workflowContinuationPending) {
+      state.cancelledWorkflowContinuationMarkers.add(state.workflowContinuationPending.marker);
+      if (state.cancelledWorkflowContinuationMarkers.size > 20) {
+        const oldest = state.cancelledWorkflowContinuationMarkers.values().next().value;
+        if (oldest) state.cancelledWorkflowContinuationMarkers.delete(oldest);
+      }
+    }
+    state.workflowContinuationPending = null;
+  }
+
+  function consumeCancelledWorkflowContinuationPrompt(text: string): boolean {
+    const marker = extractWorkflowContinuationMarker(text);
+    return marker ? state.cancelledWorkflowContinuationMarkers.delete(marker) : false;
+  }
+
+  function markWorkflowContinuationDelivered(text: string | undefined): void {
+    if (!text) return;
+    const marker = extractWorkflowContinuationMarker(text);
+    if (marker && state.workflowContinuationPending?.marker === marker) state.workflowContinuationPending = null;
+  }
+
+  function shouldSendWorkflowContinuation(workflow: WorkflowInstance, transitions: Array<{ from: WorkflowPhase; to: WorkflowPhase }> | undefined): boolean {
+    if (!transitions?.some((item) => isSharedAutoAdvancePhase(item.from))) return false;
+    return ["plan_review", "code_review", "commit"].includes(workflow.phase);
+  }
+
+  function buildWorkflowContinuationPrompt(workflow: WorkflowInstance, marker: string): string {
+    return [
+      "Continue the workflow from the current phase.",
+      "",
+      formatWorkflowAction(workflow),
+      "",
+      "Rules:",
+      "- Continue only within the current phase and its required actions.",
+      "- Do not cross a user-approval boundary automatically.",
+      "- Do not bypass DPAA, SBADR, submit_review_package, quality, policy, or workspace guards.",
+      "- If the current phase requires user approval, present the required summary/question and stop.",
+      "",
+      workflowContinuationMarkerComment(marker),
+    ].join("\n");
+  }
+
+  async function queueWorkflowContinuation(pi: ExtensionAPI, ctx: any, workflow: WorkflowInstance | null, transitions: Array<{ from: WorkflowPhase; to: WorkflowPhase }> | undefined): Promise<void> {
+    if (!workflow || !shouldSendWorkflowContinuation(workflow, transitions)) return;
+    if (state.workflowContinuationPending?.workflowId === workflow.id && state.workflowContinuationPending.phase === workflow.phase) return;
+    if (ctx.hasPendingMessages?.()) return;
+    if (typeof (pi as any).sendUserMessage !== "function") return;
+    cancelWorkflowContinuationPending();
+
+    const marker = workflowContinuationMarker(workflow);
+    state.workflowContinuationPending = { workflowId: workflow.id, phase: workflow.phase, marker };
+    try {
+      const prompt = buildWorkflowContinuationPrompt(workflow, marker);
+      const options = ctx.isIdle?.() ? undefined : { deliverAs: "followUp" };
+      await (pi as any).sendUserMessage(prompt, options);
+    } catch (error) {
+      state.workflowContinuationPending = null;
+      ctx.ui.notify(`Workflow continuation prompt failed: ${error instanceof Error ? error.message : String(error)}`, "warning");
+    }
   }
 
   async function ensureExtensionMutationApproved(toolName: string, input: unknown, ctx: any): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -257,6 +342,7 @@ export default function (pi: ExtensionAPI) {
         return { content: [{ type: "text", text: `Review package rejected: Critical=${critical} (required 0), Major=${major} (required ≤2). Return to implement, fix issues, then review again.` }], details: { ok: false, critical, major, minor } };
       }
 
+      cancelWorkflowContinuationPending();
       state.reviewPackageToken = {
         workflowId: state.workflow.id,
         timestamp: Date.now(),
@@ -283,6 +369,7 @@ export default function (pi: ExtensionAPI) {
         notices.push(result.message);
       }
       notices.push("", formatWorkflowAction(state.workflow));
+      if (result.ok) await queueWorkflowContinuation(pi, ctx, state.workflow, result.transitions);
       return { content: [{ type: "text", text: notices.join("\n") }], details: { ok: result.ok, critical, major, minor, workflowPhase: state.workflow.phase } };
     },
   });
@@ -405,6 +492,7 @@ export default function (pi: ExtensionAPI) {
         }
 
         if (!(await ensurePrerequisites())) return;
+        cancelWorkflowContinuationPending();
         state.workflow = createWorkflow(rest.join(" "));
         state.codeReviewGuardSatisfiedToken = null;
         state.policyApprovals = [];
@@ -431,6 +519,7 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify("불러올 저장된 workflow 인스턴스가 없습니다.", "warning");
           return;
         }
+        cancelWorkflowContinuationPending();
         state.workflow = persisted;
         ctx.ui.notify([`✅ Workflow 인스턴스를 메모리에 로드했습니다: [${persisted.phase}] ${persisted.title}`, "", formatWorkflowStatus(state.workflow)].join("\n"), "info");
         return;
@@ -477,6 +566,7 @@ export default function (pi: ExtensionAPI) {
         }
         notices.push("", formatWorkflowAction(state.workflow));
         ctx.ui.notify(notices.join("\n"), "info");
+        await queueWorkflowContinuation(pi, ctx, state.workflow, transitions);
         return;
       }
 
@@ -642,6 +732,7 @@ export default function (pi: ExtensionAPI) {
           ].join("\n"),
         ));
         if (!ok) return;
+        cancelWorkflowContinuationPending();
         state.workflow = null;
         state.dpaaGuardSatisfiedToken = null;
         state.codeQualityGuardSatisfiedToken = null;
@@ -715,6 +806,7 @@ export default function (pi: ExtensionAPI) {
           ].join("\n"),
         ));
         if (!ok) return;
+        cancelWorkflowContinuationPending();
         if (!state.workflow) state.workflow = createWorkflow("manual");
         transitionWorkflow(state.workflow, next, "manual_override");
         state.dpaaGuardSatisfiedToken = null;
@@ -759,6 +851,10 @@ export default function (pi: ExtensionAPI) {
 
   // ── User-input checkpoint prompt + natural approval handling ───────────────
   pi.on("input", async (event, ctx) => {
+    if (event.source === "extension" && consumeCancelledWorkflowContinuationPrompt(event.text)) {
+      return { action: "handled" };
+    }
+
     // Natural-language workflow approvals are accepted only from text the user
     // typed in the interactive editor. Assistant messages do not fire this
     // event, and extension/RPC-injected messages must not advance phases.
@@ -1041,6 +1137,7 @@ export default function (pi: ExtensionAPI) {
   // ── session_start: 상태 초기화 + 세션 컨텍스트 알림 ───────────────────────
   pi.on("session_start", async (_event, ctx) => {
     state.codeReviewGuardSatisfiedToken = null;
+    cancelWorkflowContinuationPending();
 
     const root = getGitRoot();
     if (!root) return;
@@ -1102,6 +1199,8 @@ export default function (pi: ExtensionAPI) {
   // System-prompt injection makes these constraints part of the model's rules,
   // instead of presenting them only as tool rejection messages to work around.
   pi.on("before_agent_start", async (event) => {
+    markWorkflowContinuationDelivered((event as any).prompt);
+
     const root = getGitRoot();
     const branch = root ? getBranch(root) : "unknown";
 

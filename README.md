@@ -246,7 +246,7 @@ git push 위험 변경 재확인
 .pi/extensions/** 수정
 ```
 
-`/workflow status`, `/workflow start`, `/workflow load`, `/workflow approve`, `/workflow state <phase>` 출력에는 `[LLM WORKFLOW ACTION]` 블록이 포함됩니다. 이 블록은 현재 phase, 다음 phase, 자동 전이/승인 경계 여부, LLM이 지금 해야 할 일을 명시합니다. `/workflow state <phase>`는 정상 진행 명령이 아니라 수동 복구 전용이며, 정상 진행은 `/workflow approve` 또는 `submit_review_package`를 사용합니다.
+`/workflow status`, `/workflow start`, `/workflow load`, `/workflow approve`, `/workflow state <phase>` 출력에는 `[LLM WORKFLOW ACTION]` 블록이 포함됩니다. 이 블록은 현재 phase, 다음 phase, 자동 전이/승인 경계 여부, LLM이 지금 해야 할 일을 명시합니다. 자동 전이 구간이 끝나면 pending message가 없을 때 extension이 follow-up continuation prompt를 한 번 큐에 넣어 LLM이 현재 phase 작업을 이어가게 합니다. 이 continuation은 승인 경계를 넘지 않고, stale/중복 marker guard로 보호됩니다. `/workflow state <phase>`는 정상 진행 명령이 아니라 수동 복구 전용이며, 정상 진행은 `/workflow approve` 또는 `submit_review_package`를 사용합니다.
 
 ---
 

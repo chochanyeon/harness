@@ -69,6 +69,94 @@ def test_workflow_extension_runtime_registers_and_allows_restored_push(tmp_path)
     assert "Push transition evidence: present" in data["prompt"]
 
 
+def test_workflow_extension_runtime_status_without_active_workflow_includes_llm_action(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('status', ctx);
+          console.log(JSON.stringify({ notifications: notifications.map((item) => item.text) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+    joined = "\n".join(data["notifications"])
+
+    assert "[LLM WORKFLOW ACTION]" in joined
+    assert "No active workflow" in joined
+
+
+def test_workflow_extension_runtime_approve_failures_include_llm_action(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('approve', ctx);
+          const noWorkflowApprove = notifications[notifications.length - 1].text;
+          await pi.commands.workflow.handler('start Runtime approve failure action', ctx);
+          await pi.commands.workflow.handler('state code_review', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          const missingReviewPackageApprove = notifications[notifications.length - 1].text;
+          console.log(JSON.stringify({ noWorkflowApprove, missingReviewPackageApprove }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert "[LLM WORKFLOW ACTION]" in data["noWorkflowApprove"]
+    assert "No active workflow" in data["noWorkflowApprove"]
+    assert "[LLM WORKFLOW ACTION]" in data["missingReviewPackageApprove"]
+    assert "Current phase: code_review" in data["missingReviewPackageApprove"]
+
+
+def test_workflow_extension_runtime_state_outputs_single_llm_action_block(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime single action block', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          const stateNotification = notifications[notifications.length - 1].text;
+          console.log(JSON.stringify({ stateNotification }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["stateNotification"].count("[LLM WORKFLOW ACTION]") == 1
+    assert "manual recovery only" in data["stateNotification"]
+
+
 def test_workflow_extension_runtime_auto_advances_low_risk_phase_boundaries(tmp_path):
     script = textwrap.dedent(
         r'''

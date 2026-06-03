@@ -246,6 +246,8 @@ git push 위험 변경 재확인
 .pi/extensions/** 수정
 ```
 
+`/workflow status`, `/workflow start`, `/workflow load`, `/workflow approve`, `/workflow state <phase>` 출력에는 `[LLM WORKFLOW ACTION]` 블록이 포함됩니다. 이 블록은 현재 phase, 다음 phase, 자동 전이/승인 경계 여부, LLM이 지금 해야 할 일을 명시합니다. `/workflow state <phase>`는 정상 진행 명령이 아니라 수동 복구 전용이며, 정상 진행은 `/workflow approve` 또는 `submit_review_package`를 사용합니다.
+
 ---
 
 ## Workflow 상세
@@ -255,10 +257,10 @@ git push 위험 변경 재확인
 | `interview` | 요구사항/모호성 확인 | 자동으로 `plan`까지 진행 가능 |
 | `plan` | 구현 계획/DPAA artifact 작성 | 자동으로 `plan_review`까지 진행 |
 | `plan_review` | 계획 검토/승인 대기 | 사용자 승인 + DPAA PASS 필요 |
-| `implement` | 승인된 계획만 구현 | 구현 완료 후 `code_review` 자동 진입 가능 |
-| `code_review` | main review + 독립 reviewer/subagent review + quality gate | `submit_review_package` 통과 필요 |
+| `implement` | 승인된 계획만 구현 | 구현과 좁은 검증 완료 후 사용자 승인 없이 `code_review` 자동 진입 가능 |
+| `code_review` | main review + 독립 reviewer/subagent review + quality gate | 사용자 승인 대신 `submit_review_package`와 quality gate 통과 필요 |
 | `review_approved` | 리뷰 패키지와 품질 gate 통과 | 자동으로 `document` 진행 |
-| `document` | 필요한 문서/feature docs 작성 | 자동으로 `commit` 준비 가능 |
+| `document` | 필요한 문서/feature docs 작성 | 사용자 승인 없이 자동으로 `commit` 준비 가능 |
 | `commit` | diff 요약, 검증 요약, commit message 준비 | 사용자 승인 + policy scan 후 `push` |
 | `push` | 원격 반영 준비 완료 | git push guard 통과 후 push |
 | `done` | workflow 완료 | 새 workflow 시작 가능 |

@@ -39,6 +39,7 @@ import {
   formatWorkflowPrerequisiteScan,
   formatWorkflowHistory,
   formatWorkflowPrompt,
+  formatWorkflowAction,
   formatWorkflowStatus,
   formatWorkspaceCheckpoints,
   formatWorkspaceMismatch,
@@ -281,6 +282,7 @@ export default function (pi: ExtensionAPI) {
       } else {
         notices.push(result.message);
       }
+      notices.push("", formatWorkflowAction(state.workflow));
       return { content: [{ type: "text", text: notices.join("\n") }], details: { ok: result.ok, critical, major, minor, workflowPhase: state.workflow.phase } };
     },
   });
@@ -306,7 +308,27 @@ export default function (pi: ExtensionAPI) {
           });
       }
 
-      const commands = ["start", "approve", "status", "doctor", "failures", "list", "load", "undo", "redo", "history", "abort", "state", "snapshot", "checkpoint", "checkpoints", "restore", "skip", "dpaa-audit"];
+      const COMMAND_LABELS: Record<string, string> = {
+        start: "start <goal> — start workflow",
+        approve: "approve — advance next allowed transition or approval boundary",
+        status: "status — show current state plus LLM action",
+        doctor: "doctor — check harness runtime",
+        failures: "failures — show/export field logs",
+        list: "list — show active or persisted workflow",
+        load: "load — load persisted workflow",
+        undo: "undo — restore previous workflow checkpoint",
+        redo: "redo — reapply undone workflow checkpoint",
+        history: "history — show transition/checkpoint history",
+        abort: "abort — abort active workflow after confirmation",
+        state: "state <phase> — manual recovery only, not normal advancement",
+        snapshot: "snapshot — create artifact snapshot",
+        checkpoint: "checkpoint — create workspace checkpoint",
+        checkpoints: "checkpoints — list workspace checkpoints",
+        restore: "restore <id> — restore workspace checkpoint",
+        skip: "skip <gate> <reason> — accepted-risk recovery only",
+        "dpaa-audit": "dpaa-audit — show latest DPAA/SBADR audit",
+      };
+      const commands = Object.keys(COMMAND_LABELS);
       const persisted = loadPersistedWorkflow();
       return commands
         .filter((value) => value.startsWith(prefix))
@@ -316,9 +338,9 @@ export default function (pi: ExtensionAPI) {
           }
           if (value === "skip") {
             const activeFailures = Object.keys(GATE_LABELS).filter((g) => (state.gateFailures.get(g) ?? 0) > 0);
-            return { value, label: activeFailures.length > 0 ? `skip  ← 실패 중: ${activeFailures.join(", ")}` : "skip" };
+            return { value, label: activeFailures.length > 0 ? `skip  ← 실패 중: ${activeFailures.join(", ")}` : COMMAND_LABELS[value] };
           }
-          return { value, label: value };
+          return { value, label: COMMAND_LABELS[value] ?? value };
         });
     },
     handler: async (args, ctx) => {
@@ -416,7 +438,11 @@ export default function (pi: ExtensionAPI) {
 
       if (command === "approve") {
         if (state.workflow?.phase === "code_review" && state.reviewPackageToken?.workflowId !== state.workflow.id) {
-          ctx.ui.notify("Review package required before review_approved. Run main self-review, independent reviewer/subagent review, quality gates, then call submit_review_package.", "warning");
+          ctx.ui.notify([
+            "Review package required before review_approved. Run main self-review, independent reviewer/subagent review, quality gates, then call submit_review_package.",
+            "",
+            formatWorkflowAction(state.workflow),
+          ].join("\n"), "warning");
           return;
         }
         if (state.workflow?.phase === "commit" && !(await confirmPushPolicyForPushPhase(ctx))) return;
@@ -424,7 +450,7 @@ export default function (pi: ExtensionAPI) {
         const result = await advanceWorkflow(state.workflow, "user_approved");
         if (!result.ok) {
           if (result.gate) { state.gateFailures.set(result.gate, (state.gateFailures.get(result.gate) ?? 0) + 1); }
-          ctx.ui.notify(result.message, "warning");
+          ctx.ui.notify([result.message, "", formatWorkflowAction(state.workflow)].join("\n"), "warning");
           return;
         }
         const transitions = result.transitions ?? [];
@@ -449,6 +475,7 @@ export default function (pi: ExtensionAPI) {
           state.pushExecutionGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "user_approved" };
           notices.push("Push phase approved: commit → push transition evidence recorded in workflow history.");
         }
+        notices.push("", formatWorkflowAction(state.workflow));
         ctx.ui.notify(notices.join("\n"), "info");
         return;
       }
@@ -719,6 +746,8 @@ export default function (pi: ExtensionAPI) {
           "",
           evidenceNotices.length > 0 ? `수동 state 복구 완료: ${evidenceNotices.join(", ")}` : "수동 state 복구 완료: 복구할 guard evidence 없음",
           "",
+          "주의: /workflow state <phase>는 수동 복구 전용입니다. 정상 진행에는 /workflow approve 또는 submit_review_package를 사용하세요.",
+          "",
           formatGuardMemoryStatus(),
         ].join("\n"), "warning");
         return;
@@ -808,7 +837,8 @@ export default function (pi: ExtensionAPI) {
       state.pushExecutionGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "natural_language_approval" };
       notices.push("[Workflow] Push phase approved: commit → push transition evidence recorded in workflow history.");
     }
-    notices.push("Proceed according to the current phase. Ask for user confirmation before moving to the next phase.");
+    notices.push("Proceed according to the current phase and its automatic/approval transition policy.");
+    notices.push(formatWorkflowAction(state.workflow));
 
     return {
       action: "transform",
@@ -1040,7 +1070,7 @@ export default function (pi: ExtensionAPI) {
         const prefix = match[1] ?? "";
         const items = sharedWorkflowPhases()
           .filter((phase) => phase.startsWith(prefix))
-          .map((phase) => ({ value: phase, label: phase }));
+          .map((phase) => ({ value: phase, label: `${phase} — manual recovery target` }));
         return { prefix, items };
       },
       applyCompletion(lines, cursorLine, cursorCol, item, prefix) {

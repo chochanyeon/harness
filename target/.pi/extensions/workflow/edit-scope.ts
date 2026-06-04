@@ -174,35 +174,13 @@ export function applyProposedEdit(edit: ProposedEdit, gitRoot: string): void {
  * Format a human-readable diff preview for the approval dialog.
  * Keep it concise — this is shown inline in ctx.ui.confirm().
  */
-export function formatEditScopeDiff(edits: ProposedEdit[], gitRoot: string): string {
+export function formatEditScopeDiff(edits: ProposedEdit[], _gitRoot: string): string {
   const lines: string[] = [];
   for (const edit of edits) {
-    lines.push(`\n── ${edit.operation.toUpperCase()}: ${edit.path}`);
-    lines.push(`   Reason: ${edit.reason}`);
-    switch (edit.operation) {
-      case "write": {
-        const content = edit.content ?? "";
-        const contentLines = content.split("\n");
-        const preview = contentLines.slice(0, 10).join("\n");
-        const more = contentLines.length > 10 ? `\n   … (${contentLines.length} lines total)` : "";
-        lines.push(`   Content preview:\n${preview.split("\n").map((l) => `     ${l}`).join("\n")}${more}`);
-        break;
-      }
-      case "edit": {
-        const oldLines = (edit.oldText ?? "").split("\n").slice(0, 5);
-        const newLines = (edit.newText ?? "").split("\n").slice(0, 5);
-        const oldTotal = (edit.oldText ?? "").split("\n").length;
-        const newTotal = (edit.newText ?? "").split("\n").length;
-        oldLines.forEach((l) => lines.push(`   - ${l}`));
-        if (oldTotal > 5) lines.push(`     … (${oldTotal} lines total)`);
-        newLines.forEach((l) => lines.push(`   + ${l}`));
-        if (newTotal > 5) lines.push(`     … (${newTotal} lines total)`);
-        break;
-      }
-      case "delete":
-        lines.push(`   ⚠️  File will be permanently deleted`);
-        break;
-    }
+    const op = edit.operation.toUpperCase().padEnd(6);
+    const warn = edit.operation === "delete" ? "  ⚠️  permanently deleted" : "";
+    lines.push(`  ${op}  ${edit.path}${warn}`);
+    if (edit.reason) lines.push(`           → ${edit.reason}`);
   }
   return lines.join("\n");
 }

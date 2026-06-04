@@ -159,6 +159,21 @@ try {
     Write-Host ""
     Write-Host ("Done. updated={0}" -f $updated)
     Write-Host "Project-owned paths were preserved: AGENTS.md, .pi/config/, .pi/local/, .pi/LOCAL.md."
+
+    $includesWorkflow = $Component -contains "all" -or $Component -contains "workflow"
+    if (-not $DryRun -and $includesWorkflow) {
+        $corenlpScript = Join-Path $destPath ".pi\setup_corenlp.ps1"
+        if (Test-Path -LiteralPath $corenlpScript) {
+            Write-Host ""
+            Write-Host "Starting shared CoreNLP Docker container..."
+            try {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $corenlpScript
+                if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
+            } catch {
+                Write-Warning "CoreNLP startup failed: $_. Run .pi\setup_corenlp.ps1 manually to retry."
+            }
+        }
+    }
 }
 finally {
     if ($KeepTemp) { Write-Host "temp kept: $tempRoot" }

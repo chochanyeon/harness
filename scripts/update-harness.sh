@@ -165,3 +165,24 @@ UPDATED=$(wc -l < "$COUNTS" | tr -d ' ')
 echo ""
 echo "Done. updated=$UPDATED"
 echo "Project-owned paths were preserved: AGENTS.md, .pi/config/, .pi/local/, .pi/LOCAL.md."
+
+component_includes_workflow() {
+  for c in $COMPONENTS; do
+    [ "$c" = "all" ] && return 0
+    [ "$c" = "workflow" ] && return 0
+  done
+  return 1
+}
+
+if [ "$DRY_RUN" -ne 1 ] && component_includes_workflow; then
+  CORENLP_SCRIPT="$DEST/.pi/setup_corenlp.sh"
+  if [ -f "$CORENLP_SCRIPT" ]; then
+    echo ""
+    echo "Starting shared CoreNLP Docker container..."
+    if bash "$CORENLP_SCRIPT"; then
+      : # success
+    else
+      echo "Warning: CoreNLP startup failed. Run .pi/setup_corenlp.sh manually to retry." >&2
+    fi
+  fi
+fi

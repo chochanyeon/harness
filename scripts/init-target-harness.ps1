@@ -32,9 +32,9 @@ param(
 
     [switch]$KeepTemp
 )
-# Note: Stanford CoreNLP (~500 MB) is installed automatically when the workflow
-# component is selected. Requires Java 17+ and internet access.
-# To skip CoreNLP, omit the workflow component: -Component memory
+# Note: A shared Stanford CoreNLP Docker container is started automatically
+# when the workflow component is selected. Requires Docker Desktop.
+# To skip, omit the workflow component: -Component memory
 
 $ErrorActionPreference = "Stop"
 $ExcludeDirs = @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", ".cache")
@@ -199,7 +199,7 @@ try {
         $corenlpScript = Join-Path $destPath ".pi\setup_corenlp.ps1"
         if (Test-Path -LiteralPath $corenlpScript) {
             Write-Host ""
-            Write-Host "Installing Stanford CoreNLP (~500 MB)..."
+            Write-Host "Starting shared CoreNLP Docker container..."
             try {
                 & powershell -NoProfile -ExecutionPolicy Bypass -File $corenlpScript
                 if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }

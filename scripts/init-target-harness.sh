@@ -28,8 +28,8 @@ Options:
   -h, --help          Show this help
 
 Notes:
-  Stanford CoreNLP (~500 MB) is installed automatically when the workflow
-  component is selected. Requires Java 17+ and internet access.
+  A shared Stanford CoreNLP Docker container is started automatically when
+  the workflow component is selected. Requires Docker Desktop.
   To skip, use --component memory (workflow component omitted).
 EOF
 }
@@ -227,7 +227,7 @@ if [ "$DRY_RUN" -ne 1 ] && component_includes_workflow; then
   CORENLP_SCRIPT="$DEST/.pi/setup_corenlp.sh"
   if [ -f "$CORENLP_SCRIPT" ]; then
     echo ""
-    echo "Installing Stanford CoreNLP (~500 MB)..."
+    echo "Starting shared CoreNLP Docker container..."
     if bash "$CORENLP_SCRIPT"; then
       : # success
     else

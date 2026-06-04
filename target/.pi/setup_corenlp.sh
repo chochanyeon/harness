@@ -1,56 +1,47 @@
 #!/usr/bin/env bash
-# setup_corenlp.sh — Download Stanford CoreNLP for SBADR
+# setup_corenlp.sh — Start shared Stanford CoreNLP Docker container
 #
-# Usage: bash tools/setup_corenlp.sh
-#
-# Downloads ~500 MB. Requires curl and Java 17+.
+# Runs a single shared CoreNLP server on localhost:9000.
+# All projects connect via CORENLP_URL (default: http://localhost:9000).
+# Safe to run multiple times — exits early if already running.
 
 set -euo pipefail
 
-CORENLP_VERSION="4.5.7"
-CORENLP_ZIP="stanford-corenlp-${CORENLP_VERSION}.zip"
-CORENLP_URL="https://nlp.stanford.edu/software/${CORENLP_ZIP}"
-TOOLS_DIR="$(cd "$(dirname "$0")" && pwd)"
-DEST="${TOOLS_DIR}/corenlp"
+CONTAINER_NAME="corenlp"
+PORT="${CORENLP_PORT:-9000}"
+IMAGE="nlptown/corenlp-server:latest"
+MEMORY="${CORENLP_MEMORY:-6g}"
 
-echo "── Stanford CoreNLP Setup ────────────────────────────────"
-echo "  Version : ${CORENLP_VERSION}"
-echo "  Dest    : ${DEST}"
+echo "── Stanford CoreNLP Shared Server ────────────────────────"
+echo "  Container : ${CONTAINER_NAME}"
+echo "  Port      : ${PORT}"
 echo "─────────────────────────────────────────────────────────"
 
-# Check Java
-if ! command -v java &>/dev/null; then
-  echo "Error: java not found. Install Java 17+ and retry." >&2
-  exit 1
-fi
-JAVA_VER=$(java -version 2>&1 | head -1 | grep -oE '[0-9]+' | head -1)
-if [ "${JAVA_VER}" -lt 17 ]; then
-  echo "Error: Java 17+ required (found Java ${JAVA_VER})." >&2
+if ! command -v docker &>/dev/null; then
+  echo "Error: docker not found. Install Docker Desktop and retry." >&2
   exit 1
 fi
 
-# Already installed?
-if ls "${DEST}"/stanford-corenlp-*.jar &>/dev/null 2>&1; then
-  echo "✅ CoreNLP already installed at ${DEST}"
+# Already running?
+if docker ps --filter "name=^${CONTAINER_NAME}$" --format "{{.Names}}" 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
+  echo "✅ CoreNLP already running at http://localhost:${PORT}"
   exit 0
 fi
 
-mkdir -p "${DEST}"
-TMP=$(mktemp -d)
-trap 'rm -rf "${TMP}"' EXIT
+# Container exists but stopped → start it
+if docker ps -a --filter "name=^${CONTAINER_NAME}$" --format "{{.Names}}" 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
+  echo "Starting existing container ${CONTAINER_NAME}..."
+  docker start "${CONTAINER_NAME}"
+else
+  echo "Creating CoreNLP container..."
+  docker run -d \
+    --name "${CONTAINER_NAME}" \
+    -p "${PORT}:9000" \
+    -m "${MEMORY}" \
+    --restart unless-stopped \
+    "${IMAGE}"
+fi
 
-echo "Downloading CoreNLP ${CORENLP_VERSION}..."
-curl -L --progress-bar -o "${TMP}/${CORENLP_ZIP}" "${CORENLP_URL}"
-
-echo "Extracting..."
-unzip -q "${TMP}/${CORENLP_ZIP}" -d "${TMP}"
-
-# Move jars to dest
-find "${TMP}/stanford-corenlp-${CORENLP_VERSION}" -name "*.jar" \
-  -exec cp {} "${DEST}/" \;
-
-echo "✅ CoreNLP installed at ${DEST}"
+echo "✅ CoreNLP server started at http://localhost:${PORT}"
 echo ""
-echo "Verify installation:"
-echo "  sbadr server status"
-echo "  sbadr server start"
+echo "Connect from projects via: CORENLP_URL=http://localhost:${PORT}"

@@ -1,8 +1,8 @@
-# setup_corenlp.ps1 — Download Stanford CoreNLP for SBADR (Windows)
+# setup_corenlp.ps1 — Start shared Stanford CoreNLP Docker container (Windows)
 #
-# Usage: powershell -ExecutionPolicy Bypass -File .pi/setup_corenlp.ps1
-#
-# Downloads ~500 MB. Requires Java 17+.
+# Runs a single shared CoreNLP server on localhost:9000.
+# All projects connect via CORENLP_URL (default: http://localhost:9000).
+# Safe to run multiple times — exits early if already running.
 
 [CmdletBinding()]
 param()
@@ -11,70 +11,42 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-$CORENLP_VERSION = "4.5.7"
-$CORENLP_ZIP     = "stanford-corenlp-$CORENLP_VERSION.zip"
-$CORENLP_URL     = "https://nlp.stanford.edu/software/$CORENLP_ZIP"
-$SCRIPT_DIR      = $PSScriptRoot
-$DEST            = Join-Path $SCRIPT_DIR "corenlp"
+$ContainerName = "corenlp"
+$Port          = if ($env:CORENLP_PORT)   { $env:CORENLP_PORT }   else { "9000" }
+$Image         = "nlptown/corenlp-server:latest"
+$Memory        = if ($env:CORENLP_MEMORY) { $env:CORENLP_MEMORY } else { "6g" }
 
-Write-Host "── Stanford CoreNLP Setup ────────────────────────────────"
-Write-Host "  Version : $CORENLP_VERSION"
-Write-Host "  Dest    : $DEST"
+Write-Host "── Stanford CoreNLP Shared Server ────────────────────────"
+Write-Host "  Container : $ContainerName"
+Write-Host "  Port      : $Port"
 Write-Host "─────────────────────────────────────────────────────────"
 
-# Check Java
-if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
-    throw "java not found. Install Java 17+ and retry."
-}
-# java -version writes to stderr. Capture it via ProcessStartInfo so
-# PowerShell does not turn normal stderr output into NativeCommandError when
-# $ErrorActionPreference is Stop.
-$javaInfo = New-Object System.Diagnostics.ProcessStartInfo
-$javaInfo.FileName = "java"
-$javaInfo.Arguments = "-version"
-$javaInfo.UseShellExecute = $false
-$javaInfo.RedirectStandardOutput = $true
-$javaInfo.RedirectStandardError = $true
-$javaProcess = [System.Diagnostics.Process]::Start($javaInfo)
-$javaStdout = $javaProcess.StandardOutput.ReadToEnd()
-$javaStderr = $javaProcess.StandardError.ReadToEnd()
-$javaProcess.WaitForExit()
-if ($javaProcess.ExitCode -ne 0) {
-    throw "java -version failed with exit code $($javaProcess.ExitCode)."
-}
-$javaVerRaw = "$javaStdout $javaStderr"
-if ($javaVerRaw -match '"(\d+)') { $javaVer = [int]$Matches[1] } else { $javaVer = 0 }
-if ($javaVer -lt 17) {
-    throw "Java 17+ required (found Java $javaVer)."
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    throw "docker not found. Install Docker Desktop and retry."
 }
 
-# Already installed?
-if (Get-ChildItem -Path $DEST -Filter "stanford-corenlp-*.jar" -ErrorAction SilentlyContinue) {
-    Write-Host "✅ CoreNLP already installed at $DEST"
+# Already running?
+$running = docker ps --filter "name=^${ContainerName}$" --format "{{.Names}}" 2>$null
+if ($running -match "^${ContainerName}$") {
+    Write-Host "✅ CoreNLP already running at http://localhost:$Port"
     exit 0
 }
 
-New-Item -ItemType Directory -Path $DEST -Force | Out-Null
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("corenlp-" + [System.Guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $tmp | Out-Null
-
-try {
-    Write-Host "Downloading CoreNLP $CORENLP_VERSION (~500 MB)..."
-    Invoke-WebRequest -Uri $CORENLP_URL -OutFile (Join-Path $tmp $CORENLP_ZIP) -UseBasicParsing
-
-    Write-Host "Extracting..."
-    Expand-Archive -Path (Join-Path $tmp $CORENLP_ZIP) -DestinationPath $tmp -Force
-
-    Write-Host "Installing JARs to $DEST..."
-    Get-ChildItem -Path (Join-Path $tmp "stanford-corenlp-$CORENLP_VERSION") -Filter "*.jar" |
-        Copy-Item -Destination $DEST -Force
-
-    Write-Host ""
-    Write-Host "✅ CoreNLP installed at $DEST"
-    Write-Host ""
-    Write-Host "Verify installation:"
-    Write-Host "  sbadr server status"
-    Write-Host "  sbadr server start"
-} finally {
-    Remove-Item -Path $tmp -Recurse -Force -ErrorAction SilentlyContinue
+# Container exists but stopped → start it
+$exists = docker ps -a --filter "name=^${ContainerName}$" --format "{{.Names}}" 2>$null
+if ($exists -match "^${ContainerName}$") {
+    Write-Host "Starting existing container $ContainerName..."
+    docker start $ContainerName | Out-Null
+} else {
+    Write-Host "Creating CoreNLP container..."
+    docker run -d `
+        --name $ContainerName `
+        -p "${Port}:9000" `
+        -m $Memory `
+        --restart unless-stopped `
+        $Image | Out-Null
 }
+
+Write-Host "✅ CoreNLP server started at http://localhost:$Port"
+Write-Host ""
+Write-Host "Connect from projects via: CORENLP_URL=http://localhost:$Port"

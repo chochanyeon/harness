@@ -1,0 +1,37 @@
+# Harness runtime applied to this repo (source lives under target/)
+.pi/corenlp/
+.pi/dpaa/
+.pi/sbadr/
+.pi/extensions/
+.pi/personas/
+.pi/schemas/
+.pi/skills/
+.pi/workflows/
+.pi/.gitignore
+.pi/GOVERNANCE.md
+.pi/WORKFLOW.md
+.pi/LOCAL.md
+.pi/pyproject.toml
+.pi/setup_corenlp.sh
+.pi/setup_corenlp.ps1
+
+# Claude Code / workflow state
+.claude/
+.harness/
+
+# Ralph loop artifacts
+.ralph/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Working review/analysis artifacts (root level)
+*review*.md
+*-findings.md
+progress.md

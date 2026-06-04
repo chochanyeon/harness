@@ -68,6 +68,7 @@ import {
   isSharedWorkflowPhase,
   sharedWorkflowPhases,
   isSharedAutoAdvancePhase,
+  isSharedApprovalBoundary,
   getPhaseAllowedTools,
   getPhaseWritePathPolicy,
   matchesWriteGlob,
@@ -213,6 +214,10 @@ export default function (pi: ExtensionAPI) {
   function refreshBoard(ctx: { hasUI: boolean; ui: { setWidget: (...args: unknown[]) => void; theme?: unknown } }): void {
     if (!ctx.hasUI) return;
     try {
+      if (!state.workflow) {
+        (ctx.ui as any).setWidget("workflow-board", undefined);
+        return;
+      }
       (ctx.ui as any).setWidget("workflow-board", (_tui: unknown, theme: any) => {
         const rawLines = formatWorkflowBoard(getBoardState());
         const coloredLines = rawLines.map((line) => {
@@ -312,11 +317,15 @@ export default function (pi: ExtensionAPI) {
     return value.replace(/\\/g, "/");
   }
 
-  function mentionsExtensionPath(value: string): boolean {
+  function mentionsRuntimeExtensionPath(value: string): boolean {
     const normalized = normalizePathText(value);
-    // Only flag the running harness (.pi/extensions/), not the deployment target (target/.pi/extensions/)
+    // Protect only the running project-local runtime extension path: .pi/extensions/**.
+    // In the harness source repository, target/.pi/extensions/** is the deployment
+    // template source and must remain a normal editable development target.
+    if (/(^|[\s"'=:(])target\/\.pi\/extensions(?:\/|$)/.test(normalized)) return false;
+    if (normalized.includes("/target/.pi/extensions/")) return false;
     return /(^|[\s"'=:(])\.pi\/extensions(?:\/|$)/.test(normalized)
-      || (normalized.includes("/.pi/extensions/") && !normalized.includes("/target/.pi/extensions/"));
+      || normalized.includes("/.pi/extensions/");
   }
 
   function collectStrings(value: unknown): string[] {
@@ -327,8 +336,11 @@ export default function (pi: ExtensionAPI) {
   }
 
   function isLikelyMutatingBash(command: string): boolean {
-    if (!mentionsExtensionPath(command)) return false;
-    return /(^|[;&|]\s*)(rm|mv|cp|touch|mkdir|rmdir|sed\s+-i|perl\s+-pi|python3?|node|npx|tsx)\b/.test(command)
+    if (!mentionsRuntimeExtensionPath(command)) return false;
+    // Only block shell operations that directly mutate files. Read-like commands
+    // such as cat/grep/rg/ls/find, or interpreter commands used for inspection,
+    // must remain allowed even when they mention .pi/extensions/**.
+    return /(^|[;&|]\s*)(rm|mv|cp|touch|mkdir|rmdir|sed\s+-i|perl\s+-pi)\b/.test(command)
       || /(>|>>|\btee\b)/.test(command);
   }
 
@@ -336,14 +348,14 @@ export default function (pi: ExtensionAPI) {
     const lower = toolName.toLowerCase();
     if (lower === "bash") {
       const strings = collectStrings(input);
-      if (!strings.some(mentionsExtensionPath)) return false;
+      if (!strings.some(mentionsRuntimeExtensionPath)) return false;
       return strings.some(isLikelyMutatingBash);
     }
     if (/^(edit|write|multi.?edit|apply.?patch)$/.test(lower)) {
       // Only check the target path — not file content — to avoid false positives
       // when writing docs/plans that merely mention .pi/extensions in their text.
       const pathValue = String((input as any)?.path ?? "");
-      return mentionsExtensionPath(pathValue);
+      return mentionsRuntimeExtensionPath(pathValue);
     }
     return false;
   }
@@ -352,12 +364,13 @@ export default function (pi: ExtensionAPI) {
     const lower = toolName.toLowerCase();
     const targets = /^(edit|write|multi.?edit|apply.?patch)$/.test(lower)
       ? [String((input as any)?.path ?? "")].filter(Boolean)
-      : collectStrings(input).filter(mentionsExtensionPath).slice(0, 5);
+      : collectStrings(input).filter(mentionsRuntimeExtensionPath).slice(0, 5);
     return [
-      "── 🧩 EXTENSION MODIFICATION APPROVAL REQUIRED ─────",
+      "── 🧩 RUNTIME EXTENSION WRITE APPROVAL REQUIRED ─────",
       "",
-      "  Modifying harness extension files requires explicit user approval.",
-      "  Approval is checked in extension memory for this tool call only; no approval file/token is trusted.",
+      "  Writing or editing the running .pi/extensions/** runtime files requires explicit user approval.",
+      "  target/.pi/extensions/** is deployment-template source in this repo and is not protected by this guard.",
+      "  Read-only inspection is allowed; approval is checked in extension memory for this mutating tool call only.",
       "",
       `  Tool: ${toolName}`,
       ...targets.map((target) => `  Target: ${target.slice(0, 240)}`),
@@ -753,16 +766,16 @@ Risk level: ${spec.riskLevel}`,
     },
   });
 
-  // ── Tool: workflow_approve — explicit UI approval for phase transition ─────────────
+  // ── Tool: workflow_approve — advance workflow; prompts only at approval boundaries ──
   pi.registerTool({
     name: "workflow_approve",
-    label: "Request phase transition approval",
-    description: "Show a UI confirmation dialog to advance the workflow to the next phase. Call this when the current phase deliverables are complete and user approval is needed to proceed.",
-    promptSnippet: "Request user approval to advance the workflow to the next phase",
+    label: "Advance workflow phase",
+    description: "Advance the workflow to the next phase. Shows a UI yes/no confirmation only at user approval boundaries; automatic transitions advance without asking the user.",
+    promptSnippet: "Advance workflow phase; show yes/no only at approval boundaries",
     promptGuidelines: [
-      "Call workflow_approve when you believe all phase deliverables are complete.",
-      "Provide a concise summary of what was completed and what the next phase entails.",
-      "Do not rely on natural-language approval detection — always use this tool for phase transitions.",
+      "Call workflow_approve when current phase deliverables are complete and a normal transition should occur.",
+      "workflow_approve must not ask the user for automatic transitions such as implement → code_review.",
+      "At approval boundaries, workflow_approve shows the user a yes/no dialog; do not ask the user to type /workflow approve.",
     ],
     parameters: Type.Object({
       summary: Type.String({ description: "Brief summary of what was completed in this phase and what the next phase involves" }),
@@ -771,8 +784,10 @@ Risk level: ${spec.riskLevel}`,
       if (!state.workflow) {
         return { content: [{ type: "text", text: "No active workflow. Start one with /workflow start." }], details: { ok: false } };
       }
-      if (!ctx.hasUI) {
-        return { content: [{ type: "text", text: "UI required for workflow approval. Ask the user to type /workflow approve." }], details: { ok: false } };
+      const nextPhase = getNextPhase(state.workflow.phase);
+      const requiresUserApproval = Boolean(nextPhase && isSharedApprovalBoundary(state.workflow.phase, nextPhase));
+      if (!ctx.hasUI && requiresUserApproval) {
+        return { content: [{ type: "text", text: "Interactive UI is required for this approval boundary. Re-run from a UI session so the yes/no dialog can be shown." }], details: { ok: false, reason: "no-ui" } };
       }
 
       // Pre-flight checks before showing any dialog — fail fast with a clear message
@@ -783,15 +798,18 @@ Risk level: ${spec.riskLevel}`,
         };
       }
 
-      // commit → push: policy scan owns its own dialog; skip the generic confirm to avoid double dialogs
+      // commit → push: policy scan owns its own yes/no dialog; skip the generic confirm to avoid double dialogs.
       if (state.workflow.phase === "commit") {
         if (!(await confirmPushPolicyForPushPhase(ctx))) {
           return { content: [{ type: "text", text: "Push policy 확인이 거부됐습니다. Push 단계 진입이 취소됩니다." }], details: { ok: false, reason: "policy-declined" } };
         }
-      } else {
-        const next = getNextPhase(state.workflow.phase);
+      } else if (requiresUserApproval) {
         const confirmed = await ctx.ui.confirm(
-          `${params.summary}\n\n[${state.workflow.phase}] → [${next ?? "done"}]\n\n다음 단계로 진행할까요?`,
+          `${params.summary}
+
+[${state.workflow.phase}] → [${nextPhase ?? "done"}]
+
+다음 단계로 진행할까요?`,
         );
         if (!confirmed) {
           return { content: [{ type: "text", text: "취소됐습니다. 현재 단계를 유지합니다." }], details: { ok: false, reason: "user-declined" } };
@@ -803,7 +821,8 @@ Risk level: ${spec.riskLevel}`,
       if (!result.ok) {
         if (result.gate) { state.gateFailures.set(result.gate, (state.gateFailures.get(result.gate) ?? 0) + 1); }
         refreshBoard(ctx);
-        return { content: [{ type: "text", text: `Interactive user approval was received, but transition was blocked by a workflow gate.\n\n${result.message}` }], details: { ok: false, reason: "gate-blocked" } };
+        refreshStatus(ctx);
+        return { content: [{ type: "text", text: `Workflow transition was requested, but it was blocked by a workflow gate.\n\n${result.message}` }], details: { ok: false, reason: "gate-blocked" } };
       }
 
       const transitions = result.transitions ?? [];
@@ -945,7 +964,8 @@ Risk level: ${spec.riskLevel}`,
     ].join(" "),
     promptSnippet: "Propose file edits for user approval before applying",
     promptGuidelines: [
-      "Use workflow_propose_edit for non-trivial file changes during implement or document phases.",
+      "Use workflow_propose_edit only when a guarded edit scope is required by phase/path policy; normal implement edits should use regular file tools.",
+      "Do not use workflow_propose_edit for target/.pi/extensions/** in the harness source repo; that path is deployment-template source, not the running extension path.",
       "Always wait for user approval via workflow_propose_edit before calling workflow_apply_approved_edit.",
     ],
     parameters: Type.Object({
@@ -1199,7 +1219,7 @@ Risk level: ${spec.riskLevel}`,
 
       const COMMAND_LABELS: Record<string, string> = {
         start: "start <goal> — start workflow",
-        approve: "approve — advance next allowed transition or approval boundary",
+        approve: "approve — advance next transition; yes/no only at approval boundaries",
         status: "status — 현재 워크플로우 상태 표시",
         doctor: "doctor — check harness runtime",
         failures: "failures — show/export field logs",
@@ -1289,7 +1309,7 @@ Risk level: ${spec.riskLevel}`,
         if (state.workflow && state.workflow.phase !== "done") {
           ctx.ui.notify(
             `이미 진행 중인 workflow가 있습니다: ${state.workflow.phase}\n` +
-              "먼저 /workflow status, /workflow approve, /workflow abort 중 하나를 사용하세요.",
+              "먼저 /workflow status로 확인하거나 /workflow abort로 종료하세요.",
             "warning",
           );
           return;
@@ -1380,14 +1400,32 @@ Risk level: ${spec.riskLevel}`,
           ].join("\n"), "warning");
           return;
         }
+        const nextPhase = state.workflow ? getNextPhase(state.workflow.phase) : null;
+        const requiresUserApproval = Boolean(state.workflow && nextPhase && isSharedApprovalBoundary(state.workflow.phase, nextPhase));
+        if (state.workflow && requiresUserApproval && !ctx.hasUI) {
+          ctx.ui.notify("Interactive UI is required for this approval boundary so the yes/no dialog can be shown.", "warning");
+          return;
+        }
         if (state.workflow?.phase === "commit" && !(await confirmPushPolicyForPushPhase(ctx))) return;
+        if (state.workflow && requiresUserApproval && state.workflow.phase !== "commit") {
+          const ok = await ctx.ui.confirm(
+            `Workflow approval boundary: [${state.workflow.phase}] → [${nextPhase ?? "done"}]
+
+계속 진행하시겠습니까?`,
+          );
+          if (!ok) {
+            ctx.ui.notify("취소됐습니다. 현재 단계를 유지합니다.", "warning");
+            return;
+          }
+        }
         const workflowId = state.workflow?.id ?? null;
         const approvedPlanSha256 = state.dpaaGuardSatisfiedToken?.planSha256;
         const result = await advanceWorkflow(state.workflow, "user_approved", { approvedPlanSha256 });
         if (!result.ok) {
           if (result.gate) { state.gateFailures.set(result.gate, (state.gateFailures.get(result.gate) ?? 0) + 1); }
           refreshBoard(ctx);
-          ctx.ui.notify(["Interactive user approval was received, but transition was blocked by a workflow gate.", "", result.message, "", formatWorkflowAction(state.workflow)].join("\n"), "warning");
+          refreshStatus(ctx);
+          ctx.ui.notify(["Workflow transition was requested, but it was blocked by a workflow gate.", "", result.message, "", formatWorkflowAction(state.workflow)].join("\n"), "warning");
           return;
         }
         const transitions = result.transitions ?? [];
@@ -1734,6 +1772,9 @@ Risk level: ${spec.riskLevel}`,
           evidenceNotices.push("Push phase approved → transition evidence 복구");
         }
         saveWorkflow(state.workflow);
+        applyPhaseToolPolicy(state.workflow.phase);
+        refreshBoard(ctx);
+        refreshStatus(ctx);
         ctx.ui.notify([
           formatWorkflowStatus(state.workflow),
           "",
@@ -1791,8 +1832,8 @@ Risk level: ${spec.riskLevel}`,
     }
 
     // Natural-language approval detection removed.
-    // Phase transitions are now driven by the workflow_approve tool (explicit UI dialog).
-    // Users can still advance via the /workflow approve slash command.
+    // Phase transitions are driven by workflow_approve. It shows a yes/no dialog only at approval boundaries.
+    // Users should not be instructed to type /workflow approve for normal operation.
   });
 
   // ── Gate: tool_call(bash) → git push 차단 ─────────────────────────────────
@@ -1810,7 +1851,7 @@ Risk level: ${spec.riskLevel}`,
             `⚠️ Phase tool policy blocked: ${event.toolName} is not allowed in ${state.workflow.phase} phase.`,
             `Allowed built-in tools: ${(phaseAllowed as readonly string[]).join(", ")}`,
             state.workflow.phase === "code_review"
-              ? "To modify files in code_review, use workflow_propose_edit (proposes changes for user approval) then workflow_apply_approved_edit."
+              ? "This phase is read/review focused. For review-loop fixes, return to an editing phase or use an explicit reviewed fix workflow."
               : state.workflow.phase === "plan_review" || state.workflow.phase === "review_approved"
               ? "This phase is read-only. Advance the workflow before making file changes."
               : "Use workflow_propose_edit for guarded file changes in this phase.",
@@ -1925,7 +1966,7 @@ Risk level: ${spec.riskLevel}`,
             "── 🚦 WORKFLOW PHASE REQUIRED ────────",
             "",
             "  git push is allowed only during the push phase.",
-            "  Complete review/document/commit deliverables, then advance with workflow_approve tool or /workflow approve slash command.",
+            "  Complete review/document/commit deliverables, then use the workflow yes/no approval dialog to enter push.",
             "",
             `  Current phase: ${state.workflow.phase}`,
             "  Required phase: push",
@@ -1954,7 +1995,7 @@ Risk level: ${spec.riskLevel}`,
           reason: formatGateBlocked({
             gate: "Workflow Transition History",
             why: "The workflow is in push, but commit → push transition history is missing.",
-            next: ["Return to commit phase", "Advance commit → push through workflow_approve tool or /workflow approve slash command", "Retry git push"],
+            next: ["Return to commit phase", "Use the workflow yes/no approval dialog to advance commit → push", "Retry git push"],
           }),
         };
       }

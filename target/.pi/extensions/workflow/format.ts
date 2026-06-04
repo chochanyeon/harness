@@ -89,7 +89,7 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
     case "plan_review":
       lines.push(
         "- Transition mode: user approval boundary before implement.",
-        "- Required now: present the plan and call workflow_approve tool to get explicit yes/no approval from the user.",
+        "- Required now: present the plan; workflow_approve will show the user an explicit yes/no dialog before implementation.",
         "- Approval validates the plan for ambiguity before implementation begins; if validation fails, clarify the plan with the user.",
       );
       break;
@@ -125,7 +125,7 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
       lines.push(
         "- Transition mode: user approval boundary before push.",
         "- Required now: provide diff summary, risk/verification summary, and proposed commit message; commit only when appropriate.",
-        "- Call workflow_approve tool when ready to push — it runs the policy scan and gets user confirmation.",
+        "- When ready for push, workflow_approve runs the policy scan and shows the user a yes/no dialog.",
       );
       break;
     case "push":
@@ -143,11 +143,11 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
   }
 
   if (next && isSharedAutoAdvancePhase(workflow.phase)) {
-    lines.push("- Normal advancement command: workflow_approve tool (shows yes/no dialog) — may trigger this automatic transition chain.");
+    lines.push("- Normal advancement: call workflow_approve as an internal transition tool; it must not show a user dialog for this automatic transition.");
   } else if (workflow.phase === "code_review") {
     lines.push("- Normal advancement command: submit_review_package after review evidence is ready.");
   } else if (next) {
-    lines.push("- Normal advancement command: workflow_approve tool (shows yes/no dialog) or /workflow approve slash command — only after required approval/evidence is present.");
+    lines.push("- Normal advancement: workflow_approve shows a yes/no dialog only at this approval boundary; do not ask the user to type /workflow approve.");
   }
 
   lines.push("- workflow_state tool or /workflow state <phase> is manual recovery only (one step at a time); never use for normal advancement.", "[/LLM WORKFLOW ACTION]");
@@ -198,7 +198,7 @@ export function formatWorkflowPrompt(workflow: WorkflowInstance | null): string 
     `• Workflow branch: ${workflow.branch}`,
     `• Workflow cwd: ${workflow.cwd}`,
     "• Work only on the current phase; follow the LLM workflow action block for automatic vs approval-required transitions.",
-    "• Use workflow_approve tool (shows yes/no dialog) or /workflow approve slash command at approval boundaries.",
+    "• At approval boundaries, use workflow_approve to show a yes/no dialog; do not ask the user to type /workflow approve.",
     formatWorkflowAction(workflow),
     "• Phase changes always create workspace checkpoints; during implement/code_review/review_approved/document/commit/push, dirty workspace user requests may prompt for an extra checkpoint.",
     "• /workflow undo, redo, and restore recover tracked/staged/untracked git workspace changes from checkpoints.",
@@ -239,7 +239,7 @@ export function phaseGuidance(phase: WorkflowPhase): string {
     case "plan":
       return "• Deliverable: produce/update the implementation plan; keep English DPAA artifacts faithful to the Korean sources.";
     case "plan_review":
-      return "• Deliverable: present the plan for approval. Approval to implement runs DPAA then SBADR; if either fails, explain the findings to the user and ask clarifying questions before editing artifacts.";
+      return "• Deliverable: present the plan for approval. The approval dialog runs DPAA then SBADR; if either fails, explain the findings to the user and ask clarifying questions before editing artifacts.";
     case "implement":
       return "• Deliverable: implement the approved plan only. After implementation and narrow verification are complete, advance to code_review automatically; do not ask user approval for this transition.";
     case "code_review":

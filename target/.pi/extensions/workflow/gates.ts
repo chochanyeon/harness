@@ -191,7 +191,7 @@ export async function runPreTransitionGate(
             why: `The plan file has changed since DPAA was approved. Approved hash: ${opts.approvedPlanSha256.slice(0, 12)}…, current hash: ${currentHash.slice(0, 12)}…`,
             next: [
               "Show the plan changes to the user and explain what changed",
-              "Update the plan if the changes are intentional, then run /workflow approve again",
+              "Update the plan if the changes are intentional, then use the workflow approval dialog again",
               "DPAA will re-run against the updated plan before implementation is allowed",
             ],
             skip: "/workflow skip dpaa <reason>",
@@ -298,7 +298,7 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
           why: `Mechanical code quality guard failed before code_review → review_approved. codeQualityGuard command: ${command}. Exit: ${err.status ?? "unknown"}`,
           next: [
             "Fix the Checkstyle/PMD/test failures reported by the guard",
-            "Re-run /workflow approve after fixes",
+            "Re-run the review package / workflow transition after fixes",
             `Detected build system: ${buildSystem.type}. If no quality gate is configured, set HARNESS_CODE_QUALITY_GUARD_CMD`,
           ],
           skip: "/workflow skip code-quality <reason>",
@@ -355,7 +355,7 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
       message: formatGateBlocked({
         gate: "DPAA",
         why: "No plan file was found for the required DPAA check before plan_review → implement.",
-        next: ["Create `.ai/interview/plan.md` or `docs/superpowers/plans/*.md`", "Run /workflow approve again"],
+        next: ["Create `.ai/interview/plan.md` or `docs/superpowers/plans/*.md`", "Use the workflow approval dialog again"],
         skip: "/workflow skip dpaa <reason>",
       }),
     };
@@ -390,7 +390,7 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
       message: formatGateBlocked({
         gate: "DPAA",
         why: `Failed to prepare DPAA Python environment: ${message}`,
-        next: ["Install Python 3.10+", "Ensure `python` or `python3` is available", "Run /workflow approve again"],
+        next: ["Install Python 3.10+", "Ensure `python` or `python3` is available", "Use the workflow approval dialog again"],
         skip: "/workflow skip dpaa <reason>",
       }),
     };
@@ -499,7 +499,7 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
             next: [
               "Explain each finding to the user and decide together how to rephrase the ambiguous sentence",
               "Or propose a concrete rewrite based on the suggestion and ask the user to confirm",
-              "Update the plan and run /workflow approve again",
+              "Update the plan and use the workflow approval dialog again",
             ],
             skip: "/workflow skip dpaa <reason>  (SBADR shares the dpaa gate one-use exception)",
           }),
@@ -569,7 +569,7 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
       formatGateBlocked({
         gate: "DPAA",
         why: `DPAA returned ${report.level} before plan_review → implement.`,
-        next: ["Explain the top findings to the user", "Ask targeted clarification questions", "Update plan/spec after the answer", "Run /workflow approve again"],
+        next: ["Explain the top findings to the user", "Ask targeted clarification questions", "Update plan/spec after the answer", "Use the workflow approval dialog again"],
         skip: "/workflow skip dpaa <reason>",
       }),
       table([

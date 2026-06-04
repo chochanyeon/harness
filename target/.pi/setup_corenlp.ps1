@@ -27,8 +27,9 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 # Build local image if not yet built (one-time, ~500 MB)
-$imageInfo = docker image inspect $ImageName 2>$null
-if ($LASTEXITCODE -ne 0) {
+# docker images --quiet returns image ID if found, empty if not — no stderr, always exits 0
+$imageId = docker images --quiet $ImageName 2>$null
+if (-not $imageId) {
     Write-Host "Building CoreNLP Docker image (one-time ~500 MB download)..."
     docker build -t $ImageName $DockerfileDir
     if ($LASTEXITCODE -ne 0) { throw "docker build failed." }

@@ -81,6 +81,7 @@ managed_paths_for() {
         .harness/workflow-policy.json \
         .pi/dpaa \
         .pi/sbadr \
+        .pi/corenlp \
         .pi/setup_corenlp.sh \
         .pi/setup_corenlp.ps1 \
         .pi/workflows \
@@ -103,6 +104,7 @@ managed_paths_for() {
         .harness/workflow-policy.json \
         .pi/dpaa \
         .pi/sbadr \
+        .pi/corenlp \
         .pi/pyproject.toml \
         .pi/setup_corenlp.sh \
         .pi/setup_corenlp.ps1 ;;

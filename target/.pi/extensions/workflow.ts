@@ -49,8 +49,9 @@ import {
   getUntestedClasses,
   getWorkspaceStatusSignature,
   hasGitDashC,
-  isApprovalText,
   isGitPush,
+  getNextPhase,
+  WORKFLOW_PHASES,
   loadPersistedWorkflow,
   resolveWorkspaceCheckpoint,
   restoreWorkspaceCheckpoint,
@@ -117,7 +118,7 @@ export default function (pi: ExtensionAPI) {
     codeQualityGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
     pushExecutionGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
     policyApprovals: [] as Array<{ timestamp: number; totalChanged: number; categories: string[]; signature: string }>,
-    extensionMutationTurnApproved: false,
+    extensionMutationApprovedForWorkflowId: null as string | null,
     autoCheckpointForSession: false,
     gateFailures: new Map<string, number>(),
     lastInputCheckpointSignature: null as string | null,
@@ -282,7 +283,9 @@ export default function (pi: ExtensionAPI) {
 
   function mentionsExtensionPath(value: string): boolean {
     const normalized = normalizePathText(value);
-    return /(^|[\s"'=:(])(?:target\/)?\.pi\/extensions(?:\/|$)/.test(normalized) || normalized.includes("/.pi/extensions/") || normalized.includes("/target/.pi/extensions/");
+    // Only flag the running harness (.pi/extensions/), not the deployment target (target/.pi/extensions/)
+    return /(^|[\s"'=:(])\.pi\/extensions(?:\/|$)/.test(normalized)
+      || (normalized.includes("/.pi/extensions/") && !normalized.includes("/target/.pi/extensions/"));
   }
 
   function collectStrings(value: unknown): string[] {
@@ -300,15 +303,25 @@ export default function (pi: ExtensionAPI) {
 
   function requiresExtensionMutationApproval(toolName: string, input: unknown): boolean {
     const lower = toolName.toLowerCase();
-    const strings = collectStrings(input);
-    if (!strings.some(mentionsExtensionPath)) return false;
-    if (lower === "bash") return strings.some(isLikelyMutatingBash);
-    if (/^(edit|write|multi.?edit|apply.?patch)$/.test(lower)) return true;
+    if (lower === "bash") {
+      const strings = collectStrings(input);
+      if (!strings.some(mentionsExtensionPath)) return false;
+      return strings.some(isLikelyMutatingBash);
+    }
+    if (/^(edit|write|multi.?edit|apply.?patch)$/.test(lower)) {
+      // Only check the target path — not file content — to avoid false positives
+      // when writing docs/plans that merely mention .pi/extensions in their text.
+      const pathValue = String((input as any)?.path ?? "");
+      return mentionsExtensionPath(pathValue);
+    }
     return false;
   }
 
   function formatExtensionMutationApprovalReason(toolName: string, input: unknown): string {
-    const targets = collectStrings(input).filter(mentionsExtensionPath).slice(0, 5);
+    const lower = toolName.toLowerCase();
+    const targets = /^(edit|write|multi.?edit|apply.?patch)$/.test(lower)
+      ? [String((input as any)?.path ?? "")].filter(Boolean)
+      : collectStrings(input).filter(mentionsExtensionPath).slice(0, 5);
     return [
       "── 🧩 EXTENSION MODIFICATION APPROVAL REQUIRED ─────",
       "",
@@ -399,21 +412,24 @@ export default function (pi: ExtensionAPI) {
 
   async function ensureExtensionMutationApproved(toolName: string, input: unknown, ctx: any): Promise<{ ok: true } | { ok: false; reason: string }> {
     if (!requiresExtensionMutationApproval(toolName, input)) return { ok: true };
-    if (state.extensionMutationTurnApproved) return { ok: true };
+    const currentWorkflowId = state.workflow?.id ?? "no-workflow";
+    if (state.extensionMutationApprovedForWorkflowId === currentWorkflowId) return { ok: true };
     const reason = formatExtensionMutationApprovalReason(toolName, input);
     if (!ctx.hasUI) {
-      return { ok: false, reason: [reason, "", "대화형 사용자 승인이 필요하지만 현재 UI를 사용할 수 없어 extension 수정을 차단했습니다."].join("\n") };
+      return { ok: false, reason: [reason, "", "대화형 사용자 승인이 필요하지만 현재 UI를 사용할 수 없어 extension 수정을 차단했습니다."].join("
+") };
     }
     const choice = await ctx.ui.select(
-      [reason, "", "위 harness extension 파일 수정을 어떻게 처리하시겠습니까?"].join("\n"),
+      [reason, "", "위 harness extension 파일 수정을 어떻게 처리하시겠습니까?"].join("
+"),
       [
         "예 — 이번만 허용",
-        "예 — 이번 턴 동안 모두 허용",
+        "예 — 이번 워크플로우에서 계속 허용",
         "아니오",
       ],
     );
-    if (choice === "예 — 이번 턴 동안 모두 허용") {
-      state.extensionMutationTurnApproved = true;
+    if (choice === "예 — 이번 워크플로우에서 계속 허용") {
+      state.extensionMutationApprovedForWorkflowId = currentWorkflowId;
       return { ok: true };
     }
     if (choice === "예 — 이번만 허용") return { ok: true };
@@ -684,6 +700,156 @@ Risk level: ${spec.riskLevel}`,
       return new Text(
         theme.fg("error", `❌ ${d?.commandId ?? "command"} `) +
         theme.fg("dim", `${exit} (${ms})`) + trunc,
+        0, 0,
+      );
+    },
+  });
+
+  // ── Tool: workflow_approve — explicit UI approval for phase transition ─────────────
+  pi.registerTool({
+    name: "workflow_approve",
+    label: "Request phase transition approval",
+    description: "Show a UI confirmation dialog to advance the workflow to the next phase. Call this when the current phase deliverables are complete and user approval is needed to proceed.",
+    promptSnippet: "Request user approval to advance the workflow to the next phase",
+    promptGuidelines: [
+      "Call workflow_approve when you believe all phase deliverables are complete.",
+      "Provide a concise summary of what was completed and what the next phase entails.",
+      "Do not rely on natural-language approval detection — always use this tool for phase transitions.",
+    ],
+    parameters: Type.Object({
+      summary: Type.String({ description: "Brief summary of what was completed in this phase and what the next phase involves" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!state.workflow) {
+        return { content: [{ type: "text", text: "No active workflow. Start one with /workflow start." }], details: { ok: false } };
+      }
+      if (!ctx.hasUI) {
+        return { content: [{ type: "text", text: "UI required for workflow approval. Ask the user to type /workflow approve." }], details: { ok: false } };
+      }
+
+      const next = getNextPhase(state.workflow.phase);
+      const confirmed = await ctx.ui.confirm(
+        `${params.summary}\n\n[${state.workflow.phase}] → [${next ?? "done"}]\n\n다음 단계로 진행할까요?`,
+      );
+      if (!confirmed) {
+        return { content: [{ type: "text", text: "User declined. Staying in current phase." }], details: { ok: false, reason: "user-declined" } };
+      }
+
+      if (state.workflow.phase === "code_review" && state.reviewPackageToken?.workflowId !== state.workflow.id) {
+        return {
+          content: [{ type: "text", text: "Review package is required before review_approved. Run submit_review_package first." }],
+          details: { ok: false, reason: "review-package-required" },
+        };
+      }
+      if (state.workflow.phase === "commit" && !(await confirmPushPolicyForPushPhase(ctx))) {
+        return { content: [{ type: "text", text: "Push policy confirmation required before entering push phase." }], details: { ok: false } };
+      }
+
+      const workflowId = state.workflow.id;
+      const result = await advanceWorkflow(state.workflow, "user_approved", { approvedPlanSha256: state.dpaaGuardSatisfiedToken?.planSha256 });
+      if (!result.ok) {
+        if (result.gate) { state.gateFailures.set(result.gate, (state.gateFailures.get(result.gate) ?? 0) + 1); }
+        refreshBoard(ctx);
+        return { content: [{ type: "text", text: result.message }], details: { ok: false, reason: "gate-blocked" } };
+      }
+
+      const transitions = result.transitions ?? [];
+      transitions.forEach((t) => {
+        if (t.from === "plan_review" && t.to === "implement") {
+          const dpaaTx = transitions.find((tx) => tx.from === "plan_review" && tx.to === "implement");
+          state.dpaaGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "user_approved", planSha256: dpaaTx?.planSha256 };
+          persistGuardToken(HARNESS_TOKEN_TYPES.DPAA, state.dpaaGuardSatisfiedToken as unknown as Record<string, unknown>);
+          state.gateFailures.delete("dpaa");
+        }
+        if (t.from === "code_review" && t.to === "review_approved") {
+          state.codeQualityGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "automated_review_passed" };
+          state.codeReviewGuardSatisfiedToken = { critical: 0, major: 0, minor: 0, timestamp: Date.now() };
+          persistGuardToken(HARNESS_TOKEN_TYPES.CODE_QUALITY, state.codeQualityGuardSatisfiedToken as unknown as Record<string, unknown>);
+          persistGuardToken(HARNESS_TOKEN_TYPES.CODE_REVIEW, { ...state.codeReviewGuardSatisfiedToken, workflowId });
+          state.recentVerificationCommands.push({ command: "codeQualityGuard", timestamp: Date.now(), phase: "code_review" });
+          if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
+          state.gateFailures.delete("code-quality");
+        }
+        if (t.from === "commit" && t.to === "push") {
+          state.pushExecutionGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "user_approved" };
+          persistGuardToken(HARNESS_TOKEN_TYPES.PUSH_EXECUTION, state.pushExecutionGuardSatisfiedToken as unknown as Record<string, unknown>);
+        }
+      });
+
+      refreshBoard(ctx);
+      refreshStatus(ctx);
+      return {
+        content: [{ type: "text", text: result.message + "\n\n" + formatWorkflowAction(state.workflow) }],
+        details: { ok: true, transitions: transitions.map((t) => `${t.from} → ${t.to}`) },
+      };
+    },
+
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("✅ ")) + theme.fg("accent", "workflow_approve") +
+        theme.fg("dim", `  ${String(args.summary ?? "").slice(0, 60)}`),
+        0, 0,
+      );
+    },
+  });
+
+  // ── Tool: workflow_state — manual phase recovery (one step at a time) ────────────────
+  pi.registerTool({
+    name: "workflow_state",
+    label: "Manual phase recovery",
+    description: "Move the workflow one step forward or backward for manual recovery. Use only when the workflow is stuck in an incorrect phase. For normal advancement, use workflow_approve.",
+    promptSnippet: "Move workflow phase one step for manual recovery",
+    promptGuidelines: [
+      "Use workflow_state only for recovery when the workflow is in a wrong phase.",
+      "For normal phase advancement, use workflow_approve instead.",
+      "direction: 'next' moves forward one step, 'prev' moves backward one step.",
+    ],
+    parameters: Type.Object({
+      direction: Type.Union([Type.Literal("next"), Type.Literal("prev")], { description: "'next' or 'prev' — move one step forward or backward" }),
+      reason: Type.String({ description: "Why this manual recovery is needed" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!state.workflow) {
+        return { content: [{ type: "text", text: "No active workflow." }], details: { ok: false } };
+      }
+      if (!ctx.hasUI) {
+        return { content: [{ type: "text", text: "UI required for manual phase recovery." }], details: { ok: false } };
+      }
+
+      const currentPhase = state.workflow.phase;
+      const idx = WORKFLOW_PHASES.indexOf(currentPhase);
+      const targetIdx = params.direction === "next" ? idx + 1 : idx - 1;
+      if (targetIdx < 0 || targetIdx >= WORKFLOW_PHASES.length) {
+        return { content: [{ type: "text", text: `Cannot move ${params.direction} from '${currentPhase}'.` }], details: { ok: false } };
+      }
+      const targetPhase = WORKFLOW_PHASES[targetIdx];
+
+      const confirmed = await ctx.ui.confirm(
+        `수동 복구: '${currentPhase}' → '${targetPhase}'
+
+사유: ${params.reason}
+
+진행할까요?`,
+      );
+      if (!confirmed) {
+        return { content: [{ type: "text", text: "Cancelled." }], details: { ok: false, reason: "user-declined" } };
+      }
+
+      transitionWorkflow(state.workflow, targetPhase, `manual-recovery: ${params.reason}`);
+      applyPhaseToolPolicy(targetPhase);
+      refreshBoard(ctx);
+      refreshStatus(ctx);
+
+      return {
+        content: [{ type: "text", text: `워크플로우 복구 완료: '${currentPhase}' → '${targetPhase}'\n\n${formatWorkflowAction(state.workflow)}` }],
+        details: { ok: true, from: currentPhase, to: targetPhase },
+      };
+    },
+
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("🔄 ")) + theme.fg("accent", "workflow_state") +
+        theme.fg("dim", `  ${args.direction} (${String(args.reason ?? "").slice(0, 50)})`),
         0, 0,
       );
     },
@@ -1194,6 +1360,8 @@ Risk level: ${spec.riskLevel}`,
         const extensionToolNames = [
           "submit_review_package",
           "workflow_run_command",
+          "workflow_approve",
+          "workflow_state",
           "workflow_propose_edit",
           "workflow_apply_approved_edit",
         ];
@@ -1472,7 +1640,7 @@ Risk level: ${spec.riskLevel}`,
           "",
           evidenceNotices.length > 0 ? `수동 state 복구 완료: ${evidenceNotices.join(", ")}` : "수동 state 복구 완료: 복구할 guard evidence 없음",
           "",
-          "주의: /workflow state <phase>는 수동 복구 전용입니다. 정상 진행에는 /workflow approve 또는 submit_review_package를 사용하세요.",
+          "주의: /workflow state <phase> 또는 workflow_state 툴은 수동 복구 전용입니다. 정상 진행에는 workflow_approve 툴 또는 submit_review_package를 사용하세요.",
           "",
           formatGuardMemoryStatus(),
         ].join("\n"), "warning");
@@ -1521,84 +1689,9 @@ Risk level: ${spec.riskLevel}`,
       }
     }
 
-    if (!isApprovalText(event.text)) return { action: "continue" };
-
-    const from = state.workflow.phase;
-    if (state.workflow.phase === "code_review" && state.reviewPackageToken?.workflowId !== state.workflow.id) {
-      return {
-        action: "transform",
-        text: [
-          event.text,
-          "",
-          "[Workflow] Review package is required before review_approved.",
-          "Run main self-review, independent reviewer/subagent review, quality gates, then call submit_review_package.",
-        ].join("\n"),
-      };
-    }
-
-    if (state.workflow.phase === "commit" && !(await confirmPushPolicyForPushPhase(ctx))) {
-      return {
-        action: "transform",
-        text: [
-          event.text,
-          "",
-          "[Workflow] Interactive user approval was received, but push policy scan requires confirmation before entering push phase.",
-          "Review the policy scan warning and approve again after resolving or accepting the risk.",
-        ].join("\n"),
-      };
-    }
-
-    const workflowId = state.workflow.id;
-    const result = await advanceWorkflow(state.workflow, "natural_language_approval", { approvedPlanSha256: state.dpaaGuardSatisfiedToken?.planSha256 });
-    if (!result.ok) {
-      return {
-        action: "transform",
-        text: [
-          event.text,
-          "",
-          `[Workflow] Interactive user approval was received, but transition was blocked: ${result.message}`,
-          "Resolve the blocker before asking the user to approve the next phase again.",
-        ].join("\n"),
-      };
-    }
-
-    const transitions = result.transitions ?? [{ from, to: state.workflow.phase }];
-    const transitionPath = transitions.map((item, index) => index === 0 ? `'${item.from}' → '${item.to}'` : `→ '${item.to}'`).join(" ");
-    const notices: string[] = [
-      `[Workflow] Interactive user approval advanced the workflow: ${transitionPath}.`,
-    ];
-    if (transitions.some((item) => item.from === "plan_review" && item.to === "implement")) {
-      const dpaaNlaTx = transitions.find((t) => t.from === "plan_review" && t.to === "implement");
-      state.dpaaGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "natural_language_approval", planSha256: dpaaNlaTx?.planSha256 };
-      persistGuardToken(HARNESS_TOKEN_TYPES.DPAA, state.dpaaGuardSatisfiedToken as unknown as Record<string, unknown>);
-      notices.push("[Workflow] DPAA guard satisfied: transition evidence recorded in current-session memory.");
-    }
-    if (transitions.some((item) => item.from === "code_review" && item.to === "review_approved")) {
-      state.codeQualityGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "automated_review_passed" };
-      state.codeReviewGuardSatisfiedToken = { critical: 0, major: 0, minor: 0, timestamp: Date.now() };
-      persistGuardToken(HARNESS_TOKEN_TYPES.CODE_QUALITY, state.codeQualityGuardSatisfiedToken as unknown as Record<string, unknown>);
-      persistGuardToken(HARNESS_TOKEN_TYPES.CODE_REVIEW, { ...state.codeReviewGuardSatisfiedToken, workflowId });
-      state.recentVerificationCommands.push({ command: "codeQualityGuard", timestamp: Date.now(), phase: "code_review" });
-      if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
-      notices.push("[Workflow] Automated review approved: review/quality evidence recorded in current-session memory.");
-      notices.push("[Workflow] Code quality guard satisfied: quality evidence recorded in current-session memory.");
-    }
-    if (transitions.some((item) => item.from === "commit" && item.to === "push")) {
-      state.pushExecutionGuardSatisfiedToken = { workflowId, issuedAt: Date.now(), reason: "natural_language_approval" };
-      persistGuardToken(HARNESS_TOKEN_TYPES.PUSH_EXECUTION, state.pushExecutionGuardSatisfiedToken as unknown as Record<string, unknown>);
-      notices.push("[Workflow] Push phase approved: commit → push transition evidence recorded in workflow history.");
-    }
-    notices.push("Proceed according to the current phase and its automatic/approval transition policy.");
-    notices.push(formatWorkflowAction(state.workflow));
-
-    return {
-      action: "transform",
-      text: [
-        event.text,
-        "",
-        ...notices,
-      ].join("\n"),
-    };
+    // Natural-language approval detection removed.
+    // Phase transitions are now driven by the workflow_approve tool (explicit UI dialog).
+    // Users can still advance via the /workflow approve slash command.
   });
 
   // ── Gate: tool_call(bash) → git push 차단 ─────────────────────────────────
@@ -1731,7 +1824,7 @@ Risk level: ${spec.riskLevel}`,
             "── 🚦 WORKFLOW PHASE REQUIRED ────────",
             "",
             "  git push is allowed only during the push phase.",
-            "  Complete review/document/commit deliverables, then advance with /workflow approve or interactive natural-language approval.",
+            "  Complete review/document/commit deliverables, then advance with workflow_approve tool or /workflow approve slash command.",
             "",
             `  Current phase: ${state.workflow.phase}`,
             "  Required phase: push",
@@ -1760,7 +1853,7 @@ Risk level: ${spec.riskLevel}`,
           reason: formatGateBlocked({
             gate: "Workflow Transition History",
             why: "The workflow is in push, but commit → push transition history is missing.",
-            next: ["Return to commit phase", "Advance commit → push through /workflow approve or explicit natural-language approval", "Retry git push"],
+            next: ["Return to commit phase", "Advance commit → push through workflow_approve tool or /workflow approve slash command", "Retry git push"],
           }),
         };
       }
@@ -1924,7 +2017,7 @@ Risk level: ${spec.riskLevel}`,
   // System-prompt injection makes these constraints part of the model's rules,
   // instead of presenting them only as tool rejection messages to work around.
   pi.on("turn_start", async () => {
-    state.extensionMutationTurnApproved = false;
+    // extensionMutationApprovedForWorkflowId is workflow-scoped; no per-turn reset needed.
   });
 
   pi.on("before_agent_start", async (event) => {

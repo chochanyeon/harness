@@ -73,7 +73,7 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
     case "plan_review":
       lines.push(
         "- Transition mode: user approval boundary before implement.",
-        "- Required now: present the plan and ask the user to approve or request changes.",
+        "- Required now: present the plan and call workflow_approve tool to get explicit yes/no approval from the user.",
         "- Approval runs DPAA and SBADR; if either fails, fix/clarify before implementation.",
       );
       break;
@@ -127,14 +127,14 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
   }
 
   if (next && isSharedAutoAdvancePhase(workflow.phase)) {
-    lines.push("- Normal advancement command: /workflow approve may trigger this automatic transition chain.");
+    lines.push("- Normal advancement command: workflow_approve tool (shows yes/no dialog) — may trigger this automatic transition chain.");
   } else if (workflow.phase === "code_review") {
     lines.push("- Normal advancement command: submit_review_package after review evidence is ready.");
   } else if (next) {
-    lines.push("- Normal advancement command: /workflow approve only after the required approval/evidence is present.");
+    lines.push("- Normal advancement command: workflow_approve tool (shows yes/no dialog) or /workflow approve slash command — only after required approval/evidence is present.");
   }
 
-  lines.push("- /workflow state <phase> is manual recovery only; never use it for normal advancement.", "[/LLM WORKFLOW ACTION]");
+  lines.push("- workflow_state tool or /workflow state <phase> is manual recovery only (one step at a time); never use for normal advancement.", "[/LLM WORKFLOW ACTION]");
   return lines.join("\n");
 }
 
@@ -182,7 +182,7 @@ export function formatWorkflowPrompt(workflow: WorkflowInstance | null): string 
     `• Workflow branch: ${workflow.branch}`,
     `• Workflow cwd: ${workflow.cwd}`,
     "• Work only on the current phase; follow the LLM workflow action block for automatic vs approval-required transitions.",
-    "• Approval can be /workflow approve or natural language such as '응, 진행해' only at approval boundaries.",
+    "• Use workflow_approve tool (shows yes/no dialog) or /workflow approve slash command at approval boundaries.",
     formatWorkflowAction(workflow),
     "• Phase changes always create workspace checkpoints; during implement/code_review/review_approved/document/commit/push, dirty workspace user requests may prompt for an extra checkpoint.",
     "• /workflow undo, redo, and restore recover tracked/staged/untracked git workspace changes from checkpoints.",

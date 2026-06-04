@@ -22,8 +22,8 @@ import type { EditScope, ProposedEdit } from "./types";
 // are unconditionally blocked regardless of phase or approval.
 
 const PROTECTED_PATTERNS: RegExp[] = [
-  /^(target\/)?\.pi\/extensions(\/|$)/,  // harness extension source
-  /^(target\/)?\.pi\/.*\.(ts|js)$/,      // any harness TS/JS files
+  /^\.pi\/extensions(\/|$)/,   // harness extension source (running harness only; target/.pi/ is the dev target)
+  /^\.pi\/.*\.(ts|js)$/,       // any harness TS/JS files (running harness only)
   /(^|\/)node_modules(\/|$)/,            // npm dependencies
   /(^|\/)\.git(\/|$)/,                   // git internals
   /(^|\/)\.env(\.|$)/,                   // .env, .env.local, etc.

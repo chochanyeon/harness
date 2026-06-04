@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { WorkflowInstance } from "./types";
 import { getWorkflowStateDir, slugify } from "./storage";
-import { isApprovalText } from "./git";
+
 import { validateWorkflowWorkspace } from "./gates";
 import { banner, table } from "./ui";
 
@@ -126,7 +126,6 @@ export function isWorkspaceDirty(root: string | null | undefined): boolean {
 export function shouldOfferInputCheckpoint(workflow: WorkflowInstance, text: string, lastSignature: string | null): boolean {
   const trimmed = text.trim();
   if (!trimmed || trimmed.startsWith("/workflow")) return false;
-  if (isApprovalText(trimmed)) return false;
   if (!["implement", "code_review", "review_approved", "document", "commit", "push"].includes(workflow.phase)) return false;
   const workspace = validateWorkflowWorkspace(workflow);
   if (!workspace.ok) return false;

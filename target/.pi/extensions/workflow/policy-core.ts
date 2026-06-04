@@ -259,9 +259,13 @@ const SOURCE_CODE_GLOBS: readonly string[] = [
 ];
 
 const DEFAULT_PHASE_WRITE_PATH_POLICY: Partial<Record<WorkflowPhase, WritePathPolicy>> = {
-  // During document phase: writing source code is almost certainly a mistake.
-  // Docs, markdown, HTML, config-for-docs, and .ai artifacts are all fine.
-  document: { mode: "deny", patterns: SOURCE_CODE_GLOBS },
+  // During planning phases: writing source code is almost certainly a mistake.
+  // Plan docs, markdown, .ai artifacts, and config files are all fine.
+  interview:   { mode: "deny", patterns: SOURCE_CODE_GLOBS },
+  plan:        { mode: "deny", patterns: SOURCE_CODE_GLOBS },
+  plan_review: { mode: "deny", patterns: SOURCE_CODE_GLOBS },
+  // During document phase: same rule — source edits belong in implement, not document.
+  document:    { mode: "deny", patterns: SOURCE_CODE_GLOBS },
 };
 
 /**

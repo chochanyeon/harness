@@ -79,6 +79,7 @@ import {
   runCatalogCommand,
   formatCatalogCommandResult,
   formatWorkflowBoard,
+  WORKFLOW_PHASES,
   PHASE_ALLOWED_BUILTIN_TOOLS,
   validateEditPath,
   computeBaseFileHashes,
@@ -93,6 +94,7 @@ import {
   type WorkflowInstance,
   type WorkflowPhase,
 } from "./workflow/core";
+import { launchInterviewWizard } from "./workflow/interview-ui";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow.ts
 const HARNESS_ROOT = path.resolve(__dirname, "../..");
@@ -273,14 +275,20 @@ export default function (pi: ExtensionAPI) {
       const quality = state.codeQualityGuardSatisfiedToken?.workflowId === workflowId ? "✅" : (state.gateFailures.get("code-quality") ?? 0) > 0 ? "❌" : "⏳";
       const review  = state.reviewPackageToken?.workflowId === workflowId ? "✅" : "⏳";
       const push    = state.pushExecutionGuardSatisfiedToken?.workflowId === workflowId ? "✅" : "⏳";
-      const phaseStr = theme?.fg("accent", wf.phase) ?? wf.phase;
+      const nextPhase = getNextPhase(wf.phase);
+      const phaseIndex = Math.max(0, WORKFLOW_PHASES.indexOf(wf.phase)) + 1;
+      const phaseTotal = WORKFLOW_PHASES.length;
+      const title = truncateToWidth(wf.title || "workflow", 32);
+      const workflowStr = `${theme?.fg("dim", "Workflow") ?? "Workflow"}: ${theme?.fg("accent", title) ?? title}`;
+      const phaseStr = `${theme?.fg("dim", "phase") ?? "phase"}: ${theme?.fg("accent", wf.phase) ?? wf.phase}${theme?.fg("dim", " → ") ?? " -> "}${theme?.fg("accent", nextPhase ?? "done") ?? (nextPhase ?? "done")}`;
+      const progressStr = `${theme?.fg("dim", "progress") ?? "progress"}: ${phaseIndex}/${phaseTotal}`;
       const gatePairs = [["DPAA", dpaa], ["Quality", quality], ["Review", review]];
       if (wf.phase === "commit" || wf.phase === "push") gatePairs.push(["Push", push]);
       const gatesStr = gatePairs
         .map(([label, icon]) => `${theme?.fg("dim", label) ?? label}:${colorOutcome(theme, icon)}`)
         .join(theme?.fg("dim", " ") ?? " ");
       const sep = theme?.fg("border", " │ ") ?? " | ";
-      (ctx.ui as any).setStatus("workflow-phase", `⚙️ ${phaseStr}${sep}${gatesStr}`);
+      (ctx.ui as any).setStatus("workflow-phase", `⚙️ ${workflowStr}${sep}${phaseStr}${sep}${progressStr}${sep}${gatesStr}`);
     } catch { /* non-fatal */ }
   }
 
@@ -1302,9 +1310,18 @@ Risk level: ${spec.riskLevel}`,
         try { pi.setSessionName(`[wf] ${state.workflow.title}`); } catch { /* non-fatal */ }
         ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
         // Kick off LLM interview automatically when the queue is clear.
-        // If Pi already has pending messages, avoid injecting another prompt.
+        // If Pi already has pending messages, avoid collecting wizard answers that cannot be sent as context.
+        if (typeof ctx.hasPendingMessages === "function" && ctx.hasPendingMessages()) return;
+        let interviewWizardSummary: string | null = null;
+        if (state.workflow.phase === "interview") {
+          try {
+            const wizardResult = await launchInterviewWizard(ctx as any, state.workflow.title);
+            if (wizardResult?.completed) interviewWizardSummary = wizardResult.summaryMarkdown;
+          } catch (error) {
+            ctx.ui.notify(`Interview wizard failed; falling back to chat interview: ${error instanceof Error ? error.message : String(error)}`, "warning");
+          }
+        }
         try {
-          if (typeof ctx.hasPendingMessages === "function" && ctx.hasPendingMessages()) return;
           const wf = state.workflow;
           const marker = workflowContinuationMarker(wf);
           state.workflowContinuationPending = { workflowId: wf.id, phase: wf.phase, marker };
@@ -1313,6 +1330,7 @@ Risk level: ${spec.riskLevel}`,
             "",
             formatWorkflowAction(wf),
             "",
+            ...(interviewWizardSummary ? ["Interview wizard collected these answers:", interviewWizardSummary, "", "Use these answers as the interview context. Ask follow-up questions only for remaining ambiguities.", ""] : []),
             "Rules:",
             "- Begin the interview now: ask targeted questions to clarify requirements and remove ambiguities.",
             "- Do not advance to plan until requirements are sufficiently understood.",

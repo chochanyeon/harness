@@ -1,26 +1,46 @@
-# Task Spec: Workflow Board TUI Visibility Improvement
+# Task Spec: INTERVIEW UI Improvements
 
 ## Problem
-The workflow board widget has three visual issues:
+The current workflow `interview` phase presents several questions in chat and effectively expects the user to answer by manually matching numbered items such as `1. 2. 3. 4. 5.`. This is inconvenient because answer mapping is manual, progress is unclear, and the user cannot easily preview the answers collected so far.
 
-1. **No background color**: The board widget uses the same background as the chat area, making it hard to distinguish.
-2. **Text truncation bug**: The "Deliverable" hint line is hard-sliced at 76 characters (`hint.slice(0, 76)`) — cutting mid-word (e.g., "before pla").
-3. **Missing refresh**: Board is not updated on session start or workflow load, so the widget is often absent or stale.
+Pi extensions provide UI APIs such as `ctx.ui.custom()`, `ctx.ui.setWidget()`, `ctx.ui.setStatus()`, and `ctx.ui.setEditorText()`, so the workflow extension can improve the interview experience with a guided wizard and clearer workflow phase status.
 
 ## Acceptance Criteria
-- [ ] Board widget has a visually distinct background color (theme `customMessageBg`)
-- [ ] Hint/deliverable text is NOT cut mid-word (component wraps or shows full text)
-- [ ] Board refreshes at all of: session_start, workflow start, workflow load, phase transition, gate pass/fail
-- [ ] Existing board content (phase, next, title, gate status, Tools, Cmds) is preserved
-- [ ] No regressions; errors remain non-fatal (silent catch)
+- [ ] When `/workflow start <goal>` starts a workflow in the `interview` phase, the interview wizard opens automatically when UI is available.
+- [ ] The wizard keeps the existing five interview skill questions and improves wording/help text for UI presentation.
+- [ ] The wizard presents one question at a time.
+- [ ] Most questions provide choices, and users can combine selected choices with free-text input.
+- [ ] Optional questions support `unknown/skip`; required questions cannot advance without an answer or explicit valid selection.
+- [ ] Users can answer questions without manually entering numbered responses.
+- [ ] A progress widget above the editor shows the current question, completed questions, and remaining questions.
+- [ ] The footer status shows workflow title, current phase, next phase, and overall phase progress.
+- [ ] Users can open an answer-summary preview during the interview with a key command.
+- [ ] An answer-summary preview is shown automatically after the final question.
+- [ ] The preview shows only the collected answer summary and does not include full generated spec/plan drafts.
+- [ ] If the wizard is cancelled or no UI is available, the existing chat-based interview flow remains usable.
+- [ ] Existing workflow phase ordering and approval gate behavior remain unchanged.
 
 ## Constraints
-- `format.ts` changes must keep `formatWorkflowBoard` return type (`string[]`) intact
-- Use only Pi TUI API (`Box`, `Text` from `@earendil-works/pi-tui`)
-- Only modify extension files: `workflow.ts` and `workflow/format.ts`
+- The deployed harness source is under `target/.pi/`; implementation changes must target `target/.pi/extensions/**`.
+- Editing extension files requires explicit interactive user approval during implementation.
+- Preserve the workflow phase order: `interview → plan → plan_review → implement → code_review → review_approved → document → commit → push → done`.
+- Use Pi extension UI APIs only.
+- Do not change DPAA, code review, or push gate semantics.
+- Non-UI modes must use a non-fatal fallback.
+- Keep `README.md` and `README.en.md` synchronized.
+
+## In Scope
+Automatic interview wizard, choices plus free-text input, optional-question skip, progress widget, footer phase status, answer-summary preview, and README synchronization.
 
 ## Out of Scope
-- Adding/removing board items
-- Status bar (`refreshStatus`) design changes
-- Theme file modifications
-- Modifying files other than the two listed
+Editing full spec/plan documents inside the wizard, a complex form builder, changing workflow phase order, changing gate policies, editing theme files, or external integrations.
+
+## Expected Affected Files
+- `target/.pi/extensions/workflow.ts`
+- `target/.pi/extensions/workflow/ui.ts` or new `target/.pi/extensions/workflow/interview-ui.ts`
+- `target/.pi/extensions/workflow/format.ts` or related formatter
+- `README.md`
+- `README.en.md`
+
+## Risks
+Custom TUI keyboard/IME complexity, duplicate automatic wizard and chat continuation messages, and UI assumptions in non-UI modes.

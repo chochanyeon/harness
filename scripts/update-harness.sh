@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 set -eu
+export PYTHONIOENCODING=utf-8
 
 REPO="https://github.com/cycho21/harness.git"
 DEST="$(pwd)"
@@ -57,6 +58,7 @@ echo "components: $COMPONENTS"
 
 if [ -n "$REF" ]; then git clone --depth 1 --branch "$REF" "$REPO" "$CLONE_DIR"; else git clone --depth 1 "$REPO" "$CLONE_DIR"; fi
 TEMPLATE="$CLONE_DIR/target"
+[ -d "$TEMPLATE" ] || { echo "Template directory not found in cloned repo: target" >&2; exit 1; }
 
 managed_paths() {
   for component in $COMPONENTS; do
@@ -79,6 +81,8 @@ managed_paths_for() {
         .pi/extensions/workflow.ts \
         .pi/extensions/workflow \
         .harness/workflow-policy.json \
+        .ai/interview/feature-interview-protocol.md \
+        .ai/interview/feature-planning-room-protocol.md \
         .pi/dpaa \
         .pi/sbadr \
         .pi/corenlp \
@@ -87,6 +91,7 @@ managed_paths_for() {
         .pi/workflows \
         .pi/skills \
         .pi/personas \
+        .pi/themes \
         .pi/pyproject.toml \
         .pi/schemas/harness-field-log-event.schema.json ;;
     memory)
@@ -99,6 +104,10 @@ managed_paths_for() {
         .claude/settings.json \
         .claude/hooks/workflow-gate.cjs \
         .claude/commands/workflow \
+        .claude/commands/feature-interview.md \
+        .claude/commands/feature-planning-room.md \
+        .ai/interview/feature-interview-protocol.md \
+        .ai/interview/feature-planning-room-protocol.md \
         .harness/.gitignore \
         .harness/README.md \
         .harness/workflow-policy.json \
@@ -114,9 +123,11 @@ managed_paths_for() {
 
 UPDATED=0
 : > "$COUNTS"
+: > "$TEMP_ROOT/managed-paths"
 managed_paths | while IFS= read -r MANAGED; do
     SRC_ROOT="$TEMPLATE/$MANAGED"
     [ -e "$SRC_ROOT" ] || continue
+    echo x >> "$TEMP_ROOT/managed-paths"
     if [ -d "$SRC_ROOT" ]; then
       DEST_ROOT="$DEST/$MANAGED"
       if [ -e "$DEST_ROOT" ]; then
@@ -163,6 +174,8 @@ if [ -f "$LOCAL_SRC" ] && [ ! -e "$LOCAL_TARGET" ]; then
   echo x >> "$COUNTS"
 fi
 
+MANAGED_FOUND=$(wc -l < "$TEMP_ROOT/managed-paths" | tr -d ' ')
+[ "$MANAGED_FOUND" -gt 0 ] || { echo "No managed harness paths were found in template. Check --repo, --ref, and target/ contents." >&2; exit 1; }
 UPDATED=$(wc -l < "$COUNTS" | tr -d ' ')
 echo ""
 echo "Done. updated=$UPDATED"

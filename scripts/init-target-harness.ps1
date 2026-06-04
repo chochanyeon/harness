@@ -37,6 +37,10 @@ param(
 # To skip, omit the workflow component: -Component memory
 
 $ErrorActionPreference = "Stop"
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$env:PYTHONIOENCODING = "utf-8"
 $ExcludeDirs = @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", ".cache")
 $ExcludeFiles = @(".DS_Store")
 
@@ -56,9 +60,9 @@ function Get-RelativePath([string]$Base, [string]$Path) {
 
 function Get-ComponentRoots([string]$ComponentName) {
     switch ($ComponentName) {
-        "workflow" { return @("AGENTS.md", ".pi/.gitignore", ".pi/LOCAL.md", ".pi/WORKFLOW.md", ".pi/GOVERNANCE.md", ".pi/extensions/workflow.ts", ".pi/extensions/workflow", ".harness/workflow-policy.json", ".pi/dpaa", ".pi/workflows", ".pi/skills", ".pi/personas", ".pi/pyproject.toml", ".pi/schemas/harness-field-log-event.schema.json", ".pi/sbadr", ".pi/corenlp", ".pi/setup_corenlp.sh", ".pi/setup_corenlp.ps1") }
+        "workflow" { return @("AGENTS.md", ".pi/.gitignore", ".pi/LOCAL.md", ".pi/WORKFLOW.md", ".pi/GOVERNANCE.md", ".pi/extensions/workflow.ts", ".pi/extensions/workflow", ".harness/workflow-policy.json", ".ai/interview", ".pi/dpaa", ".pi/workflows", ".pi/skills", ".pi/personas", ".pi/themes", ".pi/pyproject.toml", ".pi/schemas/harness-field-log-event.schema.json", ".pi/sbadr", ".pi/corenlp", ".pi/setup_corenlp.sh", ".pi/setup_corenlp.ps1") }
         "memory" { return @("AGENTS.md", ".pi/.gitignore", ".pi/LOCAL.md", ".pi/extensions/memory.ts", ".pi/schemas/harness-memory-entry.schema.json") }
-        "claude-workflow" { return @(".claude/settings.json", ".claude/hooks/workflow-gate.cjs", ".claude/commands/workflow", ".harness/.gitignore", ".harness/README.md", ".harness/workflow-policy.json", ".harness/state.json", ".harness/workflow.json", ".harness/proposal", ".harness/authority", ".ai/interview", ".pi/dpaa", ".pi/sbadr", ".pi/pyproject.toml", ".pi/setup_corenlp.sh", ".pi/setup_corenlp.ps1") }
+        "claude-workflow" { return @(".claude/settings.json", ".claude/hooks/workflow-gate.cjs", ".claude/commands/workflow", ".claude/commands/feature-interview.md", ".claude/commands/feature-planning-room.md", ".harness/.gitignore", ".harness/README.md", ".harness/workflow-policy.json", ".harness/state.json", ".harness/workflow.json", ".harness/proposal", ".harness/authority", ".ai/interview", ".pi/dpaa", ".pi/sbadr", ".pi/pyproject.toml", ".pi/setup_corenlp.sh", ".pi/setup_corenlp.ps1") }
     }
 }
 
@@ -87,7 +91,7 @@ function Test-ComponentSelected([string]$Rel) {
 }
 
 function Test-PreserveOnClean([string]$Rel) {
-    $normalized = $Rel.Replace('\\', '/')
+    $normalized = $Rel.Replace('\', '/')
     foreach ($root in @("AGENTS.md", ".pi/LOCAL.md", ".ai/interview")) {
         if ($normalized -eq $root -or $normalized.StartsWith($root.TrimEnd('/') + "/")) { return $true }
     }

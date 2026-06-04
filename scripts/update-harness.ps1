@@ -15,6 +15,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$env:PYTHONIOENCODING = "utf-8"
 function Get-ManagedPaths {
     $components = $Component
     if ($components -contains "all") { $components = @("workflow", "memory") }
@@ -29,6 +33,8 @@ function Get-ManagedPaths {
                     ".pi/extensions/workflow.ts",
                     ".pi/extensions/workflow",
                     ".harness/workflow-policy.json",
+                    ".ai/interview/feature-interview-protocol.md",
+                    ".ai/interview/feature-planning-room-protocol.md",
                     ".pi/dpaa",
                     ".pi/sbadr",
                     ".pi/corenlp",
@@ -37,6 +43,7 @@ function Get-ManagedPaths {
                     ".pi/workflows",
                     ".pi/skills",
                     ".pi/personas",
+                    ".pi/themes",
                     ".pi/pyproject.toml",
                     ".pi/schemas/harness-field-log-event.schema.json"
                 ) | ForEach-Object { $paths.Add($_) }
@@ -53,6 +60,10 @@ function Get-ManagedPaths {
                     ".claude/settings.json",
                     ".claude/hooks/workflow-gate.cjs",
                     ".claude/commands/workflow",
+                    ".claude/commands/feature-interview.md",
+                    ".claude/commands/feature-planning-room.md",
+                    ".ai/interview/feature-interview-protocol.md",
+                    ".ai/interview/feature-planning-room-protocol.md",
                     ".harness/.gitignore",
                     ".harness/README.md",
                     ".harness/workflow-policy.json",
@@ -111,10 +122,15 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "git clone failed with exit code $LASTEXITCODE" }
 
     $template = Join-Path $cloneDir "target"
+    if (-not (Test-Path -LiteralPath $template -PathType Container)) {
+        throw "Template directory not found in cloned repo: target"
+    }
+    $managedPathCount = 0
     $updated = 0
     foreach ($managed in (Get-ManagedPaths)) {
         $source = Join-Path $template $managed
         if (-not (Test-Path -LiteralPath $source)) { continue }
+        $managedPathCount++
 
         if ((Get-Item -LiteralPath $source).PSIsContainer) {
             $targetRoot = Join-Path $destPath $managed
@@ -156,6 +172,10 @@ try {
             Copy-Item -LiteralPath $localSource -Destination $localTarget
         }
         $updated++
+    }
+
+    if ($managedPathCount -eq 0) {
+        throw "No managed harness paths were found in template. Check -Repo, -Ref, and target/ contents."
     }
 
     Write-Host ""

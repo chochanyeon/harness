@@ -1,5 +1,7 @@
 @echo off
 setlocal
+chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
 
 rem Usage: init-target-harness.cmd [git-remote-url] [dest] [extra powershell args]
 rem Example: init-target-harness.cmd https://github.com/cycho21/harness.git

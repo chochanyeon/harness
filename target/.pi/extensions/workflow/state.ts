@@ -78,11 +78,15 @@ export async function advanceWorkflow(
     transitionWorkflow(workflow, next, reason);
     transitions.push({ from, to: next, message: gate.message, planSha256: gate.planSha256 });
 
-    // Preparation/review phases advance automatically to the next approval boundary.
+    // Preparation/review phases advance automatically from explicitly configured
+    // source phases. Do not continue merely because the destination phase can
+    // later auto-advance; otherwise plan_review approval would skip implement.
     // Risky boundaries (plan_review→implement, commit→push) still require a user
     // approval that starts from that phase. implement→code_review is automated;
     // code_review→review_approved is triggered after a submitted review package passes gates.
-    if (!isSharedAutoAdvancePhase(next)) break;
+    if (from === "plan_review" || from === "commit") break;
+    if (next === "plan_review" || next === "code_review" || next === "commit" || next === "push") break;
+    if (!isSharedAutoAdvancePhase(from) && !isSharedAutoAdvancePhase(next)) break;
   }
 
   saveWorkflow(workflow);

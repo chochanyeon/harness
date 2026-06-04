@@ -220,12 +220,13 @@ def test_workflow_extension_runtime_queues_continuation_after_auto_transition(tm
     )
     data = _run_node_runtime(script, tmp_path)
 
-    assert len(data["sentMessages"]) == 1
-    assert data["sentMessages"][0]["options"] == {"deliverAs": "followUp"}
-    assert "Continue the workflow from the current phase" in data["sentMessages"][0]["text"]
-    assert "Current phase: code_review" in data["sentMessages"][0]["text"]
-    assert "Do not cross a user-approval boundary automatically" in data["sentMessages"][0]["text"]
-    assert "harness-workflow-continuation:" in data["sentMessages"][0]["text"]
+    assert len(data["sentMessages"]) == 2
+    assert "현재 페이즈: interview" in data["sentMessages"][0]["text"]
+    assert data["sentMessages"][1]["options"] == {"deliverAs": "followUp"}
+    assert "Continue the workflow from the current phase" in data["sentMessages"][1]["text"]
+    assert "Current phase: code_review" in data["sentMessages"][1]["text"]
+    assert "Do not cross a user-approval boundary automatically" in data["sentMessages"][1]["text"]
+    assert "harness-workflow-continuation:" in data["sentMessages"][1]["text"]
 
 
 def test_workflow_extension_runtime_cancelled_continuation_prompt_is_consumed(tmp_path):
@@ -263,8 +264,9 @@ def test_workflow_extension_runtime_cancelled_continuation_prompt_is_consumed(tm
     )
     data = _run_node_runtime(script, tmp_path)
 
-    assert len(data["sentMessages"]) == 1
-    assert "Current phase: plan_review" in data["sentMessages"][0]["text"]
+    assert len(data["sentMessages"]) == 2
+    assert "현재 페이즈: interview" in data["sentMessages"][0]["text"]
+    assert "Current phase: plan_review" in data["sentMessages"][1]["text"]
     assert data["staleInputResult"] == {"action": "handled"}
 
 

@@ -38,7 +38,7 @@ export function formatPhaseGuidanceForUser(workflow: WorkflowInstance): string {
   switch (workflow.phase) {
     case "interview":    lines.push("요구사항 정리 중. 완료 후 plan → plan_review 로 자동 진행됩니다."); break;
     case "plan":         lines.push("플랜 작성 중. 완료 후 plan_review 로 자동 진행됩니다."); break;
-    case "plan_review":  lines.push("플랜 검토 대기 중. workflow_approve 로 구현을 시작하세요."); break;
+    case "plan_review":  lines.push("플랜 검토 대기 중입니다. workflow_approve를 실행하면 DPAA/SBADR 검사를 거쳐 구현 승인 여부를 확인합니다."); break;
     case "implement":    lines.push("구현 중. 완료 후 code_review 로 자동 진행됩니다."); break;
     case "code_review":  lines.push("코드 리뷰 중. submit_review_package 완료 후 review_approved 로 진행됩니다."); break;
     case "review_approved": lines.push("리뷰 완료. 문서화 → commit 준비로 자동 진행됩니다."); break;
@@ -243,7 +243,7 @@ export function phaseGuidance(phase: WorkflowPhase): string {
     case "implement":
       return "• Deliverable: implement the approved plan only. After implementation and narrow verification are complete, advance to code_review automatically; do not ask user approval for this transition.";
     case "code_review":
-      return "• Deliverable: run/fix the code review loop. Advancing to review_approved mechanically runs codeQualityGuard (Checkstyle/PMD/tests) after submit_review_package is complete.";    
+      return "• Deliverable: run/fix the code review loop. Advancing to review_approved mechanically runs codeQualityGuard (Checkstyle/PMD/tests) after submit_review_package is complete.";
     case "review_approved":
       return "• Deliverable: ensure review findings are addressed/accepted, then continue automatically toward documentation and commit preparation.";
     case "document":

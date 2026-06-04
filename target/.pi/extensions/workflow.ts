@@ -51,7 +51,6 @@ import {
   hasGitDashC,
   isGitPush,
   getNextPhase,
-  WORKFLOW_PHASES,
   loadPersistedWorkflow,
   resolveWorkspaceCheckpoint,
   restoreWorkspaceCheckpoint,
@@ -70,6 +69,8 @@ import {
   sharedWorkflowPhases,
   isSharedAutoAdvancePhase,
   getPhaseAllowedTools,
+  getPhaseWritePathPolicy,
+  matchesWriteGlob,
   sha256File,
   findPlanForDpaa,
   getCatalogCommand,
@@ -237,6 +238,27 @@ export default function (pi: ExtensionAPI) {
       });
     } catch { /* non-fatal */ }
   }
+  function colorOutcome(theme: any, icon: string): string {
+    if (!theme) return icon;
+    if (icon === "✅") return theme.fg("success", icon);
+    if (icon === "❌") return theme.fg("error", icon);
+    if (icon === "⏳") return theme.fg("warning", icon);
+    return theme.fg("muted", icon);
+  }
+
+  function colorResultLabel(theme: any, kind: "success" | "warning" | "error" | "muted", text: string): string {
+    if (!theme) return text;
+    return theme.fg(kind, text);
+  }
+
+  function resultBox(theme: any, kind: "success" | "warning" | "error" | "pending", content: string): Box {
+    const bgToken = kind === "success" ? "toolSuccessBg" : kind === "error" ? "toolErrorBg" : "toolPendingBg";
+    const bgFn = theme ? (s: string) => theme.bg(bgToken, s) : undefined;
+    const box = new Box(1, 0, bgFn);
+    box.addChild(new Text(content, 0, 0));
+    return box;
+  }
+
   function refreshStatus(ctx: { hasUI: boolean; ui: { setStatus?: (...args: unknown[]) => void; theme?: unknown } }): void {
     if (!ctx.hasUI || typeof (ctx.ui as any).setStatus !== "function") return;
     try {
@@ -252,10 +274,11 @@ export default function (pi: ExtensionAPI) {
       const review  = state.reviewPackageToken?.workflowId === workflowId ? "✅" : "⏳";
       const push    = state.pushExecutionGuardSatisfiedToken?.workflowId === workflowId ? "✅" : "⏳";
       const phaseStr = theme?.fg("accent", wf.phase) ?? wf.phase;
-      // Show push guard only in commit/push phases to keep footer concise
-      const gateItems = ["DPAA", dpaa, "Quality", quality, "Review", review];
-      if (wf.phase === "commit" || wf.phase === "push") gateItems.push("Push", push);
-      const gatesStr = theme?.fg("dim", `${gateItems[0]}:${gateItems[1]} ${gateItems[2]}:${gateItems[3]} ${gateItems[4]}:${gateItems[5]}${gateItems[6] ? ` ${gateItems[6]}:${gateItems[7]}` : ""}`) ?? gateItems.join(" ");
+      const gatePairs = [["DPAA", dpaa], ["Quality", quality], ["Review", review]];
+      if (wf.phase === "commit" || wf.phase === "push") gatePairs.push(["Push", push]);
+      const gatesStr = gatePairs
+        .map(([label, icon]) => `${theme?.fg("dim", label) ?? label}:${colorOutcome(theme, icon)}`)
+        .join(theme?.fg("dim", " ") ?? " ");
       const sep = theme?.fg("border", " │ ") ?? " | ";
       (ctx.ui as any).setStatus("workflow-phase", `⚙️ ${phaseStr}${sep}${gatesStr}`);
     } catch { /* non-fatal */ }
@@ -416,24 +439,30 @@ export default function (pi: ExtensionAPI) {
     if (state.extensionMutationApprovedForWorkflowId === currentWorkflowId) return { ok: true };
     const reason = formatExtensionMutationApprovalReason(toolName, input);
     if (!ctx.hasUI) {
-      return { ok: false, reason: [reason, "", "대화형 사용자 승인이 필요하지만 현재 UI를 사용할 수 없어 extension 수정을 차단했습니다."].join("
-") };
+      return { ok: false, reason: [reason, "", "대화형 사용자 승인이 필요하지만 현재 UI를 사용할 수 없어 extension 수정을 차단했습니다."].join("\n") };
     }
-    const choice = await ctx.ui.select(
-      [reason, "", "위 harness extension 파일 수정을 어떻게 처리하시겠습니까?"].join("
-"),
-      [
-        "예 — 이번만 허용",
-        "예 — 이번 워크플로우에서 계속 허용",
-        "아니오",
-      ],
+    if (typeof ctx.ui.select === "function") {
+      const choice = await ctx.ui.select(
+        [reason, "", "위 harness extension 파일 수정을 어떻게 처리하시겠습니까?"].join("\n"),
+        [
+          "예 — 이번만 허용",
+          "예 — 이번 워크플로우에서 계속 허용",
+          "아니오",
+        ],
+      );
+      if (choice === "예 — 이번 워크플로우에서 계속 허용") {
+        state.extensionMutationApprovedForWorkflowId = currentWorkflowId;
+        return { ok: true };
+      }
+      if (choice === "예 — 이번만 허용") return { ok: true };
+      return { ok: false, reason: "Harness extension modification blocked: user did not approve this tool call." };
+    }
+
+    const approved = await ctx.ui.confirm(
+      "Harness extension 수정 승인 확인",
+      [reason, "", "이번 tool call에서만 harness extension 파일 수정을 허용하시겠습니까?"].join("\n"),
     );
-    if (choice === "예 — 이번 워크플로우에서 계속 허용") {
-      state.extensionMutationApprovedForWorkflowId = currentWorkflowId;
-      return { ok: true };
-    }
-    if (choice === "예 — 이번만 허용") return { ok: true };
-    return { ok: false, reason: "Harness extension modification blocked: user did not approve this tool call." };
+    return approved ? { ok: true } : { ok: false, reason: "Harness extension modification blocked: user did not approve this tool call." };
   }
 
   function pushPolicySignature(policyScan: ReturnType<typeof scanPushPolicy>): string {
@@ -478,8 +507,9 @@ export default function (pi: ExtensionAPI) {
         "",
         "위 위험 변경 사항을 확인했으며 push 단계로 계속 진행하시겠습니까?",
         "",
-        "예: 현재 workspace 상태에 대한 policy approval을 기록하고 push 단계로 진행합니다.",
-        "아니오: push 단계 진입을 중단하고 변경 검토를 요구합니다.",
+        "예: 현재 git push를 계속 진행합니다.",
+        "Interactive user approval advanced the workflow; record policy approval in extension memory only.",
+        "아니오: git push를 차단합니다.",
       ].join("\n"),
     );
     if (!approved) return false;
@@ -582,19 +612,25 @@ export default function (pi: ExtensionAPI) {
     },
 
     renderResult(result, { isPartial }, theme) {
-      if (isPartial) return new Text(theme.fg("warning", "Submitting review package…"), 0, 0);
+      if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "Submitting review package…"));
       const d = result.details as Record<string, unknown>;
       if (d?.ok) {
-        return new Text(
+        return resultBox(
+          theme,
+          "success",
           theme.fg("success", "✅ Review package accepted ") +
           theme.fg("dim", `Cr:${d.critical} Maj:${d.major} min:${d.minor} → ${d.workflowPhase ?? "advanced"}`),
-          0, 0,
         );
       }
       const text = result.content[0]?.type === "text" ? result.content[0].text : "";
       const first = text.split("\n")[0] ?? "Rejected";
-      return new Text(theme.fg("error", `❌ ${first}`), 0, 0);
-    },
+      const isThresholdRejection = /rejected|Return to implement/i.test(first);
+      return resultBox(
+        theme,
+        isThresholdRejection ? "warning" : "error",
+        colorResultLabel(theme, isThresholdRejection ? "warning" : "error", `${isThresholdRejection ? "⚠️" : "❌"} ${first}`),
+      );
+    },},{
   });
 
   // ── Tool: workflow_run_command — guarded structured-argv execution ───────────
@@ -681,7 +717,7 @@ Risk level: ${spec.riskLevel}`,
     renderResult(result, { isPartial }, theme) {
       if (isPartial) {
         const d2 = result.details as Record<string, unknown>;
-        return new Text(theme.fg("warning", `▶ Running: ${String(d2?.commandId ?? "")} …`), 0, 0);
+        return resultBox(theme, "pending", theme.fg("warning", `▶ Running: ${String(d2?.commandId ?? "")} …`));
       }
       const d = result.details as Record<string, unknown>;
       const ms = d?.elapsedMs ? `${d.elapsedMs}ms` : "";
@@ -690,17 +726,21 @@ Risk level: ${spec.riskLevel}`,
       if (d?.ok) {
         const output = (result.content[0]?.type === "text" ? result.content[0].text : "").split("\n").filter(Boolean);
         const lines = output.slice(-3).join(" │ ").slice(0, 80);
-        return new Text(
+        return resultBox(
+          theme,
+          "success",
           theme.fg("success", `✅ ${d.commandId} `) +
           theme.fg("dim", `(${ms})`) + trunc +
           (lines ? `\n  ${theme.fg("dim", lines)}` : ""),
-          0, 0,
         );
       }
-      return new Text(
-        theme.fg("error", `❌ ${d?.commandId ?? "command"} `) +
-        theme.fg("dim", `${exit} (${ms})`) + trunc,
-        0, 0,
+      const reason = String(d?.reason ?? "");
+      const warning = reason === "user-cancelled" || reason === "phase-not-allowed" || reason === "unknown-command";
+      return resultBox(
+        theme,
+        warning ? "warning" : "error",
+        colorResultLabel(theme, warning ? "warning" : "error", `${warning ? "⚠️" : "❌"} ${d?.commandId ?? "command"} `) +
+        theme.fg("dim", `${reason || exit} (${ms})`) + trunc,
       );
     },
   });
@@ -755,7 +795,7 @@ Risk level: ${spec.riskLevel}`,
       if (!result.ok) {
         if (result.gate) { state.gateFailures.set(result.gate, (state.gateFailures.get(result.gate) ?? 0) + 1); }
         refreshBoard(ctx);
-        return { content: [{ type: "text", text: result.message }], details: { ok: false, reason: "gate-blocked" } };
+        return { content: [{ type: "text", text: `Interactive user approval was received, but transition was blocked by a workflow gate.\n\n${result.message}` }], details: { ok: false, reason: "gate-blocked" } };
       }
 
       const transitions = result.transitions ?? [];
@@ -796,6 +836,19 @@ Risk level: ${spec.riskLevel}`,
         0, 0,
       );
     },
+
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "Awaiting workflow approval…"));
+      const d = result.details as Record<string, unknown>;
+      if (d?.ok) {
+        const transitions = Array.isArray(d.transitions) ? d.transitions.join(" → ") : "advanced";
+        return resultBox(theme, "success", theme.fg("success", "✅ Workflow advanced ") + theme.fg("dim", transitions));
+      }
+      const reason = String(d?.reason ?? "blocked");
+      const warning = reason === "user-declined" || reason === "review-package-required" || reason === "policy-declined" || reason === "gate-blocked";
+      const text = result.content[0]?.type === "text" ? result.content[0].text.split("\n")[0] : reason;
+      return resultBox(theme, warning ? "warning" : "error", colorResultLabel(theme, warning ? "warning" : "error", `${warning ? "⚠️" : "❌"} ${text}`));
+    },},{
   });
 
   // ── Tool: workflow_state — manual phase recovery (one step at a time) ────────────────
@@ -822,12 +875,13 @@ Risk level: ${spec.riskLevel}`,
       }
 
       const currentPhase = state.workflow.phase;
-      const idx = WORKFLOW_PHASES.indexOf(currentPhase);
+      const phases = sharedWorkflowPhases();
+      const idx = phases.indexOf(currentPhase);
       const targetIdx = params.direction === "next" ? idx + 1 : idx - 1;
-      if (targetIdx < 0 || targetIdx >= WORKFLOW_PHASES.length) {
+      if (targetIdx < 0 || targetIdx >= phases.length) {
         return { content: [{ type: "text", text: `Cannot move ${params.direction} from '${currentPhase}'.` }], details: { ok: false } };
       }
-      const targetPhase = WORKFLOW_PHASES[targetIdx];
+      const targetPhase = phases[targetIdx];
 
       const confirmed = await ctx.ui.confirm(
         `수동 복구: '${currentPhase}' → '${targetPhase}'
@@ -857,6 +911,18 @@ Risk level: ${spec.riskLevel}`,
         theme.fg("dim", `  ${args.direction} (${String(args.reason ?? "").slice(0, 50)})`),
         0, 0,
       );
+    },
+
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "Awaiting manual recovery confirmation…"));
+      const d = result.details as Record<string, unknown>;
+      if (d?.ok) {
+        return resultBox(theme, "success", theme.fg("success", "✅ Manual recovery applied ") + theme.fg("dim", `${d.from ?? "?"} → ${d.to ?? "?"}`));
+      }
+      const reason = String(d?.reason ?? "manual recovery blocked");
+      const warning = reason === "user-declined";
+      const text = result.content[0]?.type === "text" ? result.content[0].text.split("\n")[0] : reason;
+      return resultBox(theme, warning ? "warning" : "error", colorResultLabel(theme, warning ? "warning" : "error", `${warning ? "⚠️" : "❌"} ${text}`));
     },
   });
 
@@ -972,19 +1038,21 @@ Risk level: ${spec.riskLevel}`,
     },
 
     renderResult(result, { isPartial }, theme) {
-      if (isPartial) return new Text(theme.fg("warning", "Awaiting user approval…"), 0, 0);
+      if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "Awaiting user approval…"));
       const d = result.details as Record<string, unknown>;
       if (d?.ok) {
-        return new Text(
+        return resultBox(
+          theme,
+          "success",
           theme.fg("success", `✅ Edits approved (${d.fileCount} file(s)) `) +
           theme.fg("dim", `→ call workflow_apply_approved_edit with scopeId`),
-          0, 0,
         );
       }
       const reason = String(d?.reason ?? "rejected");
+      const warning = reason === "user-rejected" || reason === "phase-not-allowed";
       const label = reason === "user-rejected" ? "Rejected by user" : reason === "path-validation-failed" ? "Path validation failed" : reason;
-      return new Text(theme.fg("error", `❌ ${label}`), 0, 0);
-    },
+      return resultBox(theme, warning ? "warning" : "error", colorResultLabel(theme, warning ? "warning" : "error", `${warning ? "⚠️" : "❌"} ${label}`));
+    },},{
   });
 
   // ── Tool: workflow_apply_approved_edit — apply an approved EditScope ──────
@@ -1080,21 +1148,23 @@ Risk level: ${spec.riskLevel}`,
     },
 
     renderResult(result, { isPartial }, theme) {
-      if (isPartial) return new Text(theme.fg("warning", "Applying edits…"), 0, 0);
+      if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "Applying edits…"));
       const d = result.details as Record<string, unknown>;
       if (d?.ok) {
         const applied = Array.isArray(d.applied) ? d.applied as string[] : [];
         const preview = applied.slice(0, 3).map((a) => a.split(": ")[1] ?? a).join(", ");
         const extra = applied.length > 3 ? ` +${applied.length - 3}` : "";
-        return new Text(
+        return resultBox(
+          theme,
+          "success",
           theme.fg("success", `✅ Applied ${applied.length} edit(s): `) +
           theme.fg("dim", `${preview}${extra}`),
-          0, 0,
         );
       }
       const reason = String(d?.reason ?? "failed");
+      const warning = reason === "scope-not-found" || reason === "stale-hashes";
       const label = reason === "stale-hashes" ? "Files changed since approval" : reason === "path-revalidation-failed" ? "Path validation failed" : "Apply failed";
-      return new Text(theme.fg("error", `❌ ${label}`), 0, 0);
+      return resultBox(theme, warning ? "warning" : "error", colorResultLabel(theme, warning ? "warning" : "error", `${warning ? "⚠️" : "❌"} ${label}`));
     },
   });
 
@@ -1231,8 +1301,10 @@ Risk level: ${spec.riskLevel}`,
         // Gap fix: name the session so /resume shows the workflow title
         try { pi.setSessionName(`[wf] ${state.workflow.title}`); } catch { /* non-fatal */ }
         ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
-        // Kick off LLM interview automatically
+        // Kick off LLM interview automatically when the queue is clear.
+        // If Pi already has pending messages, avoid injecting another prompt.
         try {
+          if (typeof ctx.hasPendingMessages === "function" && ctx.hasPendingMessages()) return;
           const wf = state.workflow;
           const marker = workflowContinuationMarker(wf);
           state.workflowContinuationPending = { workflowId: wf.id, phase: wf.phase, marker };
@@ -1297,7 +1369,7 @@ Risk level: ${spec.riskLevel}`,
         if (!result.ok) {
           if (result.gate) { state.gateFailures.set(result.gate, (state.gateFailures.get(result.gate) ?? 0) + 1); }
           refreshBoard(ctx);
-          ctx.ui.notify([result.message, "", formatWorkflowAction(state.workflow)].join("\n"), "warning");
+          ctx.ui.notify(["Interactive user approval was received, but transition was blocked by a workflow gate.", "", result.message, "", formatWorkflowAction(state.workflow)].join("\n"), "warning");
           return;
         }
         const transitions = result.transitions ?? [];
@@ -1305,6 +1377,7 @@ Risk level: ${spec.riskLevel}`,
           if (t.from === "plan_review" && t.to === "implement") state.gateFailures.delete("dpaa");
           if (t.from === "code_review" && t.to === "review_approved") state.gateFailures.delete("code-quality");
         });
+        const transitionPath = transitions.map((t) => `${t.from} → ${t.to}`).join(", ");
         const notices: string[] = [result.message];
         if (workflowId && transitions.some((item) => item.from === "plan_review" && item.to === "implement")) {
           const dpaaTx = transitions.find((t) => t.from === "plan_review" && t.to === "implement");
@@ -1327,6 +1400,7 @@ Risk level: ${spec.riskLevel}`,
           persistGuardToken(HARNESS_TOKEN_TYPES.PUSH_EXECUTION, state.pushExecutionGuardSatisfiedToken as unknown as Record<string, unknown>);
           notices.push("Push phase approved: commit → push transition evidence recorded in workflow history.");
         }
+        if (transitionPath) notices.push(`Transition path: ${transitionPath}`);
         notices.push("", formatWorkflowAction(state.workflow));
         applyPhaseToolPolicy(state.workflow.phase);
         refreshBoard(ctx);
@@ -1551,13 +1625,13 @@ Risk level: ${spec.riskLevel}`,
 
       if (command === "status") {
         if (state.workflow) {
-          ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatGuardMemoryStatus()].join("\n"), "info");
+          ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatGuardMemoryStatus(), "", formatWorkflowAction(state.workflow)].join("\n"), "info");
           return;
         }
 
         const persisted = loadPersistedWorkflow();
         if (!persisted) {
-          ctx.ui.notify([formatWorkflowStatus(null), "", formatGuardMemoryStatus()].join("\n"), "info");
+          ctx.ui.notify([formatWorkflowStatus(null), "", formatGuardMemoryStatus(), "", formatWorkflowAction(null)].join("\n"), "info");
           return;
         }
 
@@ -1565,6 +1639,8 @@ Risk level: ${spec.riskLevel}`,
           formatWorkflowStatus(null),
           "",
           formatGuardMemoryStatus(),
+          "",
+          formatWorkflowAction(null),
           "",
           "참고: 이전 workflow 기록이 파일에 남아 있지만 자동 복구하지 않습니다.",
           "파일 기록은 표시/감사용이며 gate 통과 권한으로 신뢰하지 않습니다.",
@@ -1648,11 +1724,13 @@ Risk level: ${spec.riskLevel}`,
           "주의: /workflow state <phase> 또는 workflow_state 툴은 수동 복구 전용입니다. 정상 진행에는 workflow_approve 툴 또는 submit_review_package를 사용하세요.",
           "",
           formatGuardMemoryStatus(),
+          "",
+          formatWorkflowAction(state.workflow),
         ].join("\n"), "warning");
         return;
       }
 
-      ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatGuardMemoryStatus()].join("\n"), "info");
+      ctx.ui.notify([formatWorkflowStatus(state.workflow), "", formatGuardMemoryStatus(), "", formatWorkflowAction(state.workflow)].join("\n"), "info");
     },
   });
 

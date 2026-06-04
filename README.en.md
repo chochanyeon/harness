@@ -4,7 +4,7 @@
 
 Pi workflow harness source repository.
 
-Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. The source repo includes a project-local dogfooding theme at `.pi/themes/workflow-console.json`; select `workflow-console` in Pi's `/settings` for a muted high-visibility TUI. In an initialized project, `AGENTS.md`, `.pi/`, and optional Claude Code workflow-gate files under `.claude/` and `.harness/` are placed at the project root. Claude Code and Pi share workflow policy declarations through `.harness/workflow-policy.json` while keeping runtime-specific adapters separate.
+Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. The template includes a muted high-visibility theme at `target/.pi/themes/workflow-console.json`; in an initialized project it is installed as `.pi/themes/workflow-console.json` and can be selected as `workflow-console` in Pi's `/settings`. In an initialized project, `AGENTS.md`, `.pi/`, and optional Claude Code workflow-gate files under `.claude/` and `.harness/` are placed at the project root. Claude Code and Pi share workflow policy declarations through `.harness/workflow-policy.json` while keeping runtime-specific adapters separate.
 
 ## Initialize in another project
 
@@ -34,6 +34,12 @@ After initialization, self-check the install:
 
 ```text
 /workflow doctor
+```
+
+The source repo test suite includes a fake LLM action-loop test that drives the real Pi workflow extension commands, tools, and events through a full workflow and guard recovery path.
+
+```bash
+python -m pytest tests/test_workflow_fake_llm_session.py -q
 ```
 
 DPAA dependencies are installed automatically into `.pi/.venv/` the first time the DPAA gate runs. The generated venv is ignored by `.pi/.gitignore`.
@@ -84,6 +90,8 @@ Current MVP commands:
 ```
 
 Planned later: candidate extraction, approve/reject workflow, merge/supersede, export, and AGENTS.md promotion. These are intentionally not automatic in the MVP.
+
+Default `--component all` means Pi `workflow + memory`. Claude Code workflow gates are intentionally separate; install them explicitly with `--component claude-workflow`.
 
 Install only one component when needed:
 
@@ -171,6 +179,10 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update
 ```
 
 Updates overwrite upstream-managed harness runtime files only. Project-owned files such as `AGENTS.md`, `.pi/config/`, and `.pi/local/` are preserved.
+
+Caution: upstream-managed directories such as `.pi/skills`, `.pi/personas`, `.pi/workflows`, `.pi/themes`, and `.pi/extensions/workflow` may be replaced as whole directories during update. Put project-specific customizations under `.pi/local/` or `.pi/config/`.
+
+Install/update entrypoints force UTF-8 for Windows PowerShell/cmd and Python subprocesses. They do not rely on the legacy Windows local code page for output/input.
 
 Update only one component when needed:
 

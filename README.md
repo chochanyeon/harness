@@ -6,7 +6,7 @@ Pi 기반 LLM 개발 세션에 **workflow 거버넌스**, **기계적 guard**, *
 
 이 저장소는 하네스 개발용 source repo입니다. 실제 프로젝트에 설치되는 런타임 템플릿은 `target/` 아래에 격리되어 있습니다. 따라서 이 저장소 루트에서 작업해도 하네스 extension/skill/context가 자동 로드되지 않습니다.
 
-개발 repo 자체에서 Pi를 dogfooding할 때의 TUI 시인성을 위해 project-local 테마 `.pi/themes/workflow-console.json`을 제공합니다. Pi의 `/settings`에서 `workflow-console`을 선택해 사용할 수 있습니다.
+TUI 시인성 개선을 위해 배포 템플릿에 project-local 테마 `target/.pi/themes/workflow-console.json`을 포함합니다. 설치된 프로젝트에서는 `.pi/themes/workflow-console.json`으로 배치되며, Pi의 `/settings`에서 `workflow-console`을 선택해 사용할 수 있습니다.
 
 설치된 프로젝트의 루트에는 기본적으로 다음만 노출됩니다.
 
@@ -130,14 +130,20 @@ pi
 /workflow doctor
 ```
 
-기본 설치는 전체 설치입니다.
+개발 repo의 테스트에는 fake LLM action loop가 실제 Pi workflow extension command/tool/event를 호출해 전체 workflow와 guard 복구 흐름을 검증하는 E2E 성격의 테스트가 포함됩니다.
+
+```bash
+python -m pytest tests/test_workflow_fake_llm_session.py -q
+```
+
+기본 설치는 Pi용 전체 설치입니다.
 
 ```text
 --component all
 = workflow + memory
 ```
 
-Claude Code용 workflow gate는 명시적으로 `--component claude-workflow`를 지정해 설치합니다.
+`all`은 Pi workflow와 memory를 뜻합니다. Claude Code용 workflow gate는 명시적으로 `--component claude-workflow`를 지정해 설치합니다.
 
 ---
 
@@ -227,6 +233,10 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update
 ```
 
 업데이트는 upstream-managed 파일만 덮어씁니다. 프로젝트 소유 파일은 보존됩니다.
+
+주의: `.pi/skills`, `.pi/personas`, `.pi/workflows`, `.pi/themes`, `.pi/extensions/workflow` 같은 upstream-managed 디렉터리는 업데이트 시 통째로 갱신될 수 있습니다. 프로젝트별 사용자 정의는 `.pi/local/` 또는 `.pi/config/` 아래에 두세요.
+
+설치/업데이트 entrypoint는 Windows PowerShell/cmd와 Python 하위 프로세스가 UTF-8을 사용하도록 강제합니다. 레거시 Windows 로컬 코드페이지 기반 출력/입력에 의존하지 않습니다.
 
 ---
 

@@ -3,7 +3,7 @@ Tests for MVP 5: TUI UX improvements.
 
 Covers:
 - Text + truncateToWidth imports from @earendil-works/pi-tui
-- renderCall/renderResult on all 4 guarded tools
+- renderCall/renderResult on guarded workflow tools with outcome colors
 - refreshStatus() footer function defined
 - refreshBoard() uses theme coloring
 - /workflow tools subcommand
@@ -18,7 +18,7 @@ import json
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 FORMAT = ROOT / "target" / ".pi" / "extensions" / "workflow" / "format.ts"
-THEME = ROOT / ".pi" / "themes" / "workflow-console.json"
+THEME = ROOT / "target" / ".pi" / "themes" / "workflow-console.json"
 PI_DARK_THEME = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@earendil-works" / "pi-coding-agent" / "dist" / "modes" / "interactive" / "theme" / "dark.json"
 
 
@@ -81,22 +81,41 @@ def test_workflow_apply_approved_edit_has_render_result():
     assert "renderResult" in _tool_block(src, "workflow_apply_approved_edit")
 
 
+def test_workflow_approve_has_colored_render_result():
+    src = WORKFLOW.read_text(encoding="utf-8")
+    block = _tool_block(src, "workflow_approve")
+    assert "renderResult" in block
+    assert "Workflow advanced" in block
+    assert "gate-blocked" in block
+    assert "theme.fg(\"success\"" in block
+    assert "colorResultLabel(theme, warning ? \"warning\" : \"error\"" in block
+
+
+def test_workflow_state_has_colored_render_result():
+    src = WORKFLOW.read_text(encoding="utf-8")
+    block = _tool_block(src, "workflow_state")
+    assert "renderResult" in block
+    assert "Manual recovery applied" in block
+    assert "Awaiting manual recovery confirmation" in block
+    assert "theme.fg(\"success\"" in block
+
+
 def test_render_functions_use_theme_fg():
     """All renderCall/renderResult implementations must use theme.fg for coloring."""
     src = WORKFLOW.read_text(encoding="utf-8")
-    assert src.count("theme.fg(") >= 8
+    assert src.count("theme.fg(") >= 12
 
 
 def test_render_functions_return_text_component():
     """Tool renders must return new Text(...)."""
     src = WORKFLOW.read_text(encoding="utf-8")
-    assert src.count("new Text(") >= 4
+    assert src.count("new Text(") >= 8
 
 
 def test_render_result_handles_is_partial():
     """All renderResult must handle isPartial streaming state."""
     src = WORKFLOW.read_text(encoding="utf-8")
-    assert src.count("isPartial") >= 4
+    assert src.count("isPartial") >= 6
 
 
 # ── Footer status ─────────────────────────────────────────────────────────────
@@ -115,10 +134,32 @@ def test_refresh_status_uses_set_status():
 def test_refresh_status_shows_gate_indicators():
     src = WORKFLOW.read_text(encoding="utf-8")
     idx = src.index("function refreshStatus")
-    block = src[idx:idx + 1500]
+    block = src[idx:idx + 1800]
     assert "DPAA" in block or "dpaa" in block
     assert "Quality" in block or "quality" in block
     assert "Review" in block or "review" in block
+    assert "colorOutcome(theme, icon)" in block
+
+
+def test_outcome_colors_map_success_failure_and_pending():
+    src = WORKFLOW.read_text(encoding="utf-8")
+    idx = src.index("function colorOutcome")
+    block = src[idx:idx + 500]
+    assert 'icon === "✅"' in block and 'theme.fg("success"' in block
+    assert 'icon === "❌"' in block and 'theme.fg("error"' in block
+    assert 'icon === "⏳"' in block and 'theme.fg("warning"' in block
+
+
+def test_result_boxes_use_status_background_tokens():
+    src = WORKFLOW.read_text(encoding="utf-8")
+    idx = src.index("function resultBox")
+    block = src[idx:idx + 700]
+    assert "new Box(1, 0, bgFn)" in block
+    assert "theme.bg(bgToken" in block
+    assert '"toolSuccessBg"' in block
+    assert '"toolErrorBg"' in block
+    assert '"toolPendingBg"' in block
+    assert src.count("return resultBox(theme") >= 8
 
 
 # ── Board widget theme ────────────────────────────────────────────────────────

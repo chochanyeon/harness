@@ -12,10 +12,17 @@ template and never overwrites files that already exist in the destination.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
 from typing import Iterable
+
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 COMPONENT_PATHS = {
     "workflow": {
@@ -27,10 +34,16 @@ COMPONENT_PATHS = {
         ".pi/extensions/workflow.ts",
         ".pi/extensions/workflow",
         ".harness/workflow-policy.json",
+        ".ai/interview",
         ".pi/dpaa",
         ".pi/workflows",
         ".pi/skills",
         ".pi/personas",
+        ".pi/themes",
+        ".pi/sbadr",
+        ".pi/corenlp",
+        ".pi/setup_corenlp.sh",
+        ".pi/setup_corenlp.ps1",
         ".pi/pyproject.toml",
         ".pi/schemas/harness-field-log-event.schema.json",
     },
@@ -45,6 +58,8 @@ COMPONENT_PATHS = {
         ".claude/settings.json",
         ".claude/hooks/workflow-gate.cjs",
         ".claude/commands/workflow",
+        ".claude/commands/feature-interview.md",
+        ".claude/commands/feature-planning-room.md",
         ".harness/.gitignore",
         ".harness/README.md",
         ".harness/workflow-policy.json",

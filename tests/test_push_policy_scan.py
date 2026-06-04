@@ -68,7 +68,7 @@ def test_push_policy_scan_is_wired_for_git_push_gate():
     assert "예: 현재 git push를 계속 진행합니다." in workflow
     assert "아니오: git push를 차단합니다." in workflow
     assert "gateFailures" in workflow
-    assert "GATE_SKIP_THRESHOLD" in workflow
+    assert "state.gateFailures.set" in workflow
     assert "/workflow skip <gate> <사유>" in workflow
 
 

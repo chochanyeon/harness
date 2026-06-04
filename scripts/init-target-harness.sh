@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 set -eu
+export PYTHONIOENCODING=utf-8
 
 REPO="https://github.com/cycho21/harness.git"
 DEST="$(pwd)"
@@ -99,11 +100,11 @@ component_roots() {
   component=$1
   case "$component" in
     workflow)
-      printf '%s\n' AGENTS.md .pi/.gitignore .pi/LOCAL.md .pi/WORKFLOW.md .pi/GOVERNANCE.md .pi/extensions/workflow.ts .pi/extensions/workflow .harness/workflow-policy.json .pi/dpaa .pi/workflows .pi/skills .pi/personas .pi/pyproject.toml .pi/schemas/harness-field-log-event.schema.json .pi/sbadr .pi/corenlp .pi/setup_corenlp.sh .pi/setup_corenlp.ps1 ;;
+      printf '%s\n' AGENTS.md .pi/.gitignore .pi/LOCAL.md .pi/WORKFLOW.md .pi/GOVERNANCE.md .pi/extensions/workflow.ts .pi/extensions/workflow .harness/workflow-policy.json .ai/interview .pi/dpaa .pi/workflows .pi/skills .pi/personas .pi/themes .pi/pyproject.toml .pi/schemas/harness-field-log-event.schema.json .pi/sbadr .pi/corenlp .pi/setup_corenlp.sh .pi/setup_corenlp.ps1 ;;
     memory)
       printf '%s\n' AGENTS.md .pi/.gitignore .pi/LOCAL.md .pi/extensions/memory.ts .pi/schemas/harness-memory-entry.schema.json ;;
     claude-workflow)
-      printf '%s\n' .claude/settings.json .claude/hooks/workflow-gate.cjs .claude/commands/workflow .harness/.gitignore .harness/README.md .harness/workflow-policy.json .harness/state.json .harness/workflow.json .harness/proposal .harness/authority .ai/interview .pi/dpaa .pi/sbadr .pi/pyproject.toml .pi/setup_corenlp.sh .pi/setup_corenlp.ps1 ;;
+      printf '%s\n' .claude/settings.json .claude/hooks/workflow-gate.cjs .claude/commands/workflow .claude/commands/feature-interview.md .claude/commands/feature-planning-room.md .harness/.gitignore .harness/README.md .harness/workflow-policy.json .harness/state.json .harness/workflow.json .harness/proposal .harness/authority .ai/interview .pi/dpaa .pi/sbadr .pi/pyproject.toml .pi/setup_corenlp.sh .pi/setup_corenlp.ps1 ;;
     *) echo "Unknown component: $component" >&2; exit 2 ;;
   esac
 }
@@ -125,7 +126,7 @@ component_selected_with() {
   case "$component" in
     workflow)
       case "$rel" in
-        AGENTS.md|.pi/.gitignore|.pi/LOCAL.md|.pi/WORKFLOW.md|.pi/GOVERNANCE.md|.pi/extensions/workflow.ts|.pi/extensions/workflow/*|.harness/workflow-policy.json|.pi/dpaa/*|.pi/workflows/*|.pi/skills/*|.pi/personas/*|.pi/pyproject.toml|.pi/schemas/harness-field-log-event.schema.json|.pi/sbadr/*|.pi/corenlp/*|.pi/setup_corenlp.sh|.pi/setup_corenlp.ps1) return 0 ;;
+        AGENTS.md|.pi/.gitignore|.pi/LOCAL.md|.pi/WORKFLOW.md|.pi/GOVERNANCE.md|.pi/extensions/workflow.ts|.pi/extensions/workflow/*|.harness/workflow-policy.json|.ai/interview/*|.pi/dpaa/*|.pi/workflows/*|.pi/skills/*|.pi/personas/*|.pi/themes/*|.pi/pyproject.toml|.pi/schemas/harness-field-log-event.schema.json|.pi/sbadr/*|.pi/corenlp/*|.pi/setup_corenlp.sh|.pi/setup_corenlp.ps1) return 0 ;;
       esac ;;
     memory)
       case "$rel" in
@@ -133,7 +134,7 @@ component_selected_with() {
       esac ;;
     claude-workflow)
       case "$rel" in
-        .claude/settings.json|.claude/hooks/workflow-gate.cjs|.claude/commands/workflow/*|.harness/.gitignore|.harness/README.md|.harness/workflow-policy.json|.harness/state.json|.harness/workflow.json|.harness/proposal/*|.harness/authority/*|.ai/interview/*|.pi/dpaa/*|.pi/sbadr/*|.pi/pyproject.toml|.pi/setup_corenlp.sh|.pi/setup_corenlp.ps1) return 0 ;;
+        .claude/settings.json|.claude/hooks/workflow-gate.cjs|.claude/commands/workflow/*|.claude/commands/feature-interview.md|.claude/commands/feature-planning-room.md|.harness/.gitignore|.harness/README.md|.harness/workflow-policy.json|.harness/state.json|.harness/workflow.json|.harness/proposal/*|.harness/authority/*|.ai/interview/*|.pi/dpaa/*|.pi/sbadr/*|.pi/pyproject.toml|.pi/setup_corenlp.sh|.pi/setup_corenlp.ps1) return 0 ;;
       esac ;;
     *) echo "Unknown component: $component" >&2; exit 2 ;;
   esac

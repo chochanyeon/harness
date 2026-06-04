@@ -295,9 +295,9 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
       message: [
         formatGateBlocked({
           gate: "Code Quality",
-          why: `Code quality guard failed before code_review → review_approved. Command: ${command}. Exit: ${err.status ?? "unknown"}`,
+          why: `Mechanical code quality guard failed before code_review → review_approved. codeQualityGuard command: ${command}. Exit: ${err.status ?? "unknown"}`,
           next: [
-            "Fix the quality failures reported by the guard",
+            "Fix the Checkstyle/PMD/test failures reported by the guard",
             "Re-run /workflow approve after fixes",
             `Detected build system: ${buildSystem.type}. If no quality gate is configured, set HARNESS_CODE_QUALITY_GUARD_CMD`,
           ],

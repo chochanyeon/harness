@@ -153,9 +153,21 @@ export default function (pi: ExtensionAPI) {
   /** LLM에게 교정 지시를 주입합니다. 사용자에게 묻지 않고 LLM이 스스로 수정하도록 유도합니다.
    * @param deliverAs "followUp"(기본): 현재 응답 완료 후 전달. "steer": 현재 tool call 직후 즉시 개입. */
   async function steerLlm(message: string, deliverAs: "followUp" | "steer" = "followUp"): Promise<void> {
-    try {
-      await (pi as any).sendUserMessage(message, { deliverAs });
-    } catch { /* non-fatal */ }
+    try { await (pi as any).sendUserMessage(message, { deliverAs }); } catch { /* non-fatal */ }
+  }
+
+  /**
+   * implement 페이즈에서 TDD 대상인 production 클래스 경로인지 판단합니다.
+   * 제외 suffix(Entity, Dto 등) 및 제외 디렉토리(dto/, entity/ 등)는 false.
+   */
+  function isProductionClassPath(filePath: string, _gitRoot: string): boolean {
+    const normalized = filePath.replace(/\\/g, "/");
+    if (!/\/src\/main\/java\/.+\.java$/.test(normalized)) return false;
+    if (/\/dto\/|\/entity\/|\/model\/|\/repository\//.test(normalized)) return false;
+    const className = path.basename(filePath, ".java");
+    if (/^Q[A-Z]|^Migration/.test(className)) return false;
+    const EXCLUDE = /(Entity|Dto|VO|Vo|Request|Response|Payload|Config|Configuration|Application|Properties|Settings|Exception|Error|Enum|Record|Constants|Constant|Event|Message|Projection|Form)$/i;
+    return !EXCLUDE.test(className);
   }
 
   function saveGuardTokensToState(workflow: import("./workflow/types").WorkflowInstance): void {
@@ -2030,6 +2042,28 @@ Risk level: ${spec.riskLevel}`,
   pi.on("tool_call", async (event, ctx) => {
     const extensionApproval = await ensureExtensionMutationApproved(event.toolName, event.input, ctx);
     if (!extensionApproval.ok) return { block: true, reason: extensionApproval.reason };
+
+    // TDD gate: implement 페이즈에서 생성 확인 — test-first 시행
+    if (state.workflow?.phase === "implement" && event.toolName === "write") {
+      const filePath = String((event.input as any).path ?? "");
+      const gitRoot = state.workflow.gitRoot ?? getGitRoot();
+      if (gitRoot && isProductionClassPath(filePath, gitRoot) && !fs.existsSync(path.resolve(filePath))) {
+        const className = path.basename(filePath, ".java");
+        const testPath = filePath
+          .replace(/[\\/]src[\\/]main[\\/]java[\\/]/, "/src/test/java/".replace(/\//g, path.sep))
+          .replace(/\.java$/, "Test.java");
+        if (!fs.existsSync(path.resolve(testPath))) {
+          return {
+            block: true,
+            reason: [
+              `🧪 TDD: ${className}Test.java를 먼저 작성하세요.`,
+              `예상 테스트 경로: ${testPath}`,
+              `테스트 파일을 작성한 후 ${className}.java를 다시 작성하세요.`,
+            ].join("\n"),
+          };
+        }
+      }
+    }
 
     // Phase tool policy backstop
     if (state.workflow && (event.toolName === "write" || event.toolName === "edit")) {

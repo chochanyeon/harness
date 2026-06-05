@@ -220,7 +220,7 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 
 ### Windows PowerShell
 
-```powershell
+```text
 $p=Join-Path $env:TEMP 'update-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p
 ```
 

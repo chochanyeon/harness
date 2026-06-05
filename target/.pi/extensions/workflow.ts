@@ -149,6 +149,13 @@ export default function (pi: ExtensionAPI) {
     if (state.workflow) saveGuardTokensToState(state.workflow);
   }
 
+  /** LLM에게 교정 지시를 주입합니다. 사용자에게 묻지 않고 LLM이 스스로 수정하도록 유도합니다. */
+  async function steerLlm(message: string): Promise<void> {
+    try {
+      await (pi as any).sendUserMessage(message, { deliverAs: "followUp" });
+    } catch { /* non-fatal */ }
+  }
+
   function saveGuardTokensToState(workflow: import("./workflow/types").WorkflowInstance): void {
     try {
       workflow.guardTokens = {
@@ -857,9 +864,43 @@ Risk level: ${spec.riskLevel}`,
       }
 
       const workflowId = state.workflow.id;
+
+      // implement → code_review: quality gate 자동 검증
+      if (state.workflow.phase === "implement") {
+        const gitRoot = state.workflow.gitRoot ?? getGitRoot();
+        const qualitySpec = getCatalogCommand("project-quality");
+        if (qualitySpec && gitRoot) {
+          const qualityResult = runCatalogCommand(qualitySpec, gitRoot);
+          if (!qualityResult.ok) {
+            const violations = qualityResult.output.split("\n").slice(-60).join("\n").trim();
+            await steerLlm(
+              `🔧 code_review 진입 전 품질 검사 실패 — 수정 후 workflow_approve를 다시 호출하세요.\n\n${violations}`,
+            );
+            return {
+              content: [{ type: "text", text: "품질 검사 실패. 위반을 수정한 후 다시 시도하세요." }],
+              details: { ok: false, reason: "quality-gate-failed" },
+            };
+          }
+        }
+      }
+
       const result = await advanceWorkflow(state.workflow, "user_approved", { approvedPlanSha256: state.dpaaGuardSatisfiedToken?.planSha256 });
       if (!result.ok) {
-        if (result.gate) { state.gateFailures.set(result.gate, (state.gateFailures.get(result.gate) ?? 0) + 1); }
+        if (result.gate) {
+          const failures = (state.gateFailures.get(result.gate) ?? 0) + 1;
+          state.gateFailures.set(result.gate, failures);
+          // 3회 이상 연속 실패 시 다른 접근을 유도하는 steer 주입
+          if (failures >= 3) {
+            await steerLlm(
+              `⚠️ ${result.gate} gate가 ${failures}번 연속 실패했습니다.\n\n` +
+              `현재 접근 방식이 막혀있습니다. 다음을 시도해보세요:\n` +
+              `- 문제를 더 작은 단위로 분해해 각각 해결\n` +
+              `- gate 실패 메시지의 근본 원인을 먼저 분석\n` +
+              `- 계획 자체가 문제라면 /workflow undo로 plan 단계로 돌아가 수정\n\n` +
+              `Gate 메시지:\n${result.message.slice(0, 500)}`,
+            );
+          }
+        }
         refreshBoard(ctx);
         refreshStatus(ctx);
         return { content: [{ type: "text", text: `Workflow transition was requested, but it was blocked by a workflow gate.\n\n${result.message}` }], details: { ok: false, reason: "gate-blocked" } };
@@ -1958,22 +1999,28 @@ Risk level: ${spec.riskLevel}`,
     const extensionApproval = await ensureExtensionMutationApproved(event.toolName, event.input, ctx);
     if (!extensionApproval.ok) return { block: true, reason: extensionApproval.reason };
 
-    // Phase tool policy backstop: block write/edit in read-only phases
+    // Phase tool policy backstop
     if (state.workflow && (event.toolName === "write" || event.toolName === "edit")) {
-      const phaseAllowed = PHASE_ALLOWED_BUILTIN_TOOLS[state.workflow.phase] as readonly string[] | undefined;
+      const phase = state.workflow.phase;
+      const phaseAllowed = PHASE_ALLOWED_BUILTIN_TOOLS[phase] as readonly string[] | undefined;
       if (phaseAllowed && !phaseAllowed.includes(event.toolName)) {
-        return {
-          block: true,
-          reason: [
-            `⚠️ Phase tool policy blocked: ${event.toolName} is not allowed in ${state.workflow.phase} phase.`,
-            `Allowed built-in tools: ${(phaseAllowed as readonly string[]).join(", ")}`,
-            state.workflow.phase === "code_review"
-              ? "This phase is read/review focused. For review-loop fixes, return to an editing phase or use an explicit reviewed fix workflow."
-              : state.workflow.phase === "plan_review" || state.workflow.phase === "review_approved"
-              ? "This phase is read-only. Advance the workflow before making file changes."
-              : "Use workflow_propose_edit for guarded file changes in this phase.",
-          ].join("\n"),
+        // commit/push/done: 비가역 행위 직전 — hard block 유지
+        if (phase === "commit" || phase === "push" || phase === "done") {
+          return {
+            block: true,
+            reason: `⚠️ ${phase} 페이즈에서는 파일 수정이 허용되지 않습니다. 현재 단계를 완료하세요.`,
+          };
+        }
+        // 그 외 read-only 페이즈(plan_review, code_review, review_approved):
+        // block 대신 LLM에게 교정 지시를 주입하고 허용합니다.
+        const phaseGuide: Record<string, string> = {
+          plan_review: "plan_review 페이즈입니다. 파일을 수정하기 전에 plan 검토를 완료하고 workflow_approve로 implement 단계로 진행하세요.",
+          code_review: "code_review 페이즈입니다. 소스 수정이 필요하다면 implement 페이즈로 돌아가거나, 리뷰를 먼저 완료하세요.",
+          review_approved: "review_approved 페이즈입니다. 문서화 작업만 필요하며 소스 수정은 이 단계에서 하지 않습니다.",
         };
+        const guide = phaseGuide[phase] ?? `${phase} 페이즈에서는 소스 수정이 계획에 없습니다.`;
+        void steerLlm(`⚠️ ${guide}`);
+        // 실제 write는 허용 (능력 제한 없음)
       }
 
       // Phase write-path policy: restrict which paths may be written per phase

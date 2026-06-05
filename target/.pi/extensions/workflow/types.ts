@@ -19,6 +19,13 @@ export type WorkflowTransition = {
   checkpointAfter?: string;
 };
 
+export type PersistedGuardTokens = {
+  dpaa: { workflowId: string; issuedAt: number; reason: string; planSha256?: string } | null;
+  codeQuality: { workflowId: string; issuedAt: number; reason: string } | null;
+  codeReview: { workflowId: string; critical: number; major: number; minor: number; timestamp: number } | null;
+  pushExecution: { workflowId: string; issuedAt: number; reason: string } | null;
+};
+
 export type WorkflowInstance = {
   id: string;
   title: string;
@@ -30,6 +37,7 @@ export type WorkflowInstance = {
   undone: WorkflowTransition[];
   startedAt: number;
   updatedAt: number;
+  guardTokens?: PersistedGuardTokens;
 };
 
 export type DpaaReport = {

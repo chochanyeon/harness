@@ -146,6 +146,21 @@ export default function (pi: ExtensionAPI) {
 
   function persistGuardToken(type: string, data: Record<string, unknown>): void {
     try { pi.appendEntry(type, { ...data, persistedAt: Date.now() }); } catch { /* non-fatal */ }
+    if (state.workflow) saveGuardTokensToState(state.workflow);
+  }
+
+  function saveGuardTokensToState(workflow: import("./workflow/types").WorkflowInstance): void {
+    try {
+      workflow.guardTokens = {
+        dpaa: state.dpaaGuardSatisfiedToken ?? null,
+        codeQuality: state.codeQualityGuardSatisfiedToken ?? null,
+        codeReview: state.codeReviewGuardSatisfiedToken
+          ? { ...state.codeReviewGuardSatisfiedToken, workflowId: workflow.id }
+          : null,
+        pushExecution: state.pushExecutionGuardSatisfiedToken ?? null,
+      };
+      saveWorkflow(workflow);
+    } catch { /* non-fatal */ }
   }
 
   // Type guards for token restoration — prevent silent field-type mismatches
@@ -162,6 +177,7 @@ export default function (pi: ExtensionAPI) {
   function restoreGuardTokens(entries: readonly { type: string; customType?: string; data?: unknown }[]): void {
     const wf = state.workflow;
     if (!wf) return;
+    // 1st pass: restore from session entries (current session history)
     const seen = new Set<string>();
     for (let i = entries.length - 1; i >= 0; i--) {
       const e = entries[i];
@@ -193,6 +209,17 @@ export default function (pi: ExtensionAPI) {
           break;
       }
     }
+    // 2nd pass: fallback to state.json guardTokens (survives new sessions)
+    const gt = wf.guardTokens;
+    if (!gt) return;
+    if (!state.dpaaGuardSatisfiedToken && gt.dpaa?.workflowId === wf.id)
+      state.dpaaGuardSatisfiedToken = gt.dpaa;
+    if (!state.codeQualityGuardSatisfiedToken && gt.codeQuality?.workflowId === wf.id)
+      state.codeQualityGuardSatisfiedToken = gt.codeQuality;
+    if (!state.codeReviewGuardSatisfiedToken && gt.codeReview?.workflowId === wf.id)
+      state.codeReviewGuardSatisfiedToken = { critical: gt.codeReview.critical, major: gt.codeReview.major, minor: gt.codeReview.minor, timestamp: gt.codeReview.timestamp };
+    if (!state.pushExecutionGuardSatisfiedToken && gt.pushExecution?.workflowId === wf.id)
+      state.pushExecutionGuardSatisfiedToken = gt.pushExecution;
   }
 
   // ── Phase-based tool policy ─────────────────────────────────────────────────

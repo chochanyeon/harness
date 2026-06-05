@@ -63,6 +63,7 @@ After editing:
 - Ask before destructive, slow, network-dependent, or resource-heavy tests.
 - TDD is expected for production code; config/docs/infrastructure changes are exempt.
 - TDD cycle (failing test → implement → verify) is a single work unit: do not pause to ask for approval between writing the test and implementing. Complete the full cycle autonomously.
+- If a TDD gate triggers (untested production class detected, or new production code lacks a test): write the test first without asking. Do not ask the user whether to write a test.
 
 ## Worktrees
 

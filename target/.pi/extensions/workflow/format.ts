@@ -97,6 +97,7 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
       lines.push(
         "- Transition mode: automatic after implementation is complete.",
         "- Required now: implement only the approved scope, run the narrowest relevant verification, summarize changed files.",
+        "- TDD: if writing new production code, write the failing test first without asking the user. Complete the full cycle (failing test → implement → pass) autonomously.",
         "- Then advance to code_review without asking user approval for this transition.",
       );
       break;

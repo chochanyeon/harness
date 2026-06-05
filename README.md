@@ -6,7 +6,7 @@ Pi 기반 LLM 개발 세션에 **workflow 거버넌스**, **기계적 guard**, *
 
 이 저장소는 하네스 개발용 source repo입니다. 실제 프로젝트에 설치되는 런타임 템플릿은 `target/` 아래에 격리되어 있습니다. 따라서 이 저장소 루트에서 작업해도 하네스 extension/skill/context가 자동 로드되지 않습니다.
 
-TUI 시인성 개선을 위해 배포 템플릿에 project-local 테마 `target/.pi/themes/workflow-console.json`을 포함합니다. 설치된 프로젝트에서는 `.pi/themes/workflow-console.json`으로 배치되며, Pi의 `/settings`에서 `workflow-console`을 선택해 사용할 수 있습니다.
+TUI 시인성 개선을 위해 배포 템플릿에 project-local 테마 `target/.pi/themes/workflow-console.json`을 포함합니다. 이 테마는 어두운 배경을 유지하면서 상태/강조 요소에 cyan, pink, yellow, green 계열을 더 선명하게 쓰는 colorful console 팔레트입니다. 설치된 프로젝트에서는 `.pi/themes/workflow-console.json`으로 배치되며, Pi의 `/settings`에서 `workflow-console`을 선택해 사용할 수 있습니다.
 
 설치된 프로젝트의 루트에는 기본적으로 다음만 노출됩니다.
 

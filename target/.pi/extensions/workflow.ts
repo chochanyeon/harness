@@ -71,6 +71,7 @@ import {
   isSharedApprovalBoundary,
   getPhaseAllowedTools,
   getPhaseWritePathPolicy,
+  isWritePathBlocked,
   matchesWriteGlob,
   sha256File,
   findPlanForDpaa,

@@ -489,6 +489,12 @@ export function runCatalogCommand(
     args = ["-m", "dpaa.cli", ...args];
   }
 
+  // Windows: .bat files must be run through cmd.exe
+  if (process.platform === "win32" && /\.bat$/i.test(executable)) {
+    args = ["/c", executable, ...args];
+    executable = "cmd.exe";
+  }
+
   let output = "";
   let exitCode: number | null = 0;
   let truncated = false;

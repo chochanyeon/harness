@@ -17,6 +17,7 @@ import json
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+RUNTIME_UI = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-ui.ts"
 FORMAT = ROOT / "target" / ".pi" / "extensions" / "workflow" / "format.ts"
 THEME = ROOT / "target" / ".pi" / "themes" / "workflow-console.json"
 PI_DARK_THEME = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@earendil-works" / "pi-coding-agent" / "dist" / "modes" / "interactive" / "theme" / "dark.json"
@@ -25,7 +26,7 @@ PI_DARK_THEME = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "
 # ── Imports ───────────────────────────────────────────────────────────────────
 
 def test_pi_tui_imported():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + RUNTIME_UI.read_text(encoding="utf-8")
     assert "@earendil-works/pi-tui" in src
     assert "Text" in src
     assert "truncateToWidth" in src
@@ -93,8 +94,9 @@ def test_workflow_approve_has_colored_render_result():
 
 def test_workflow_approve_render_result_filters_undefined_transitions():
     src = WORKFLOW.read_text(encoding="utf-8")
+    helpers = RUNTIME_UI.read_text(encoding="utf-8")
     block = _tool_block(src, "workflow_approve")
-    assert "function formatTransitionDetails" in src
+    assert "function formatTransitionDetails" in helpers
     assert "const transitions = formatTransitionDetails(d.transitions);" in block
     assert "d.transitions.join" not in block
 
@@ -116,7 +118,7 @@ def test_render_functions_use_theme_fg():
 
 def test_render_functions_return_text_component():
     """Tool renders must return new Text(...)."""
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + RUNTIME_UI.read_text(encoding="utf-8")
     assert src.count("new Text(") >= 8
 
 
@@ -134,14 +136,14 @@ def test_refresh_status_function_defined():
 
 
 def test_refresh_status_uses_set_status():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + RUNTIME_UI.read_text(encoding="utf-8")
     assert "setStatus" in src
     assert '"workflow-phase"' in src
 
 
 def test_refresh_status_shows_gate_indicators():
-    src = WORKFLOW.read_text(encoding="utf-8")
-    idx = src.index("function refreshStatus")
+    src = RUNTIME_UI.read_text(encoding="utf-8")
+    idx = src.index("function refreshWorkflowStatus")
     block = src[idx:idx + 2400]
     assert "DPAA" in block or "dpaa" in block
     assert "Quality" in block or "quality" in block
@@ -150,7 +152,7 @@ def test_refresh_status_shows_gate_indicators():
 
 
 def test_outcome_colors_map_success_failure_and_pending():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = RUNTIME_UI.read_text(encoding="utf-8")
     idx = src.index("function colorOutcome")
     block = src[idx:idx + 500]
     assert 'icon === "✅"' in block and 'theme.fg("success"' in block
@@ -160,8 +162,9 @@ def test_outcome_colors_map_success_failure_and_pending():
 
 def test_result_boxes_use_status_background_tokens():
     src = WORKFLOW.read_text(encoding="utf-8")
-    idx = src.index("function resultBox")
-    block = src[idx:idx + 700]
+    helpers = RUNTIME_UI.read_text(encoding="utf-8")
+    idx = helpers.index("function resultBox")
+    block = helpers[idx:idx + 700]
     assert "new Box(1, 0, bgFn)" in block
     assert "theme.bg(bgToken" in block
     assert '"toolSuccessBg"' in block
@@ -173,8 +176,8 @@ def test_result_boxes_use_status_background_tokens():
 # ── Board widget theme ────────────────────────────────────────────────────────
 
 def test_refresh_board_applies_theme_colors():
-    src = WORKFLOW.read_text(encoding="utf-8")
-    idx = src.index("function refreshBoard")
+    src = RUNTIME_UI.read_text(encoding="utf-8")
+    idx = src.index("function refreshWorkflowBoard")
     block = src[idx:idx + 1000]
     assert "theme.fg(" in block
 

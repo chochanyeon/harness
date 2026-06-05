@@ -15,6 +15,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+RUNTIME_STATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-state.ts"
 GATES = ROOT / "target" / ".pi" / "extensions" / "workflow" / "gates.ts"
 STATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "state.ts"
 
@@ -22,7 +23,7 @@ STATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "state.ts"
 # ── Task 1: Token persistence ─────────────────────────────────────────────────
 
 def test_harness_token_types_defined():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + RUNTIME_STATE.read_text(encoding="utf-8")
     assert "HARNESS_TOKEN_TYPES" in src
     assert "harness-dpaa-token" in src
     assert "harness-code-quality-token" in src
@@ -75,7 +76,7 @@ def test_restore_called_in_session_start():
 # ── Task 2: MVP 3 Artifact hash binding ──────────────────────────────────────
 
 def test_dpaa_token_includes_plan_sha256_field():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + RUNTIME_STATE.read_text(encoding="utf-8")
     assert "planSha256" in src
     # dpaaGuardSatisfiedToken type includes planSha256
     assert "planSha256?: string" in src

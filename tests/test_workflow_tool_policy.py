@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_CORE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "policy-core.ts"
+RUNTIME_POLICY = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-policy.ts"
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 
 
@@ -86,9 +87,9 @@ def test_all_workflow_phases_covered():
 
 
 def test_apply_phase_tool_policy_defined_in_workflow():
-    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + RUNTIME_POLICY.read_text(encoding="utf-8")
     assert "applyPhaseToolPolicy" in src
-    assert "pi.setActiveTools" in src
+    assert "setActiveTools" in src
     assert "getPhaseAllowedTools" in src
 
 

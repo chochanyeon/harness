@@ -206,12 +206,13 @@ def test_fake_llm_agent_loop_drives_full_workflow_and_recovers_from_bad_actions(
     assert "workflow_approve" in observations["toolsCommit"]
     assert "bash" in observations["toolsPush"]
 
-    assert observations["planReviewEdit"]["block"] is True
-    assert "Phase tool policy blocked" in observations["planReviewEdit"]["reason"]
+    assert "planReviewEdit" not in observations
+    assert any("plan_review 페이즈" in item["text"] for item in data["sentMessages"])
     assert observations["planReviewPropose"]["ok"] is False
     assert observations["planReviewPropose"]["reason"] == "phase-not-allowed"
     assert observations["prePush"]["block"] is True
-    assert "WORKFLOW PHASE" in observations["prePush"]["reason"]
+    assert "current phase" in observations["prePush"]["reason"]
+    assert "required phase" in observations["prePush"]["reason"]
 
     assert observations["propose"]["ok"] is True
     assert observations["apply"]["ok"] is True
@@ -221,7 +222,7 @@ def test_fake_llm_agent_loop_drives_full_workflow_and_recovers_from_bad_actions(
     assert observations["review"]["ok"] is True
     assert observations["review"]["workflowPhase"] == "commit"
     assert observations["commitPush"]["block"] is True
-    assert "Current phase: commit" in observations["commitPush"]["reason"]
+    assert 'current phase is "commit"' in observations["commitPush"]["reason"]
     assert "push" not in observations  # undefined from JS means allowed and is omitted by JSON.stringify
 
     assert data["appFile"] == "hello from fake llm workflow\n"
@@ -274,7 +275,7 @@ def test_fake_llm_edit_approval_rejection_path_validation_and_scope_guard(tmp_pa
 
         dump({ observations, rejectedFile: fileText('src/rejected.txt'), escapeFile: fileText('../escape.txt') });
         ''',
-        confirm_answers=[True, True, False],
+        confirm_answers=[True, True, True, False],
     )
 
     data = _run_fake_llm_session(script, tmp_path)
@@ -293,7 +294,7 @@ def test_fake_llm_edit_approval_rejection_path_validation_and_scope_guard(tmp_pa
     assert "Invalid operation" in observations["badOperationText"]
     assert data["rejectedFile"] is None
     assert data["escapeFile"] is None
-    assert data["confirmAnswersSeen"] == [True, True, False]
+    assert data["confirmAnswersSeen"] == [True, True, True, False]
 
 
 def test_fake_llm_review_package_rejects_missing_and_blocking_findings_before_accepting(tmp_path):

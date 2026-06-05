@@ -3,15 +3,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+RUNTIME_STATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-state.ts"
 
 
 def test_workflow_guard_evidence_is_memory_only_and_push_uses_transition_history():
-    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + RUNTIME_STATE.read_text(encoding="utf-8")
 
-    assert "dpaaGuardSatisfiedToken: null as" in text
-    assert "codeQualityGuardSatisfiedToken: null as" in text
-    assert "pushExecutionGuardSatisfiedToken: null as" in text
-    assert "policyApprovals: [] as Array" in text
+    assert "dpaaGuardSatisfiedToken" in text
+    assert "codeQualityGuardSatisfiedToken" in text
+    assert "pushExecutionGuardSatisfiedToken" in text
+    assert "policyApprovals" in text
     assert "state.dpaaGuardSatisfiedToken = { workflowId" in text
     assert "state.pushExecutionGuardSatisfiedToken = { workflowId" in text
     assert 'item.from === "commit" && item.to === "push"' in text

@@ -17,7 +17,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { Text, Box, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -69,7 +69,6 @@ import {
   sharedWorkflowPhases,
   isSharedAutoAdvancePhase,
   isSharedApprovalBoundary,
-  getPhaseAllowedTools,
   getPhaseWritePathPolicy,
   isWritePathBlocked,
   matchesWriteGlob,
@@ -80,8 +79,6 @@ import {
   isPhaseAllowed,
   runCatalogCommand,
   formatCatalogCommandResult,
-  formatWorkflowBoard,
-  WORKFLOW_PHASES,
   PHASE_ALLOWED_BUILTIN_TOOLS,
   validateEditPath,
   computeBaseFileHashes,
@@ -90,60 +87,43 @@ import {
   formatEditScopeDiff,
   createEditScope,
   COMMAND_CATALOG,
-  type WorkflowBoardState,
   type EditScope,
   type ProposedEdit,
   type WorkflowInstance,
   type WorkflowPhase,
 } from "./workflow/core";
 import { launchInterviewWizard } from "./workflow/interview-ui";
+import {
+  createWorkflowRuntimeState,
+  HARNESS_TOKEN_TYPES,
+  restoreGuardTokensToRuntimeState,
+  saveGuardTokensToWorkflowState,
+} from "./workflow/runtime-state";
+import {
+  colorResultLabel,
+  formatTransitionDetails,
+  refreshWorkflowBoard,
+  refreshWorkflowStatus,
+  resultBox,
+} from "./workflow/runtime-ui";
+import {
+  applyPhaseToolPolicyForHost,
+  formatExtensionMutationApprovalReason,
+  requiresExtensionMutationApproval,
+} from "./workflow/runtime-policy";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow.ts
 const HARNESS_ROOT = path.resolve(__dirname, "../..");
 const WORKFLOW_CONTINUATION_MARKER_PREFIX = "harness-workflow-continuation:";
 
-type WorkflowContinuationPending = {
-  workflowId: string;
-  phase: WorkflowPhase;
-  marker: string;
-};
-
 export default function (pi: ExtensionAPI) {
   // ── In-memory state ────────────────────────────────────────────────────────
   // Process memory only: the LLM cannot forge this guard evidence through shell/file writes.
-  const state = {
-    codeReviewGuardSatisfiedToken: null as {
-      critical: number;
-      major: number;
-      minor: number;
-      timestamp: number;
-    } | null,
-    workflow: null as WorkflowInstance | null,
-    dpaaGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string; planSha256?: string } | null,
-    codeQualityGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
-    pushExecutionGuardSatisfiedToken: null as { workflowId: string; issuedAt: number; reason: string } | null,
-    policyApprovals: [] as Array<{ timestamp: number; totalChanged: number; categories: string[]; signature: string }>,
-    extensionMutationApprovedForWorkflowId: null as string | null,
-    autoCheckpointForSession: false,
-    gateFailures: new Map<string, number>(),
-    lastInputCheckpointSignature: null as string | null,
-    recentVerificationCommands: [] as Array<{ command: string; timestamp: number; phase?: string }>,
-    reviewPackageToken: null as null | { workflowId: string; timestamp: number; critical: number; major: number; minor: number; mainSummary: string; reviewerSummary: string; qualitySummary: string },
-    workflowContinuationPending: null as WorkflowContinuationPending | null,
-    cancelledWorkflowContinuationMarkers: new Set<string>(),
-    activeEditScope: null as EditScope | null,
-  };
+  const state = createWorkflowRuntimeState();
 
   // ── Guard token persistence ──────────────────────────────────────────────
   // Tokens live in process memory only. Persisting them as CustomEntries lets
   // them survive session restarts as long as the workflow ID still matches.
-  const HARNESS_TOKEN_TYPES = {
-    DPAA:           "harness-dpaa-token",
-    CODE_QUALITY:   "harness-code-quality-token",
-    CODE_REVIEW:    "harness-code-review-token",
-    PUSH_EXECUTION: "harness-push-token",
-    REVIEW_PACKAGE: "harness-review-package-token",
-  } as const;
 
   function persistGuardToken(type: string, data: Record<string, unknown>): void {
     try { pi.appendEntry(type, { ...data, persistedAt: Date.now() }); } catch { /* non-fatal */ }
@@ -171,273 +151,27 @@ export default function (pi: ExtensionAPI) {
   }
 
   function saveGuardTokensToState(workflow: import("./workflow/types").WorkflowInstance): void {
-    try {
-      workflow.guardTokens = {
-        dpaa: state.dpaaGuardSatisfiedToken ?? null,
-        codeQuality: state.codeQualityGuardSatisfiedToken ?? null,
-        codeReview: state.codeReviewGuardSatisfiedToken
-          ? { ...state.codeReviewGuardSatisfiedToken, workflowId: workflow.id }
-          : null,
-        pushExecution: state.pushExecutionGuardSatisfiedToken ?? null,
-      };
-      saveWorkflow(workflow);
-    } catch { /* non-fatal */ }
-  }
-
-  // Type guards for token restoration — prevent silent field-type mismatches
-  function isWorkflowToken(d: Record<string, unknown>): d is { workflowId: string; issuedAt: number; reason: string } {
-    return typeof d.workflowId === "string" && typeof d.issuedAt === "number" && typeof d.reason === "string";
-  }
-  function isCodeReviewToken(d: Record<string, unknown>): d is { workflowId: string; critical: number; major: number; minor: number; timestamp: number } {
-    return typeof d.workflowId === "string" && typeof d.critical === "number" && typeof d.major === "number" && typeof d.minor === "number" && typeof d.timestamp === "number";
-  }
-  function isReviewPackageToken(d: Record<string, unknown>): d is { workflowId: string; timestamp: number; critical: number; major: number; minor: number; mainSummary: string; reviewerSummary: string; qualitySummary: string } {
-    return typeof d.workflowId === "string" && typeof d.timestamp === "number" && typeof d.critical === "number" && typeof d.major === "number" && typeof d.minor === "number";
+    try { saveGuardTokensToWorkflowState(state, workflow, saveWorkflow); } catch { /* non-fatal */ }
   }
 
   function restoreGuardTokens(entries: readonly { type: string; customType?: string; data?: unknown }[]): void {
-    const wf = state.workflow;
-    if (!wf) return;
-    // 1st pass: restore from session entries (current session history)
-    const seen = new Set<string>();
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const e = entries[i];
-      if (e.type !== "custom" || !e.customType) continue;
-      if (seen.has(e.customType)) continue;
-      seen.add(e.customType);
-      const d = (e.data ?? {}) as Record<string, unknown>;
-      if (d.workflowId !== wf.id) continue;
-      switch (e.customType) {
-        case HARNESS_TOKEN_TYPES.DPAA:
-          if (!state.dpaaGuardSatisfiedToken && isWorkflowToken(d))
-            state.dpaaGuardSatisfiedToken = { ...d, planSha256: typeof d.planSha256 === "string" ? d.planSha256 : undefined };
-          break;
-        case HARNESS_TOKEN_TYPES.CODE_QUALITY:
-          if (!state.codeQualityGuardSatisfiedToken && isWorkflowToken(d))
-            state.codeQualityGuardSatisfiedToken = d;
-          break;
-        case HARNESS_TOKEN_TYPES.CODE_REVIEW:
-          if (!state.codeReviewGuardSatisfiedToken && isCodeReviewToken(d))
-            state.codeReviewGuardSatisfiedToken = { critical: d.critical, major: d.major, minor: d.minor, timestamp: d.timestamp };
-          break;
-        case HARNESS_TOKEN_TYPES.PUSH_EXECUTION:
-          if (!state.pushExecutionGuardSatisfiedToken && isWorkflowToken(d))
-            state.pushExecutionGuardSatisfiedToken = d;
-          break;
-        case HARNESS_TOKEN_TYPES.REVIEW_PACKAGE:
-          if (!state.reviewPackageToken && isReviewPackageToken(d))
-            state.reviewPackageToken = d;
-          break;
-      }
-    }
-    // 2nd pass: fallback to state.json guardTokens (survives new sessions)
-    const gt = wf.guardTokens;
-    if (!gt) return;
-    if (!state.dpaaGuardSatisfiedToken && gt.dpaa?.workflowId === wf.id)
-      state.dpaaGuardSatisfiedToken = gt.dpaa;
-    if (!state.codeQualityGuardSatisfiedToken && gt.codeQuality?.workflowId === wf.id)
-      state.codeQualityGuardSatisfiedToken = gt.codeQuality;
-    if (!state.codeReviewGuardSatisfiedToken && gt.codeReview?.workflowId === wf.id)
-      state.codeReviewGuardSatisfiedToken = { critical: gt.codeReview.critical, major: gt.codeReview.major, minor: gt.codeReview.minor, timestamp: gt.codeReview.timestamp };
-    if (!state.pushExecutionGuardSatisfiedToken && gt.pushExecution?.workflowId === wf.id)
-      state.pushExecutionGuardSatisfiedToken = gt.pushExecution;
+    restoreGuardTokensToRuntimeState(state, entries);
   }
 
   // ── Phase-based tool policy ─────────────────────────────────────────────────
   // Restricts the LLM’s callable tool surface to what’s appropriate for the
   // active workflow phase. Call after any phase change or on session restore.
   // ── Workflow board widget ──────────────────────────────────────────────────
-  function getBoardState(): WorkflowBoardState {
-    const workflowId = state.workflow?.id;
-    return {
-      workflow: state.workflow,
-      gateFailures: state.gateFailures,
-      dpaaGuardSatisfied: Boolean(workflowId && state.dpaaGuardSatisfiedToken?.workflowId === workflowId),
-      codeQualityGuardSatisfied: Boolean(workflowId && state.codeQualityGuardSatisfiedToken?.workflowId === workflowId),
-      reviewPackageSubmitted: Boolean(workflowId && state.reviewPackageToken?.workflowId === workflowId),
-      pushGuardSatisfied: Boolean(workflowId && state.pushExecutionGuardSatisfiedToken?.workflowId === workflowId),
-    };
-  }
-
   function refreshBoard(ctx: { hasUI: boolean; ui: { setWidget: (...args: unknown[]) => void; theme?: unknown } }): void {
-    if (!ctx.hasUI) return;
-    try {
-      if (!state.workflow) {
-        (ctx.ui as any).setWidget("workflow-board", undefined);
-        return;
-      }
-      (ctx.ui as any).setWidget("workflow-board", (_tui: unknown, theme: any) => {
-        const rawLines = formatWorkflowBoard(getBoardState());
-        const coloredLines = rawLines.map((line) => {
-          if (!theme) return line;
-          if (line.startsWith("🧭")) return theme.fg("accent", line);
-          if (line.startsWith("Gates:")) {
-            return line
-              .replace(/✅ pass/g, theme.fg("success", "✅ pass"))
-              .replace(/❌ fail/g, theme.fg("error", "❌ fail"))
-              .replace(/⏳ pending/g, theme.fg("muted", "⏳ pending"));
-          }
-          if (line.startsWith("Tools:") || line.startsWith("Cmds:")) return theme.fg("dim", line);
-          if (line.startsWith("→")) return theme.fg("warning", line);
-          if (line.startsWith("   ") && !line.trim().startsWith("Gates") && !line.trim().startsWith("Tools") && !line.trim().startsWith("Cmds")) {
-            return theme.fg("text", line);
-          }
-          return theme.fg("dim", line);
-        });
-        const content = coloredLines.join("\n");
-        const text = new Text(content, 0, 0);
-        const bgFn = theme ? (s: string) => theme.bg("customMessageBg", s) : undefined;
-        const box = new Box(1, 0, bgFn);
-        box.addChild(text);
-        return box;
-      });
-    } catch { /* non-fatal */ }
-  }
-  function colorOutcome(theme: any, icon: string): string {
-    if (!theme) return icon;
-    if (icon === "✅") return theme.fg("success", icon);
-    if (icon === "❌") return theme.fg("error", icon);
-    if (icon === "⏳") return theme.fg("warning", icon);
-    return theme.fg("muted", icon);
-  }
-
-  function colorResultLabel(theme: any, kind: "success" | "warning" | "error" | "muted", text: string): string {
-    if (!theme) return text;
-    return theme.fg(kind, text);
-  }
-
-  function resultBox(theme: any, kind: "success" | "warning" | "error" | "pending", content: string): Box {
-    const bgToken = kind === "success" ? "toolSuccessBg" : kind === "error" ? "toolErrorBg" : "toolPendingBg";
-    const bgFn = theme ? (s: string) => theme.bg(bgToken, s) : undefined;
-    const box = new Box(1, 0, bgFn);
-    box.addChild(new Text(content, 0, 0));
-    return box;
-  }
-
-  function formatTransitionDetails(value: unknown): string {
-    if (!Array.isArray(value)) return "advanced";
-    const labels = value
-      .map((item) => typeof item === "string" ? item : null)
-      .filter((item): item is string => Boolean(item && item.trim()));
-    return labels.length > 0 ? labels.join(" → ") : "advanced";
+    refreshWorkflowBoard(state, ctx);
   }
 
   function refreshStatus(ctx: { hasUI: boolean; ui: { setStatus?: (...args: unknown[]) => void; theme?: unknown } }): void {
-    if (!ctx.hasUI || typeof (ctx.ui as any).setStatus !== "function") return;
-    try {
-      const theme = (ctx.ui as any).theme;
-      const wf = state.workflow;
-      if (!wf) {
-        (ctx.ui as any).setStatus("workflow-phase", theme?.fg("muted", "⚪ no workflow") ?? "⚪ no workflow");
-        return;
-      }
-      const workflowId = wf.id;
-      const dpaa    = state.dpaaGuardSatisfiedToken?.workflowId === workflowId ? "✅" : (state.gateFailures.get("dpaa") ?? 0) > 0 ? "❌" : "⏳";
-      const quality = state.codeQualityGuardSatisfiedToken?.workflowId === workflowId ? "✅" : (state.gateFailures.get("code-quality") ?? 0) > 0 ? "❌" : "⏳";
-      const review  = state.reviewPackageToken?.workflowId === workflowId ? "✅" : "⏳";
-      const push    = state.pushExecutionGuardSatisfiedToken?.workflowId === workflowId ? "✅" : "⏳";
-      const nextPhase = getNextPhase(wf.phase);
-      const phaseIndex = Math.max(0, WORKFLOW_PHASES.indexOf(wf.phase)) + 1;
-      const phaseTotal = WORKFLOW_PHASES.length;
-      const title = truncateToWidth(wf.title || "workflow", 32);
-      const workflowStr = `${theme?.fg("dim", "Workflow") ?? "Workflow"}: ${theme?.fg("accent", title) ?? title}`;
-      const phaseStr = `${theme?.fg("dim", "phase") ?? "phase"}: ${theme?.fg("accent", wf.phase) ?? wf.phase}${theme?.fg("dim", " → ") ?? " -> "}${theme?.fg("accent", nextPhase ?? "done") ?? (nextPhase ?? "done")}`;
-      const progressStr = `${theme?.fg("dim", "progress") ?? "progress"}: ${phaseIndex}/${phaseTotal}`;
-      const gatePairs = [["DPAA", dpaa], ["Quality", quality], ["Review", review]];
-      if (wf.phase === "commit" || wf.phase === "push") gatePairs.push(["Push", push]);
-      const gatesStr = gatePairs
-        .map(([label, icon]) => `${theme?.fg("dim", label) ?? label}:${colorOutcome(theme, icon)}`)
-        .join(theme?.fg("dim", " ") ?? " ");
-      const sep = theme?.fg("border", " │ ") ?? " | ";
-      (ctx.ui as any).setStatus("workflow-phase", `⚙️ ${workflowStr}${sep}${phaseStr}${sep}${progressStr}${sep}${gatesStr}`);
-    } catch { /* non-fatal */ }
+    refreshWorkflowStatus(state, ctx);
   }
 
   function applyPhaseToolPolicy(phase: WorkflowPhase | null): void {
-    // Guard: pi.getAllTools / pi.setActiveTools may not exist in test/minimal environments
-    if (typeof (pi as any).getAllTools !== "function" || typeof (pi as any).setActiveTools !== "function") return;
-    const all = (pi as any).getAllTools() as Array<{ name: string; sourceInfo: { source: string } }>;
-    if (!phase) {
-      // No active workflow — restore all tools
-      (pi as any).setActiveTools(all.map((t) => t.name));
-      return;
-    }
-    const extensionTools = all
-      .filter((t) => t.sourceInfo.source !== "builtin" && t.sourceInfo.source !== "sdk")
-      .map((t) => t.name);
-    const allowed = getPhaseAllowedTools(phase, extensionTools);
-    (pi as any).setActiveTools(allowed);
-  }
-
-  function normalizePathText(value: string): string {
-    return value.replace(/\\/g, "/");
-  }
-
-  function mentionsRuntimeExtensionPath(value: string): boolean {
-    const normalized = normalizePathText(value);
-    // Protect only the running project-local runtime extension path: .pi/extensions/**.
-    // In the harness source repository, target/.pi/extensions/** is the deployment
-    // template source and must remain a normal editable development target.
-    if (/(^|[\s"'=:(])target\/\.pi\/extensions(?:\/|$)/.test(normalized)) return false;
-    if (normalized.includes("/target/.pi/extensions/")) return false;
-    return /(^|[\s"'=:(])\.pi\/extensions(?:\/|$)/.test(normalized)
-      || normalized.includes("/.pi/extensions/");
-  }
-
-  function collectStrings(value: unknown): string[] {
-    if (typeof value === "string") return [value];
-    if (Array.isArray(value)) return value.flatMap(collectStrings);
-    if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).flatMap(collectStrings);
-    return [];
-  }
-
-  function isLikelyMutatingBash(command: string): boolean {
-    if (!mentionsRuntimeExtensionPath(command)) return false;
-    // Only block shell operations that directly mutate files. Read-like commands
-    // such as cat/grep/rg/ls/find, or interpreter commands used for inspection,
-    // must remain allowed even when they mention .pi/extensions/**.
-    if (/(^|[;&|]\s*)(rm|mv|cp|touch|mkdir|rmdir|sed\s+-i|perl\s+-pi)\b/.test(command)) return true;
-    // Strip safe redirects before checking for output redirects:
-    //   2>/dev/null  >/dev/null  &>/dev/null  2>&1  1>&2  etc.
-    const stripped = command
-      .replace(/\d*&?>>?\/dev\/(null|zero|stdin|stdout|stderr)/g, "")
-      .replace(/\d*>&\d+/g, "");
-    return /(>|>>|\btee\b)/.test(stripped);
-  }
-
-  function requiresExtensionMutationApproval(toolName: string, input: unknown): boolean {
-    const lower = toolName.toLowerCase();
-    if (lower === "bash") {
-      const strings = collectStrings(input);
-      if (!strings.some(mentionsRuntimeExtensionPath)) return false;
-      return strings.some(isLikelyMutatingBash);
-    }
-    if (/^(edit|write|multi.?edit|apply.?patch)$/.test(lower)) {
-      // Only check the target path — not file content — to avoid false positives
-      // when writing docs/plans that merely mention .pi/extensions in their text.
-      const pathValue = String((input as any)?.path ?? "");
-      return mentionsRuntimeExtensionPath(pathValue);
-    }
-    return false;
-  }
-
-  function formatExtensionMutationApprovalReason(toolName: string, input: unknown): string {
-    const lower = toolName.toLowerCase();
-    const targets = /^(edit|write|multi.?edit|apply.?patch)$/.test(lower)
-      ? [String((input as any)?.path ?? "")].filter(Boolean)
-      : collectStrings(input).filter(mentionsRuntimeExtensionPath).slice(0, 5);
-    return [
-      "── 🧩 RUNTIME EXTENSION WRITE APPROVAL REQUIRED ─────",
-      "",
-      "  Writing or editing the running .pi/extensions/** runtime files requires explicit user approval.",
-      "  target/.pi/extensions/** is deployment-template source in this repo and is not protected by this guard.",
-      "  Read-only inspection is allowed; approval is checked in extension memory for this mutating tool call only.",
-      "",
-      `  Tool: ${toolName}`,
-      ...targets.map((target) => `  Target: ${target.slice(0, 240)}`),
-      "",
-      "─────────────────────────────────────────────────────",
-    ].join("\n");
+    applyPhaseToolPolicyForHost(pi as unknown as { getAllTools?: () => Array<{ name: string; sourceInfo: { source: string } }>; setActiveTools?: (names: string[]) => void }, phase);
   }
 
   function workflowContinuationMarker(workflow: WorkflowInstance): string {
@@ -941,7 +675,7 @@ Risk level: ${spec.riskLevel}`,
         }
         refreshBoard(ctx);
         refreshStatus(ctx);
-        return { content: [{ type: "text", text: `Workflow transition was requested, but it was blocked by a workflow gate.\n\n${result.message}` }], details: { ok: false, reason: "gate-blocked" } };
+        return { content: [{ type: "text", text: `Workflow transition was requested, but it was blocked by a workflow gate.\nInteractive user approval was received, but transition was blocked by guard validation.\n\n${result.message}` }], details: { ok: false, reason: "gate-blocked" } };
       }
 
       const transitions = result.transitions ?? [];

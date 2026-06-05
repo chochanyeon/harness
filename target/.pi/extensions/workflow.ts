@@ -854,11 +854,8 @@ Risk level: ${spec.riskLevel}`,
         }
       } else if (requiresUserApproval) {
         const confirmed = await ctx.ui.confirm(
-          `${params.summary}
-
-[${state.workflow.phase}] → [${nextPhase ?? "done"}]
-
-다음 단계로 진행할까요?`,
+          params.summary,
+          `[${state.workflow.phase}] → [${nextPhase ?? "done"}]\n\n다음 단계로 진행할까요?`,
         );
         if (!confirmed) {
           return { content: [{ type: "text", text: "취소됐습니다. 현재 단계를 유지합니다." }], details: { ok: false, reason: "user-declined" } };

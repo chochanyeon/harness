@@ -24,84 +24,6 @@ export type InterviewWizardResult = {
   answers: InterviewAnswer[];
 };
 
-export const DEFAULT_INTERVIEW_QUESTIONS: InterviewQuestion[] = [
-  {
-    id: "scope",
-    title: "무엇을 만들거나 수정하나요?",
-    prompt: "이번 작업의 구체적 범위를 답해주세요.",
-    helpText: "예: 질문 표시 방식, 답변 입력 UX, 진행 상태, 미리보기 등",
-    required: true,
-    allowFreeText: true,
-    allowSkip: false,
-    choices: [
-      { id: "question-display", label: "질문 표시 방식" },
-      { id: "answer-input", label: "답변 입력 UX" },
-      { id: "progress", label: "진행 상태 표시" },
-      { id: "preview", label: "답변 요약 미리보기" },
-    ],
-  },
-  {
-    id: "motivation",
-    title: "왜 필요한가요?",
-    prompt: "현재 불편함 또는 해결하려는 문제를 답해주세요.",
-    helpText: "사용자가 헷갈리거나 반복 입력해야 하는 지점을 적어주세요.",
-    required: true,
-    allowFreeText: true,
-    allowSkip: false,
-    choices: [
-      { id: "numbering", label: "번호를 맞춰 답변하는 방식이 불편함" },
-      { id: "unclear-progress", label: "진행 상태가 한눈에 보이지 않음" },
-      { id: "missing-preview", label: "지금까지 답변 요약을 보기 어려움" },
-      { id: "hard-to-answer", label: "무엇을 답해야 할지 막막함" },
-    ],
-  },
-  {
-    id: "acceptance",
-    title: "완료 기준은 무엇인가요?",
-    prompt: "구현 후 pass/fail로 판단할 수 있는 기준을 답해주세요.",
-    helpText: "테스트 가능한 기준을 선택하고 필요한 내용을 추가하세요.",
-    required: true,
-    allowFreeText: true,
-    allowSkip: false,
-    choices: [
-      { id: "no-manual-numbering", label: "번호를 직접 입력하지 않아도 됨" },
-      { id: "auto-wizard", label: "interview 시작 시 wizard 자동 표시" },
-      { id: "choice-and-free-text", label: "선택지와 자유입력을 함께 지원" },
-      { id: "summary-preview", label: "답변 요약 preview 제공" },
-    ],
-  },
-  {
-    id: "affected-files",
-    title: "영향 받는 파일/모듈을 알고 있나요?",
-    prompt: "알고 있는 파일이나 모듈을 선택하거나 입력하세요.",
-    helpText: "모르면 Skip을 사용할 수 있습니다.",
-    required: false,
-    allowFreeText: true,
-    allowSkip: true,
-    choices: [
-      { id: "workflow-ts", label: "target/.pi/extensions/workflow.ts" },
-      { id: "workflow-ui", label: "target/.pi/extensions/workflow/ui.ts" },
-      { id: "new-interview-ui", label: "새 interview UI 모듈" },
-      { id: "readme", label: "README.md / README.en.md" },
-    ],
-  },
-  {
-    id: "constraints-risks",
-    title: "제약사항이나 알려진 위험이 있나요?",
-    prompt: "반드시 지켜야 할 제약이나 우려되는 위험을 답해주세요.",
-    helpText: "없으면 Skip을 사용할 수 있습니다.",
-    required: false,
-    allowFreeText: true,
-    allowSkip: true,
-    choices: [
-      { id: "preserve-phases", label: "기존 workflow phase/gate 유지" },
-      { id: "non-ui-fallback", label: "비 UI 모드 fallback 필요" },
-      { id: "korean-ime", label: "한국어 입력/IME 안정성" },
-      { id: "no-external-deps", label: "외부 의존성 추가 없음" },
-    ],
-  },
-];
-
 type WizardDone = (value: InterviewWizardResult | null) => void;
 
 type WizardContext = {
@@ -113,10 +35,10 @@ type WizardContext = {
   };
 };
 
-export async function launchInterviewWizard(ctx: WizardContext, workflowTitle: string): Promise<InterviewWizardResult | null> {
+export async function launchInterviewWizard(ctx: WizardContext, workflowTitle: string, questions: InterviewQuestion[]): Promise<InterviewWizardResult | null> {
   if (!ctx.hasUI || typeof ctx.ui.custom !== "function") return null;
 
-  const answers = DEFAULT_INTERVIEW_QUESTIONS.map((question) => ({
+  const answers = questions.map((question) => ({
     questionId: question.id,
     selectedChoiceIds: [] as string[],
     freeText: "",
@@ -125,12 +47,12 @@ export async function launchInterviewWizard(ctx: WizardContext, workflowTitle: s
   let currentIndex = 0;
 
   if (typeof ctx.ui.setWidget === "function") {
-    ctx.ui.setWidget("interview-progress", (_tui: unknown, theme: any) => renderProgressWidget(theme, currentIndex, answers));
+    ctx.ui.setWidget("interview-progress", (_tui: unknown, theme: any) => renderProgressWidget(theme, currentIndex, answers, questions));
   }
 
   try {
     return await ctx.ui.custom<InterviewWizardResult | null>((tui, theme, _keybindings, done) => {
-      return new InterviewWizard(tui, theme, workflowTitle, answers, (nextIndex) => {
+      return new InterviewWizard(tui, theme, workflowTitle, questions, answers, (nextIndex) => {
         currentIndex = nextIndex;
         tui.requestRender?.();
       }, done);
@@ -140,9 +62,9 @@ export async function launchInterviewWizard(ctx: WizardContext, workflowTitle: s
   }
 }
 
-function renderProgressWidget(theme: any, currentIndex: number, answers: InterviewAnswer[]): Box {
+function renderProgressWidget(theme: any, currentIndex: number, answers: InterviewAnswer[], questions: InterviewQuestion[]): Box {
   const lines = ["Interview Progress"];
-  DEFAULT_INTERVIEW_QUESTIONS.forEach((question, index) => {
+  questions.forEach((question, index) => {
     const answer = answers[index];
     const done = answer.skipped || answer.selectedChoiceIds.length > 0 || answer.freeText.trim().length > 0;
     const marker = index === currentIndex ? ">" : done ? "✓" : "○";
@@ -165,6 +87,7 @@ class InterviewWizard {
     private readonly tui: any,
     private readonly theme: any,
     private readonly workflowTitle: string,
+    private readonly questions: InterviewQuestion[],
     private readonly answers: InterviewAnswer[],
     private readonly onStateChange: (index: number) => void,
     private readonly done: WizardDone,
@@ -180,7 +103,7 @@ class InterviewWizard {
 
     if (this.preview) {
       if (matchesKey(data, Key.enter) && this.finalPreview) {
-        this.done({ completed: true, summaryMarkdown: buildAnswerSummary(this.answers), answers: cloneAnswers(this.answers) });
+        this.done({ completed: true, summaryMarkdown: buildAnswerSummary(this.answers, this.questions), answers: cloneAnswers(this.answers) });
         return;
       }
       if (matchesKey(data, Key.escape) || data.toLowerCase() === "v") {
@@ -236,7 +159,7 @@ class InterviewWizard {
       this.moveNext();
       return;
     }
-    if (matchesKey(data, Key.backspace) || data === "") {
+    if (matchesKey(data, Key.backspace) || data === "") {
       const answer = this.currentAnswer();
       answer.freeText = Array.from(answer.freeText).slice(0, -1).join("");
       answer.skipped = false;
@@ -262,7 +185,7 @@ class InterviewWizard {
     const answer = this.currentAnswer();
     const lines = [
       this.color("accent", `Interview Wizard: ${this.workflowTitle}`),
-      this.color("dim", `Question ${this.index + 1}/${DEFAULT_INTERVIEW_QUESTIONS.length}`),
+      this.color("dim", `Question ${this.index + 1}/${this.questions.length}`),
       "",
       this.color("accent", question.title),
       question.prompt,
@@ -285,7 +208,7 @@ class InterviewWizard {
   }
 
   private renderPreview(width: number): string[] {
-    const lines = [this.color("accent", "Interview Answer Preview"), "", ...buildAnswerSummary(this.answers).split("\n")];
+    const lines = [this.color("accent", "Interview Answer Preview"), "", ...buildAnswerSummary(this.answers, this.questions).split("\n")];
     lines.push("", this.color("dim", this.finalPreview ? "Enter 완료 • Esc 돌아가기" : "Esc/v 돌아가기"));
     return lines.map((line) => truncateToWidth(line, width));
   }
@@ -304,7 +227,7 @@ class InterviewWizard {
       this.requestRender();
       return;
     }
-    if (this.index === DEFAULT_INTERVIEW_QUESTIONS.length - 1) {
+    if (this.index === this.questions.length - 1) {
       this.preview = true;
       this.finalPreview = true;
       this.requestRender();
@@ -355,7 +278,7 @@ class InterviewWizard {
   }
 
   private currentQuestion(): InterviewQuestion {
-    return DEFAULT_INTERVIEW_QUESTIONS[this.index];
+    return this.questions[this.index];
   }
 
   private currentAnswer(): InterviewAnswer {
@@ -372,8 +295,8 @@ class InterviewWizard {
   }
 }
 
-function buildAnswerSummary(answers: InterviewAnswer[]): string {
-  return DEFAULT_INTERVIEW_QUESTIONS.map((question, index) => {
+function buildAnswerSummary(answers: InterviewAnswer[], questions: InterviewQuestion[]): string {
+  return questions.map((question, index) => {
     const answer = answers[index];
     const labels = question.choices.filter((choice) => answer.selectedChoiceIds.includes(choice.id)).map((choice) => choice.label);
     const values = [];

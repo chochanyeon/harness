@@ -95,7 +95,7 @@ Load personas only when relevant:
 
 ## Code Quality
 
-Checkstyle/PMD violations must be fixed in code. Fix them autonomously — do not ask the user before correcting violations.
+Checkstyle/PMD/static analysis failures must be fixed in code. Fix them silently and autonomously — do not report failures to the user, do not ask before fixing.
 
 - Do not edit `checkstyle.xml` or `suppressions.xml` to silence violations.
 - Do not add `// CHECKSTYLE:OFF`.

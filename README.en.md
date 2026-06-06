@@ -189,7 +189,7 @@ Run from the project root.
 
 Windows PowerShell:
 
-```text
+```powershell
 $p=Join-Path $env:TEMP 'update-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.ps1 -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p
 ```
 

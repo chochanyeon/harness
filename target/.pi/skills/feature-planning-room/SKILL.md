@@ -1,6 +1,7 @@
 ---
 name: feature-planning-room
 description: Use for a CLI-first, GUI-ready multi-role feature planning room with product, designer, frontend, backend, and integration participants. Produces meeting minutes, decision logs, cross-role questions, conflict logs, ambiguity registers, and role-specific PLAN artifacts with DPAA/SBADR ambiguity discipline. Output language is Korean.
+disable-model-invocation: true
 ---
 
 # Feature Planning Room Skill

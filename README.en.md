@@ -6,6 +6,8 @@ Pi workflow harness source repository.
 
 Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. The template includes a colorful high-visibility console theme at `target/.pi/themes/workflow-console.json`; it keeps a dark base while using brighter cyan, pink, yellow, and green accents for status and emphasis. In an initialized project it is installed as `.pi/themes/workflow-console.json` and can be selected as `workflow-console` in Pi's `/settings`. In an initialized project, `AGENTS.md`, `.pi/`, and optional Claude Code workflow-gate files under `.claude/` and `.harness/` are placed at the project root. Claude Code and Pi share workflow policy declarations through `.harness/workflow-policy.json` while keeping runtime-specific adapters separate.
 
+The TUI-improvement harness extension helper `target/.pi/extensions/workflow/markdown-box.ts` provides reusable box-line rendering for semantic fenced block types `note`, `warning`, `error`, `plan`, `review`, `decision`, and `tip`. This helper is for harness-extension-owned workflow/custom/tool rendering paths, while global assistant-message Markdown rendering remains owned by Pi core.
+
 When developing the workflow extension, keep `target/.pi/extensions/workflow.ts` as the entrypoint and top-level assembly layer. Put new guard decisions in `target/.pi/extensions/workflow/gates.ts`, reminder decisions in `workflow/reminders.ts`, command catalog logic and harness repo code-quality detection in `workflow/catalog.ts`, and state/persistence in `workflow/state.ts` and `workflow/storage.ts`. Put runtime process state, guard token restoration, and stale steer metadata in `workflow/runtime-state.ts`, phase tool policy, runtime extension mutation approval checks, and `/workflow` typo suggestions in `workflow/runtime-policy.ts`, footer/board/result box UI helpers in `workflow/runtime-ui.ts`, and general UI helpers in `workflow/ui.ts` or `workflow/interview-ui.ts`. When adding a feature, choose the appropriate submodule before adding business logic to `workflow.ts`.
 
 ## Initialize in another project
@@ -71,6 +73,8 @@ Separate requirements-discovery and enhanced interview commands are available fo
 /feature-interview <feature-name or rough idea>
 /feature-planning-room <feature-name or rough idea>
 ```
+
+Duplicate, legacy, or advanced-room skills (`code-review-gate`, `push-with-review`, `feature-interview`, `feature-planning-room`, `requirements-room`) are kept command-only and excluded from default model auto-invocation. Use them only through an explicit `/skill:<name>` call or the corresponding slash command.
 
 `/requirements-room` is the new multi-role requirements meeting facilitator. It is separate from the default workflow interview and the older planning-room draft. It runs short rounds for product, design, frontend, backend, QA/integration, and operations perspectives, then records cross-role contracts, conflicts, decisions, assumptions, and open questions as a requirements package. It uses `.ai/interview/requirements-room-protocol.md` as the shared protocol and writes artifacts under `.ai/interview/<feature-slug>/requirements-room/`.
 

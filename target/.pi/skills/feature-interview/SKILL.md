@@ -1,6 +1,7 @@
 ---
 name: feature-interview
 description: Use for a separate, highly detailed feature-development interview that produces product, design, frontend, backend, integration, and ambiguity-register PLAN artifacts before ordinary workflow planning. Designed to remove ambiguity with DPAA and SBADR lenses. Output language is Korean.
+disable-model-invocation: true
 ---
 
 # Feature Interview Skill

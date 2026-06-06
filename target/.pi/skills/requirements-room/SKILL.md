@@ -1,6 +1,7 @@
 ---
 name: requirements-room
 description: Use for a role-based requirements meeting that is intentionally separate from the normal workflow interview. Facilitates product, design, frontend, backend, QA/integration, and operations perspectives, records cross-role questions and conflicts, and produces a requirements package before ordinary workflow planning. Output language is Korean.
+disable-model-invocation: true
 ---
 
 # Requirements Room Skill

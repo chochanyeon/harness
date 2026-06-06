@@ -8,6 +8,8 @@ Pi 기반 LLM 개발 세션에 **workflow 거버넌스**, **기계적 guard**, *
 
 TUI 시인성 개선을 위해 배포 템플릿에 project-local 테마 `target/.pi/themes/workflow-console.json`을 포함합니다. 이 테마는 어두운 배경을 유지하면서 상태/강조 요소에 cyan, pink, yellow, green 계열을 더 선명하게 쓰는 colorful console 팔레트입니다. 설치된 프로젝트에서는 `.pi/themes/workflow-console.json`으로 배치되며, Pi의 `/settings`에서 `workflow-console`을 선택해 사용할 수 있습니다.
 
+TUI 개선용 harness extension helper `target/.pi/extensions/workflow/markdown-box.ts`는 semantic fenced block 타입 `note`, `warning`, `error`, `plan`, `review`, `decision`, `tip`을 박스형 line rendering으로 변환하는 재사용 유틸리티를 제공합니다. 이 helper는 harness extension 소유 workflow/custom/tool 렌더링 경로용이며, global assistant-message Markdown rendering은 Pi core가 계속 소유합니다.
+
 설치된 프로젝트의 루트에는 기본적으로 다음만 노출됩니다.
 
 ```text
@@ -68,6 +70,8 @@ DPAA와 SBADR은 상호 보완적입니다.
 /feature-interview <feature-name or rough idea>
 /feature-planning-room <feature-name or rough idea>
 ```
+
+중복/legacy/고급 회의용 skill인 `code-review-gate`, `push-with-review`, `feature-interview`, `feature-planning-room`, `requirements-room`은 기본 모델 자동 호출 후보에서 제외하고 command-only로 유지합니다. 필요할 때만 명시적인 `/skill:<name>` 또는 대응 slash command로 사용합니다.
 
 `/requirements-room`은 새 다직군 요구사항 회의 진행기입니다. 기존 기본 interview나 초안 성격의 planning-room과 분리되어, 기획/디자인/프론트엔드/백엔드/QA·통합/운영 관점을 짧은 round로 진행하고, 역할 간 계약, 충돌, 결정, 가정, open question을 요구사항 패키지로 정리합니다. `.ai/interview/requirements-room-protocol.md`를 공통 프로토콜로 사용하며 산출물은 `.ai/interview/<feature-slug>/requirements-room/` 아래에 저장됩니다.
 

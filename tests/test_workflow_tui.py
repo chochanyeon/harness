@@ -14,13 +14,40 @@ Covers:
 """
 from pathlib import Path
 import json
+import os
+import subprocess
+import textwrap
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 RUNTIME_UI = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-ui.ts"
+MARKDOWN_BOX = ROOT / "target" / ".pi" / "extensions" / "workflow" / "markdown-box.ts"
 FORMAT = ROOT / "target" / ".pi" / "extensions" / "workflow" / "format.ts"
 THEME = ROOT / "target" / ".pi" / "themes" / "workflow-console.json"
 PI_DARK_THEME = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@earendil-works" / "pi-coding-agent" / "dist" / "modes" / "interactive" / "theme" / "dark.json"
+PI_NODE_MODULES = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@earendil-works" / "pi-coding-agent" / "node_modules"
+
+
+def _run_markdown_box(script_body: str) -> dict:
+    env = os.environ.copy()
+    env["NODE_PATH"] = str(PI_NODE_MODULES)
+    script = textwrap.dedent(f'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('markdown-box-test.js'), {{ interopDefault: false }});
+        const mod = jiti(path.resolve('target/.pi/extensions/workflow/markdown-box.ts'));
+        {script_body}
+    ''')
+    result = subprocess.run(
+        ["node", "-e", script],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
 
 
 # ── Imports ───────────────────────────────────────────────────────────────────
@@ -238,6 +265,88 @@ def test_logs_command_uses_format_recent_field_logs():
     idx = src.index('command === "logs"')
     block = src[idx:idx + 200]
     assert "formatRecentFieldLogs" in block
+
+
+# ── Semantic Markdown box rendering ──────────────────────────────────────────
+
+def test_semantic_box_exports_present():
+    src = MARKDOWN_BOX.read_text(encoding="utf-8")
+    for symbol in [
+        "DEFAULT_SEMANTIC_BOX_TYPES",
+        "KNOWN_CODE_LANGUAGES",
+        "classifyFenceInfo",
+        "parseMarkdownFencedBlocks",
+        "renderSemanticMarkdownBoxes",
+        "SEMANTIC_BOX_LABELS",
+        "SEMANTIC_BOX_COLOR_KINDS",
+    ]:
+        assert f"export {symbol}" in src or f"export const {symbol}" in src or f"export function {symbol}" in src or f"export interface {symbol}" in src
+
+
+def test_semantic_box_default_types_classify_as_box():
+    data = _run_markdown_box(r'''
+        const types = ['note', 'warning', 'error', 'plan', 'review', 'decision', 'tip'];
+        console.log(JSON.stringify(Object.fromEntries(types.map((type) => [type, mod.classifyFenceInfo(type)]))));
+    ''')
+    assert set(data.values()) == {"box"}
+
+
+def test_semantic_box_code_languages_stay_code():
+    data = _run_markdown_box(r'''
+        const langs = ['ts', 'typescript', 'js', 'javascript', 'python', 'py', 'bash', 'sh', 'shell', 'json', 'yaml', 'java', 'text', 'plaintext', 'mermaid', 'dockerfile', 'ps1', 'powershell'];
+        console.log(JSON.stringify(Object.fromEntries(langs.map((lang) => [lang, mod.classifyFenceInfo(lang)]))));
+    ''')
+    assert len(data) >= 12
+    assert set(data.values()) == {"code"}
+
+
+def test_semantic_box_unknown_non_code_info_becomes_box():
+    data = _run_markdown_box(r'''
+        console.log(JSON.stringify({ result: mod.classifyFenceInfo('summary-card') }));
+    ''')
+    assert data["result"] == "box"
+
+
+def test_semantic_box_parser_supports_backtick_and_tilde_fences():
+    data = _run_markdown_box(r'''
+        const backtick = mod.parseMarkdownFencedBlocks('before\n```note\nhello\n```\nafter');
+        const tilde = mod.parseMarkdownFencedBlocks('~~~tip\nhello\n~~~');
+        console.log(JSON.stringify({
+          backtickKinds: backtick.map((segment) => segment.kind),
+          tildeKinds: tilde.map((segment) => segment.kind),
+        }));
+    ''')
+    assert "box" in data["backtickKinds"]
+    assert "box" in data["tildeKinds"]
+
+
+def test_semantic_box_rendering_preserves_code_fences():
+    data = _run_markdown_box(r'''
+        const lines = mod.renderSemanticMarkdownBoxes('```ts\nconst x = 1;\n```', 80);
+        console.log(JSON.stringify({ first: lines[0], last: lines[lines.length - 1], lines }));
+    ''')
+    assert data["first"].startswith("```ts")
+    assert data["last"] == "```"
+    assert "const x = 1;" in data["lines"]
+
+
+def test_semantic_box_rendering_preserves_untyped_code_fences():
+    data = _run_markdown_box(r'''
+        const lines = mod.renderSemanticMarkdownBoxes('```\nplain code\n```', 80);
+        console.log(JSON.stringify({ first: lines[0], last: lines[lines.length - 1], lines }));
+    ''')
+    assert data["first"] == "```"
+    assert data["last"] == "```"
+    assert "plain code" in data["lines"]
+
+
+def test_semantic_box_rendered_lines_fit_width_40():
+    data = _run_markdown_box(r'''
+        const lines = mod.renderSemanticMarkdownBoxes('```warning\nThis is a very long warning message that must be truncated or wrapped safely.\n```', 40);
+        console.log(JSON.stringify({ lines, lengths: lines.map((line) => [...line.replace(/\x1b\[[0-9;]*m/g, '')].length) }));
+    ''')
+    assert data["lines"]
+    assert all(length <= 40 for length in data["lengths"])
 
 
 # ── Theme validation ──────────────────────────────────────────────────────────

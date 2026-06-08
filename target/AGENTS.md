@@ -22,7 +22,8 @@ Rules:
 
 - Work only in the current phase.
 - Ask the user before crossing approval-required boundaries. Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review`, and `review_approved → document → commit`. In `code_review`, run main self-review, independent reviewer/subagent review, and quality gates, then call `submit_review_package`.
-- If a guard blocks, report the blocker and wait.
+- If a DPAA/SBADR guard blocks, attempt to repair the plan autonomously (rewrite vague sentences, add missing metrics, remove placeholders, fix syntactic ambiguity) and retry `/workflow approve`. Only ask the user when the fix requires a genuine business decision that cannot be inferred from context.
+- For all other guards, report the blocker and wait.
 - If a workflow reminder is injected, address it explicitly; do not silently skip missing documentation, verification, review-package, commit-summary, or field-log evidence reminders.
 - Do not simulate guard results, write token files, or claim approval on behalf of the user.
 - Modifying `.pi/extensions/**` or `target/.pi/extensions/**` requires explicit interactive user approval for that tool call; never create file-based approval markers.

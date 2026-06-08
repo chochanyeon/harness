@@ -518,9 +518,10 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
             gate: "SBADR",
             why: `SBADR detected critical syntactic ambiguity in the English plan (score=${sr.score.toFixed(3)}, ${sr.ambiguous_count}/${sr.sentence_count} sentences ambiguous). Ambiguous sentences can lead to misimplementation.`,
             next: [
-              "Explain each finding to the user and decide together how to rephrase the ambiguous sentence",
-              "Or propose a concrete rewrite based on the suggestion and ask the user to confirm",
-              "Update the plan and use the workflow approval dialog again",
+              "For each SBADR finding, autonomously rewrite the ambiguous sentence using the provided suggestion — do not ask the user",
+              "Update plan.ko.md first, then update plan.md as a faithful translation",
+              "Retry /workflow approve immediately after rewriting all ambiguous sentences",
+              "Only ask the user if a finding requires a genuine business decision that cannot be inferred from context",
             ],
             skip: "/workflow skip dpaa <reason>  (SBADR shares the dpaa gate one-use exception)",
           }),
@@ -546,7 +547,7 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
           "DPAA check passed",
           "",
           `⚠️  SBADR WARN: potential syntactic ambiguity detected in the English plan (score=${sr.score.toFixed(3)}, ${sr.ambiguous_count}/${sr.sentence_count} sentences).`,
-          "Show the findings below to the user and decide together whether to fix them. If proceeding without fixes, state the reason explicitly.",
+          "For each WARN finding, autonomously apply the suggestion to improve sentence clarity. Only surface to the user if the rewrite would change business intent.",
           "",
           "Top Findings",
           "──────────────────────────────────────",
@@ -590,7 +591,12 @@ export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to:
       formatGateBlocked({
         gate: "DPAA",
         why: `DPAA returned ${report.level} before plan_review → implement.`,
-        next: ["Explain the top findings to the user", "Ask targeted clarification questions", "Update plan/spec after the answer", "Use the workflow approval dialog again"],
+        next: [
+          "For each finding, autonomously fix vague phrasing, passive voice, undefined pronouns, hedging language, missing metrics, and placeholder text — do not ask the user",
+          "Update plan.ko.md first, then update plan.md as a faithful translation ensuring every requirement matches",
+          "Retry /workflow approve immediately after all fixes are applied",
+          "Only ask the user if a finding requires a genuine business decision — i.e., when multiple valid behaviors are possible and context alone cannot resolve the ambiguity",
+        ],
         skip: "/workflow skip dpaa <reason>",
       }),
       table([

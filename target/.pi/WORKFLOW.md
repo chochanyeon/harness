@@ -37,7 +37,8 @@ interview
 - Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review`, and `review_approved → document → commit`. `code_review → review_approved` is triggered by `submit_review_package` after main review, independent reviewer/subagent review, and quality gates pass.
 - The extension injects mechanical reminders instead of blocking for easy-to-forget deliverables: documentation markdown/HTML/indexes, verification evidence before commit, review package summary in code review, commit summary/message, and field-log evidence for harness-runtime changes. Address each reminder or explicitly state why it is not applicable.
 - Natural-language approval is accepted only from the interactive user.
-- If a guard blocks, report the blocker and wait. Do not bypass or simulate guard results.
+- If a DPAA/SBADR guard blocks, attempt to repair the plan autonomously (rewrite vague sentences, add missing metrics, remove placeholders, fix syntactic ambiguity) and retry `/workflow approve`. Repeat until DPAA PASS or a genuine business decision is required. Only then ask the user.
+- For all other guards, report the blocker and wait. Do not bypass or simulate guard results.
 - Modifying `.pi/extensions/**` or `target/.pi/extensions/**` requires explicit interactive user approval for that tool call. The approval is extension in-memory only; do not create approval files.
 - Do not create approval artifacts or authority files. Guard satisfaction comes from workflow phase, transition history, and extension-recorded evidence.
 - Keep changes surgical: touch only files required by the current phase/task.

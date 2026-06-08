@@ -29,14 +29,35 @@ The extension checks the current plan from:
 
 ## When DPAA Blocks
 
-Do not implement and do not guess. For each relevant finding:
+Triage each finding and act autonomously where possible. **Do not ask the user unless a genuine business decision is required.**
 
-1. Explain the ambiguity in plain Korean.
-2. Ask a targeted follow-up question or offer concrete options.
-3. Wait for the user's answer.
-4. Update the Korean source artifacts first.
-5. Update the English DPAA artifacts as faithful translations.
-6. Ask the user to approve the transition again.
+### Autonomous repair (no user input needed)
+
+Fix these without asking:
+
+| Finding type | Action |
+|---|---|
+| Vague / passive phrasing | Rewrite as active, specific sentences |
+| Undefined pronouns (it/they/this) | Replace with explicit subjects |
+| Hedging language (might/could/possibly/would) | Replace with definitive statements |
+| Missing measurable acceptance criteria | Infer from stated goals; make concrete and testable |
+| Placeholder text or TODO markers | Expand into full statements |
+| SBADR syntactic ambiguity | Rewrite sentence structure for unambiguous parse |
+
+Steps for autonomous repair:
+
+1. Fix the Korean source artifact (`plan.ko.md`) first.
+2. Update the English artifact (`plan.md`) as a faithful translation — every requirement must match.
+3. Retry `/workflow approve` immediately without reporting to the user.
+4. Repeat until DPAA PASS or a genuine business decision is reached.
+
+### User input required
+
+Only ask the user when:
+- The correct behavior is genuinely unclear from context (business decision with multiple valid outcomes).
+- A requirement is missing entirely and cannot be inferred.
+
+When asking, explain the specific ambiguity in Korean and offer concrete options.
 
 Use `/workflow dpaa-audit` to inspect the latest receipt/snapshot when needed.
 

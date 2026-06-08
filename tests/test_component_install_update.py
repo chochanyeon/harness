@@ -60,14 +60,15 @@ def test_python_initializer_can_install_workflow_only(tmp_path):
     assert (tmp_path / ".pi" / "extensions" / "workflow").exists()
     assert (tmp_path / ".pi" / "schemas" / "harness-field-log-event.schema.json").exists()
     assert (tmp_path / ".pi" / "themes" / "workflow-console.json").exists()
-    assert (tmp_path / ".ai" / "interview" / "feature-interview-protocol.md").exists()
-    assert (tmp_path / ".ai" / "interview" / "requirements-room-protocol.md").exists()
-    assert (tmp_path / ".pi" / "skills" / "requirements-room" / "SKILL.md").exists()
+    assert (tmp_path / ".ai" / "interview").exists()
+    assert not (tmp_path / ".ai" / "interview" / "feature-interview-protocol.md").exists()
+    assert not (tmp_path / ".ai" / "interview" / "requirements-room-protocol.md").exists()
+    assert not (tmp_path / ".pi" / "skills" / "requirements-room" / "SKILL.md").exists()
     assert not (tmp_path / ".pi" / "extensions" / "memory.ts").exists()
     assert not (tmp_path / ".pi" / "schemas" / "harness-memory-entry.schema.json").exists()
 
 
-def test_python_initializer_can_install_claude_feature_commands(tmp_path):
+def test_python_initializer_installs_only_workflow_claude_commands(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
@@ -89,11 +90,11 @@ def test_python_initializer_can_install_claude_feature_commands(tmp_path):
     assert result.returncode == 0, result.stderr
 
     assert (tmp_path / ".claude" / "commands" / "workflow" / "start.md").exists()
-    assert (tmp_path / ".claude" / "commands" / "feature-interview.md").exists()
-    assert (tmp_path / ".claude" / "commands" / "feature-planning-room.md").exists()
-    assert (tmp_path / ".claude" / "commands" / "requirements-room.md").exists()
-    assert (tmp_path / ".ai" / "interview" / "feature-planning-room-protocol.md").exists()
-    assert (tmp_path / ".ai" / "interview" / "requirements-room-protocol.md").exists()
+    assert not (tmp_path / ".claude" / "commands" / "feature-interview.md").exists()
+    assert not (tmp_path / ".claude" / "commands" / "feature-planning-room.md").exists()
+    assert not (tmp_path / ".claude" / "commands" / "requirements-room.md").exists()
+    assert not (tmp_path / ".ai" / "interview" / "feature-planning-room-protocol.md").exists()
+    assert not (tmp_path / ".ai" / "interview" / "requirements-room-protocol.md").exists()
 
 
 def test_update_scripts_are_component_granular():
@@ -107,10 +108,9 @@ def test_update_scripts_are_component_granular():
     assert ".pi/schemas/harness-field-log-event.schema.json" in sh
     assert ".pi/schemas/harness-memory-entry.schema.json" in sh
     assert ".pi/themes" in sh
-    assert ".ai/interview" in sh
-    assert ".claude/commands/feature-interview.md" in sh
-    assert ".claude/commands/requirements-room.md" in sh
-    assert ".ai/interview/requirements-room-protocol.md" in sh
+    assert ".claude/commands/feature-interview.md" not in sh
+    assert ".claude/commands/requirements-room.md" not in sh
+    assert ".ai/interview/requirements-room-protocol.md" not in sh
     assert "Template directory not found in cloned repo: target" in sh
     assert "No managed harness paths were found in template" in sh
 
@@ -120,11 +120,10 @@ def test_update_scripts_are_component_granular():
     assert '".pi/extensions"' not in ps1
     assert '".pi/schemas"' not in ps1
     assert '".pi/themes"' in ps1
-    assert '".ai/interview/feature-interview-protocol.md"' in ps1
-    assert '".ai/interview/requirements-room-protocol.md"' in ps1
-    assert '".ai/interview"' not in ps1
-    assert '".claude/commands/feature-interview.md"' in ps1
-    assert '".claude/commands/requirements-room.md"' in ps1
+    assert '".ai/interview/feature-interview-protocol.md"' not in ps1
+    assert '".ai/interview/requirements-room-protocol.md"' not in ps1
+    assert '".claude/commands/feature-interview.md"' not in ps1
+    assert '".claude/commands/requirements-room.md"' not in ps1
     assert "Template directory not found in cloned repo: target" in ps1
     assert "No managed harness paths were found in template" in ps1
 

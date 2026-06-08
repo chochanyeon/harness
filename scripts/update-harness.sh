@@ -82,9 +82,6 @@ managed_paths_for() {
         .pi/extensions/assistant-markdown-box.ts \
         .pi/extensions/workflow \
         .harness/workflow-policy.json \
-        .ai/interview/feature-interview-protocol.md \
-        .ai/interview/feature-planning-room-protocol.md \
-        .ai/interview/requirements-room-protocol.md \
         .pi/dpaa \
         .pi/sbadr \
         .pi/corenlp \
@@ -106,12 +103,6 @@ managed_paths_for() {
         .claude/settings.json \
         .claude/hooks/workflow-gate.cjs \
         .claude/commands/workflow \
-        .claude/commands/feature-interview.md \
-        .claude/commands/feature-planning-room.md \
-        .claude/commands/requirements-room.md \
-        .ai/interview/feature-interview-protocol.md \
-        .ai/interview/feature-planning-room-protocol.md \
-        .ai/interview/requirements-room-protocol.md \
         .harness/.gitignore \
         .harness/README.md \
         .harness/workflow-policy.json \

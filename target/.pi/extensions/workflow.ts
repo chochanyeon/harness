@@ -1928,15 +1928,15 @@ Risk level: ${spec.riskLevel}`,
         }
         const recoveryClaims: Record<WorkflowPhase, string> = {
           interview: "초기 interview 단계로 복구합니다. guard evidence는 복구하지 않습니다.",
-          plan: "요구사항 확인 후 plan 단계까지 진행했다고 확인합니다. guard evidence는 복구하지 않습니다.",
-          plan_review: "plan 작성 후 review 단계까지 진행했다고 확인합니다. DPAA는 아직 통과한 것으로 간주하지 않습니다.",
-          implement: "DPAA guard가 만족되어 implement 단계에 진입했다고 확인하고 transition evidence를 복구합니다.",
-          code_review: "DPAA guard가 만족되고 구현이 완료되어 code_review 단계에 진입했다고 확인합니다.",
-          review_approved: "DPAA, code quality, code review guard가 모두 만족되었다고 확인하고 관련 evidence를 복구합니다.",
-          document: "review_approved 이후 문서화 단계까지 진행했다고 확인하고 관련 evidence를 복구합니다.",
-          commit: "문서화까지 완료되어 commit 단계까지 진행했다고 확인하고 관련 evidence를 복구합니다.",
-          push: "DPAA, code quality, code review, commit approval이 완료되어 push 단계라고 확인하고 transition evidence를 복구합니다.",
-          done: "workflow가 완료되었다고 표시합니다. 실행 evidence는 복구하지 않습니다.",
+          plan: "plan 단계로 복구합니다. guard evidence는 복구하지 않습니다.",
+          plan_review: "plan_review 단계로 복구합니다. DPAA는 통과한 것으로 간주하지 않습니다.",
+          implement: "implement 단계로 복구하지만 DPAA transition evidence는 복구하지 않습니다.",
+          code_review: "code_review 단계로 복구하지만 DPAA/code quality/code review evidence는 복구하지 않습니다.",
+          review_approved: "review_approved 단계로 복구하지만 code quality/review evidence는 복구하지 않습니다.",
+          document: "document 단계로 복구하지만 review evidence는 복구하지 않습니다.",
+          commit: "commit 단계로 복구하지만 push approval evidence는 복구하지 않습니다.",
+          push: "push 단계로 복구하지만 commit → push approval evidence는 복구하지 않습니다. 실제 push는 정상 승인 이력이 없으면 차단될 수 있습니다.",
+          done: "workflow가 완료됐다고 표시하지만 실행 evidence는 복구하지 않습니다.",
         };
         if (!ctx.hasUI) {
           ctx.ui.notify("대화형 UI가 없어 workflow state 수동 복구를 승인할 수 없습니다. UI 세션에서 다시 시도하세요.", "warning");
@@ -1949,10 +1949,10 @@ Risk level: ${spec.riskLevel}`,
             "",
             recoveryClaims[next],
             "",
-            "예: 위 내용을 내가 확인하고 phase/evidence를 복구합니다.",
-            "아니오: phase와 evidence를 변경하지 않습니다.",
+            "예: phase만 복구합니다. guard evidence는 복구하지 않습니다.",
+            "아니오: phase를 변경하지 않습니다.",
             "",
-            "주의: 이 명령은 사용자의 명시적 복구 승인으로 간주됩니다. 자동 파일 복구는 여전히 신뢰하지 않습니다.",
+            "주의: 이 명령은 수동 phase 복구 전용입니다. DPAA/code review/push evidence는 정상 gate/tool 결과로만 다시 획득하세요.",
           ].join("\n"),
         );
         if (!ok) return;
@@ -1963,29 +1963,7 @@ Risk level: ${spec.riskLevel}`,
         state.codeQualityGuardSatisfiedToken = null;
         state.pushExecutionGuardSatisfiedToken = null;
         state.codeReviewGuardSatisfiedToken = null;
-        const phaseIndex = phases.indexOf(next);
-        const evidenceNotices: string[] = [];
-        if (phaseIndex >= phases.indexOf("implement") && next !== "done") {
-          state.dpaaGuardSatisfiedToken = { workflowId: state.workflow.id, issuedAt: Date.now(), reason: "manual_state_restore" };
-          persistGuardToken(HARNESS_TOKEN_TYPES.DPAA, state.dpaaGuardSatisfiedToken as unknown as Record<string, unknown>);
-          evidenceNotices.push("DPAA guard satisfied → transition evidence 복구");
-        }
-        if (phaseIndex >= phases.indexOf("review_approved") && next !== "done") {
-          state.codeQualityGuardSatisfiedToken = { workflowId: state.workflow.id, issuedAt: Date.now(), reason: "manual_state_restore" };
-          state.codeReviewGuardSatisfiedToken = { critical: 0, major: 0, minor: 0, timestamp: Date.now() };
-          persistGuardToken(HARNESS_TOKEN_TYPES.CODE_QUALITY, state.codeQualityGuardSatisfiedToken as unknown as Record<string, unknown>);
-          persistGuardToken(HARNESS_TOKEN_TYPES.CODE_REVIEW, { ...state.codeReviewGuardSatisfiedToken, workflowId: state.workflow.id });
-          evidenceNotices.push("Code quality guard satisfied → quality evidence 복구");
-          evidenceNotices.push("Code review guard satisfied → review evidence 복구");
-        }
-        if (phaseIndex >= phases.indexOf("push") && next !== "done") {
-          state.pushExecutionGuardSatisfiedToken = { workflowId: state.workflow.id, issuedAt: Date.now(), reason: "manual_state_restore" };
-          persistGuardToken(HARNESS_TOKEN_TYPES.PUSH_EXECUTION, state.pushExecutionGuardSatisfiedToken as unknown as Record<string, unknown>);
-          if (!state.workflow.history.some((item) => item.from === "commit" && item.to === "push")) {
-            state.workflow.history.push({ from: "commit", to: "push", reason: "manual_state_restore", timestamp: Date.now() });
-          }
-          evidenceNotices.push("Push phase approved → transition evidence 복구");
-        }
+        const evidenceNotices: string[] = ["guard evidence 복구 없음"];
         saveWorkflow(state.workflow);
         applyPhaseToolPolicy(state.workflow.phase);
         refreshBoard(ctx);
@@ -1993,7 +1971,7 @@ Risk level: ${spec.riskLevel}`,
         ctx.ui.notify([
           formatWorkflowStatus(state.workflow),
           "",
-          evidenceNotices.length > 0 ? `수동 state 복구 완료: ${evidenceNotices.join(", ")}` : "수동 state 복구 완료: 복구할 guard evidence 없음",
+          `수동 state 복구 완료: ${evidenceNotices.join(", ")}`,
           "",
           "주의: /workflow state <phase> 또는 workflow_state 툴은 수동 복구 전용입니다. 정상 진행에는 workflow_approve 툴 또는 submit_review_package를 사용하세요.",
           "",

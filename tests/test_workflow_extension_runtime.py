@@ -64,11 +64,11 @@ def test_workflow_extension_runtime_registers_and_allows_restored_push(tmp_path)
 
     assert "workflow" in data["commandNames"]
     assert "submit_review_result" not in data["toolNames"]
-    assert data["pushAllowed"] is True
+    assert data["pushAllowed"] is False
     assert "Workflow state 수동 변경 승인 확인" in data["confirmTitles"]
-    assert "No active workflow" in data["prompt"]
-    assert "Current phase: push" not in data["prompt"]
-    assert any("Workflow 전이: push → done" in item for item in data["notifications"])
+    assert any("guard evidence 복구 없음" in item for item in data["notifications"])
+    assert not any("Workflow 전이: push → done" in item for item in data["notifications"])
+    assert "Current phase: push" in data["prompt"]
 
 
 def test_workflow_extension_runtime_status_without_active_workflow_includes_llm_action(tmp_path):
@@ -211,7 +211,8 @@ def test_workflow_extension_runtime_clears_active_workflow_after_successful_git_
 
         (async () => {
           await pi.commands.workflow.handler('start Runtime done cleanup', ctx);
-          await pi.commands.workflow.handler('state push', ctx);
+          await pi.commands.workflow.handler('state commit', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
           await pi.events.tool_result({ toolName: 'bash', input: { command: 'git push origin HEAD' }, isError: false, content: [], details: {} }, ctx);
           await pi.commands.workflow.handler('status', ctx);
           const prompt = await pi.events.before_agent_start({ systemPrompt: 'base' });

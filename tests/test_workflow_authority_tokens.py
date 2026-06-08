@@ -23,12 +23,13 @@ def test_manual_state_and_abort_have_explicit_yes_no_confirm_copy():
     text = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
 
     assert "Workflow state 수동 변경 승인 확인" in text
-    assert "예: 위 내용을 내가 확인하고 phase/evidence를 복구합니다." in text
-    assert "아니오: phase와 evidence를 변경하지 않습니다." in text
+    assert "예: phase만 복구합니다. guard evidence는 복구하지 않습니다." in text
+    assert "아니오: phase를 변경하지 않습니다." in text
     assert "state.dpaaGuardSatisfiedToken = null" in text
     assert "state.pushExecutionGuardSatisfiedToken = null" in text
-    assert "Code quality guard satisfied → quality evidence 복구" in text
-    assert "Code review guard satisfied → review evidence 복구" in text
+    assert "guard evidence 복구 없음" in text
+    assert "Code quality guard satisfied → quality evidence 복구" not in text
+    assert "Code review guard satisfied → review evidence 복구" not in text
     assert "Workflow 종료 승인 확인" in text
     assert "예: in-memory workflow를 종료하고 persisted 참고 기록도 삭제합니다." in text
     assert "아니오: workflow를 유지합니다." in text

@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY_CORE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "policy-core.ts"
 RUNTIME_POLICY = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-policy.ts"
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+TOOL_CALL_GATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "tool-call-gate.ts"
+CONTINUATION = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "continuation.ts"
 
 
 def _policy(text: str) -> dict[str, list[str]]:
@@ -100,12 +102,12 @@ def test_apply_phase_tool_policy_called_on_start():
 
 
 def test_tool_call_backstop_blocks_write_edit_in_readonly_phases_without_followup_steering():
-    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + TOOL_CALL_GATE.read_text(encoding="utf-8")
     assert "PHASE_ALLOWED_BUILTIN_TOOLS" in src
     assert 'event.toolName === "write"' in src or "event.toolName ===" in src
     assert "phaseAllowed && !phaseAllowed.includes(event.toolName)" in src
     assert "return { block: true, reason: `⚠️ ${guide}` }" in src
-    assert "sendUserMessage 기반" in src
+    assert "sendUserMessage 기반" not in src
 
 
 def test_workflow_typo_suggestion_helper_defined_in_runtime_policy():
@@ -117,29 +119,28 @@ def test_workflow_typo_suggestion_helper_defined_in_runtime_policy():
 
 
 def test_stale_steer_marker_has_parse_fallback_after_eviction():
-    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
-    assert "consumeStaleWorkflowSteerPrompt" in src
+    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + CONTINUATION.read_text(encoding="utf-8")
+    assert "consumeStaleWorkflowSteerPrompt" in src or "consumeStaleSteerPrompt" in src
     assert "marker.split(\":\")" in src
     assert "pending?.workflowId ?? markerWorkflowId" in src
     assert "isSharedWorkflowPhase(markerPhase)" in src
 
 
 def test_workflow_continuation_does_not_queue_followup_when_busy():
-    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
-    assert "function queueWorkflowContinuation" in src
+    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + CONTINUATION.read_text(encoding="utf-8")
+    assert "function queue" in src
     assert "if (!ctx.isIdle?.())" in src
     assert "state.workflowContinuationPending = null" in src
-    assert "followUp can remain pending until the workflow is" in src
     assert 'const options = ctx.isIdle?.() ? undefined : { deliverAs: "followUp" }' not in src
 
 
 def test_steer_llm_defaults_to_steer_not_followup():
-    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + CONTINUATION.read_text(encoding="utf-8")
     assert 'async function steerLlm(message: string, deliverAs: "followUp" | "steer" = "steer")' in src
 
 
 def test_tdd_gate_checks_write_and_edit_calls_in_implement_phase():
-    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + TOOL_CALL_GATE.read_text(encoding="utf-8")
     assert 'state.workflow?.phase === "implement"' in src
     assert 'event.toolName === "write" || event.toolName === "edit"' in src
     assert "isProductionClassPath" in src

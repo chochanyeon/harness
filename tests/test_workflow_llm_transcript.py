@@ -7,6 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_TYPES = ROOT / "target" / ".pi" / "extensions" / "workflow" / "types.ts"
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts"
+TOOL_CALL_GATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "tool-call-gate.ts"
 TRANSCRIPT = ROOT / "tests" / "fixtures" / "llm_workflow_transcript.json"
 
 
@@ -21,7 +23,7 @@ def _workflow_phases_from_runtime_source() -> list[str]:
 
 
 def _assert_transcript_covers_real_extension_gates() -> None:
-    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8") + TOOL_CALL_GATE.read_text(encoding="utf-8")
     for needle in [
         'pi.registerCommand("workflow"',
         'submit_review_package',

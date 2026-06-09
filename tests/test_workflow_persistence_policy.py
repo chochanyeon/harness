@@ -4,10 +4,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 RUNTIME_STATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-state.ts"
+ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts"
 
 
 def test_persisted_workflow_is_not_auto_loaded_as_authority():
-    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
     runtime_state = RUNTIME_STATE.read_text(encoding="utf-8")
 
     assert "workflow: WorkflowInstance | null" in runtime_state

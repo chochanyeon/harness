@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "target" / ".pi" / "extensions" / "workflow" / "catalog.ts"
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts"
 
 
 def test_workflow_prerequisite_scan_checks_runtime_build_and_checkstyle_files():
@@ -31,7 +32,7 @@ def test_workflow_prerequisite_scan_checks_runtime_build_and_checkstyle_files():
 
 
 def test_workflow_start_and_load_run_prerequisite_scan_with_explicit_yes_no_warning():
-    workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
 
     assert "const ensurePrerequisites = async" in workflow
     assert "scanWorkflowPrerequisites()" in workflow

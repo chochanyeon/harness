@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "target" / ".pi" / "extensions" / "workflow" / "catalog.ts"
 CORE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "core.ts"
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts"
 WORKFLOWS = ROOT / "target" / ".pi" / "workflows"
 
 
@@ -15,7 +16,7 @@ def test_workflow_template_files_exist():
 
 
 def test_workflow_load_command_restores_persisted_instance():
-    workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
     core = CORE.read_text(encoding="utf-8")
 
     # list and load commands must both be handled

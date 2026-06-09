@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GATES = ROOT / "target" / ".pi" / "extensions" / "workflow" / "gates.ts"
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+TOOL_CALL_GATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "tool-call-gate.ts"
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ def _mirror_policy_scan(lines: list[str], max_changed: int = 30) -> dict[str, li
 
 def test_push_policy_scan_is_wired_for_git_push_gate():
     gates = GATES.read_text(encoding="utf-8")
-    workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + TOOL_CALL_GATE.read_text(encoding="utf-8")
 
     for needle in [
         "export function scanPushPolicy",
@@ -64,12 +65,13 @@ def test_push_policy_scan_is_wired_for_git_push_gate():
     assert 'consumeSkipToken("policy-scan")' in workflow
     assert 'consumeSkipToken("push-review")' not in workflow
     assert 'Workflow Transition History' in workflow
-    assert 'ctx.ui.confirm(\n            "Push policy scan 승인 확인"' in workflow
-    assert "예: 현재 git push를 계속 진행합니다." in workflow
-    assert "아니오: git push를 차단합니다." in workflow
+    assert "ctx.ui.confirm(" in workflow
+    assert "Push policy scan 승인 확인" in workflow
+    assert "예: 현재 workspace 상태를 승인하고 push합니다." in workflow
+    assert "아니오: push를 차단합니다." in workflow
     assert "gateFailures" in workflow
     assert "state.gateFailures.set" in workflow
-    assert "/workflow skip <gate> <사유>" in workflow
+    assert "/workflow skip policy-scan <사유>" in workflow
 
 
 def test_push_policy_scan_categories_match_requested_risky_files():

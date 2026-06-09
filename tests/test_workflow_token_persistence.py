@@ -15,6 +15,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts"
 RUNTIME_STATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-state.ts"
 GATES = ROOT / "target" / ".pi" / "extensions" / "workflow" / "gates.ts"
 STATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "state.ts"
@@ -46,22 +47,22 @@ def test_restore_guard_tokens_function_absent():
 
 
 def test_persist_called_on_dpaa_token():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
     assert "persistGuardToken(HARNESS_TOKEN_TYPES.DPAA" in src
 
 
 def test_persist_called_on_code_quality_token():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
     assert "persistGuardToken(HARNESS_TOKEN_TYPES.CODE_QUALITY" in src
 
 
 def test_persist_called_on_push_execution_token():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
     assert "persistGuardToken(HARNESS_TOKEN_TYPES.PUSH_EXECUTION" in src
 
 
 def test_persist_called_on_review_package_token():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
     assert "persistGuardToken(HARNESS_TOKEN_TYPES.REVIEW_PACKAGE" in src
 
 

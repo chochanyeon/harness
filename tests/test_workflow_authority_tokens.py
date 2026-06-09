@@ -4,10 +4,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 RUNTIME_STATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-state.ts"
+ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts"
+TOOL_CALL_GATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "tool-call-gate.ts"
+PROMPT_CONTEXT = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "prompt-context.ts"
 
 
 def test_workflow_guard_evidence_is_memory_only_and_push_uses_transition_history():
-    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + RUNTIME_STATE.read_text(encoding="utf-8")
+    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + RUNTIME_STATE.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8") + TOOL_CALL_GATE.read_text(encoding="utf-8")
 
     assert "dpaaGuardSatisfiedToken" in text
     assert "codeQualityGuardSatisfiedToken" in text
@@ -20,7 +23,7 @@ def test_workflow_guard_evidence_is_memory_only_and_push_uses_transition_history
 
 
 def test_manual_state_and_abort_have_explicit_yes_no_confirm_copy():
-    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
 
     assert "Workflow state 수동 변경 승인 확인" in text
     assert "예: phase만 복구합니다. guard evidence는 복구하지 않습니다." in text
@@ -37,7 +40,7 @@ def test_manual_state_and_abort_have_explicit_yes_no_confirm_copy():
 
 def test_policy_approval_audit_and_natural_approval_messages_are_explicit():
     gate_runner = ROOT / "target" / ".pi" / "extensions" / "workflow" / "gate-runner.ts"
-    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + gate_runner.read_text(encoding="utf-8")
+    text = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8") + TOOL_CALL_GATE.read_text(encoding="utf-8") + PROMPT_CONTEXT.read_text(encoding="utf-8") + gate_runner.read_text(encoding="utf-8")
 
     assert "state.policyApprovals.push" in text
     assert "Interactive user approval advanced the workflow" in text

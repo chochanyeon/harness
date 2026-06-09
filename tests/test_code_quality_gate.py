@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GATES = ROOT / "target" / ".pi" / "extensions" / "workflow" / "gates.ts"
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts"
 FORMAT = ROOT / "target" / ".pi" / "extensions" / "workflow" / "format.ts"
 
 
@@ -29,7 +30,7 @@ def test_code_quality_gate_treats_unknown_exit_as_tooling_error():
 
 
 def test_code_quality_gate_has_explicit_skip_and_phase_guidance():
-    workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+    workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
     fmt = FORMAT.read_text(encoding="utf-8")
 
     assert '"code-quality"' in workflow

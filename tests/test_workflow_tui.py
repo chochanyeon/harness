@@ -308,7 +308,8 @@ def test_assistant_markdown_box_renders_code_fences_as_background_boxes():
     assert "BOXED_FENCE_INFOS.has(info)" in src
     assert "SEMANTIC_FENCE_INFOS.has(info)" in src
     assert 'kind: "code"' in src
-    assert "new BackgroundFenceBoxComponent(segment.text, segment.label || \"code\")" in src
+    assert "new BackgroundFenceBoxComponent(segment.text)" in src
+    assert "segment.label || \"code\"" not in src
     assert "while leaving real code fences to Pi's default Markdown renderer" not in src
 
 
@@ -387,6 +388,7 @@ def test_semantic_box_rendered_lines_fit_width_40():
     ''')
     assert data["lines"]
     assert all(length <= 40 for length in data["lengths"])
+    assert max(data["lengths"]) <= 38
 
 
 # ── Theme validation ──────────────────────────────────────────────────────────

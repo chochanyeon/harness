@@ -109,7 +109,7 @@ function addAssistantText(container: Container, text: string, markdownTheme: unk
     if (segment.kind === "boxed") {
       container.addChild(new BackgroundFenceBoxComponent(segment.text));
     } else if (segment.kind === "code") {
-      container.addChild(new BackgroundFenceBoxComponent(segment.text, segment.label || "code"));
+      container.addChild(new BackgroundFenceBoxComponent(segment.text));
     } else if (segment.kind === "semantic") {
       container.addChild(new SemanticFenceBoxComponent(segment.label, segment.fence, segment.text, markdownTheme));
     } else {

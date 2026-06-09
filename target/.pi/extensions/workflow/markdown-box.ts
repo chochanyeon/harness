@@ -1,4 +1,4 @@
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 export const DEFAULT_SEMANTIC_BOX_TYPES = [
   "note",
@@ -189,15 +189,16 @@ function renderBoxSegment(segment: SemanticMarkdownSegment, width: number, theme
   const boxType = segment.boxType || "note";
   const label = SEMANTIC_BOX_LABELS[boxType] ?? titleCase(boxType);
   const icon = BOX_ICONS[boxType] ?? "□";
-  const innerWidth = Math.max(1, width - 4);
-  const border = fitLine(`╭${"─".repeat(Math.max(0, width - 2))}╮`, width);
-  const bottom = fitLine(`╰${"─".repeat(Math.max(0, width - 2))}╯`, width);
+  const boxWidth = Math.max(4, width - 2);
+  const innerWidth = Math.max(1, boxWidth - 4);
+  const border = fitLine(`╭${"─".repeat(Math.max(0, boxWidth - 2))}╮`, boxWidth);
+  const bottom = fitLine(`╰${"─".repeat(Math.max(0, boxWidth - 2))}╯`, boxWidth);
   const title = colorize(theme, boxType, `${icon} ${label}`);
-  const rendered = [border, fitLine(`│ ${title.padEnd(innerWidth)} │`, width)];
+  const rendered = [border, renderBoxLine(title, innerWidth, boxWidth)];
   for (const bodyLine of segment.text.split("\n")) {
     const chunks = wrapPlainLine(bodyLine, innerWidth);
     for (const chunk of chunks) {
-      rendered.push(fitLine(`│ ${chunk.padEnd(innerWidth)} │`, width));
+      rendered.push(renderBoxLine(chunk, innerWidth, boxWidth));
     }
   }
   rendered.push(bottom);
@@ -226,6 +227,12 @@ function wrapPlainLine(value: string, width: number): string[] {
 
 function fitLine(value: string, width: number): string {
   return truncateToWidth(value, width, "");
+}
+
+function renderBoxLine(value: string, innerWidth: number, boxWidth: number): string {
+  const clipped = truncateToWidth(value, innerWidth, "");
+  const rightPad = " ".repeat(Math.max(0, innerWidth - visibleWidth(clipped)));
+  return fitLine(`│ ${clipped}${rightPad} │`, boxWidth);
 }
 
 function colorize(theme: unknown, boxType: string, value: string): string {

@@ -16,12 +16,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { AssistantMessageComponent } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
+import { DEFAULT_SEMANTIC_BOX_TYPES, renderSemanticMarkdownBoxes } from "./workflow/markdown-box";
+
 const BOXED_FENCE_INFOS = new Set(["text", "txt", "plain", "plaintext"]);
+const SEMANTIC_FENCE_INFOS = new Set<string>(DEFAULT_SEMANTIC_BOX_TYPES);
 const PATCH_FLAG = "__harnessAssistantMarkdownBoxPatched";
 
 type FenceSegment =
   | { kind: "markdown"; text: string }
-  | { kind: "boxed"; label: string; text: string };
+  | { kind: "boxed"; label: string; text: string }
+  | { kind: "semantic"; label: string; fence: "```" | "~~~"; text: string };
 
 type PatchableAssistantMessageComponent = AssistantMessageComponent & {
   __harnessAssistantMarkdownBoxPatched?: boolean;
@@ -103,6 +107,8 @@ function addAssistantText(container: Container, text: string, markdownTheme: unk
     if (!segment.text.trim()) continue;
     if (segment.kind === "boxed") {
       container.addChild(new BackgroundFenceBoxComponent(segment.text));
+    } else if (segment.kind === "semantic") {
+      container.addChild(new SemanticFenceBoxComponent(segment.label, segment.fence, segment.text, markdownTheme));
     } else {
       container.addChild(new Markdown(segment.text.trim(), 1, 0, markdownTheme as never));
     }
@@ -159,14 +165,21 @@ export function parseFenceSegments(markdown: string): FenceSegment[] {
       continue;
     }
 
-    if (!BOXED_FENCE_INFOS.has(info)) {
-      buffer.push(lines[index] ?? "", ...body, lines[closeIndex] ?? "");
+    if (BOXED_FENCE_INFOS.has(info)) {
+      flushMarkdown();
+      segments.push({ kind: "boxed", label: info || "text", text: body.join("\n") });
       index = closeIndex;
       continue;
     }
 
-    flushMarkdown();
-    segments.push({ kind: "boxed", label: info || "text", text: body.join("\n") });
+    if (SEMANTIC_FENCE_INFOS.has(info)) {
+      flushMarkdown();
+      segments.push({ kind: "semantic", label: info, fence: fence as "```" | "~~~", text: body.join("\n") });
+      index = closeIndex;
+      continue;
+    }
+
+    buffer.push(lines[index] ?? "", ...body, lines[closeIndex] ?? "");
     index = closeIndex;
   }
 
@@ -176,6 +189,34 @@ export function parseFenceSegments(markdown: string): FenceSegment[] {
 
 function normalizeFenceInfo(info: string | undefined): string {
   return String(info ?? "").trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+}
+
+class SemanticFenceBoxComponent {
+  private cachedWidth?: number;
+  private cachedLines?: string[];
+
+  constructor(
+    private readonly label: string,
+    private readonly fence: "```" | "~~~",
+    private readonly text: string,
+    private readonly markdownTheme: unknown,
+  ) {}
+
+  render(width: number): string[] {
+    const safeWidth = Math.max(1, width);
+    if (this.cachedLines && this.cachedWidth === safeWidth) return this.cachedLines;
+
+    const fenced = `${this.fence}${this.label}\n${this.text}\n${this.fence}`;
+    const rendered = renderSemanticMarkdownBoxes(fenced, safeWidth, this.markdownTheme);
+    this.cachedWidth = safeWidth;
+    this.cachedLines = rendered;
+    return rendered;
+  }
+
+  invalidate(): void {
+    this.cachedWidth = undefined;
+    this.cachedLines = undefined;
+  }
 }
 
 class BackgroundFenceBoxComponent {

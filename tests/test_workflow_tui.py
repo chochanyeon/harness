@@ -23,10 +23,12 @@ WORKFLOW = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 RUNTIME_UI = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-ui.ts"
 COMMAND_POLICY = ROOT / "target" / ".pi" / "extensions" / "workflow" / "command-policy.ts"
 MARKDOWN_BOX = ROOT / "target" / ".pi" / "extensions" / "workflow" / "markdown-box.ts"
+ASSISTANT_MARKDOWN_BOX = ROOT / "target" / ".pi" / "extensions" / "assistant-markdown-box.ts"
 FORMAT = ROOT / "target" / ".pi" / "extensions" / "workflow" / "format.ts"
 THEME = ROOT / "target" / ".pi" / "themes" / "workflow-console.json"
-PI_DARK_THEME = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@earendil-works" / "pi-coding-agent" / "dist" / "modes" / "interactive" / "theme" / "dark.json"
-PI_NODE_MODULES = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@earendil-works" / "pi-coding-agent" / "node_modules"
+PI_GLOBAL_NODE_MODULES = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules"
+PI_DARK_THEME = PI_GLOBAL_NODE_MODULES / "@earendil-works" / "pi-coding-agent" / "dist" / "modes" / "interactive" / "theme" / "dark.json"
+PI_NODE_MODULES = PI_GLOBAL_NODE_MODULES / "@earendil-works" / "pi-coding-agent" / "node_modules"
 
 
 def _run_markdown_box(script_body: str) -> dict:
@@ -286,6 +288,26 @@ def test_semantic_box_exports_present():
         "SEMANTIC_BOX_COLOR_KINDS",
     ]:
         assert f"export {symbol}" in src or f"export const {symbol}" in src or f"export function {symbol}" in src or f"export interface {symbol}" in src
+
+
+def test_assistant_markdown_box_uses_semantic_box_renderer():
+    src = ASSISTANT_MARKDOWN_BOX.read_text(encoding="utf-8")
+    assert "renderSemanticMarkdownBoxes" in src
+    assert "./workflow/markdown-box" in src
+
+
+def test_assistant_markdown_box_parses_semantic_fence_segments():
+    src = ASSISTANT_MARKDOWN_BOX.read_text(encoding="utf-8")
+    assert "SEMANTIC_FENCE_INFOS.has(info)" in src
+    assert 'kind: "semantic"' in src
+    assert "new SemanticFenceBoxComponent" in src
+
+
+def test_assistant_markdown_box_keeps_code_fences_as_markdown():
+    src = ASSISTANT_MARKDOWN_BOX.read_text(encoding="utf-8")
+    assert "BOXED_FENCE_INFOS.has(info)" in src
+    assert "SEMANTIC_FENCE_INFOS.has(info)" in src
+    assert "buffer.push(lines[index] ?? \"\", ...body, lines[closeIndex] ?? \"\")" in src
 
 
 def test_semantic_box_default_types_classify_as_box():

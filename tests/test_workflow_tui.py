@@ -303,11 +303,13 @@ def test_assistant_markdown_box_parses_semantic_fence_segments():
     assert "new SemanticFenceBoxComponent" in src
 
 
-def test_assistant_markdown_box_keeps_code_fences_as_markdown():
+def test_assistant_markdown_box_renders_code_fences_as_background_boxes():
     src = ASSISTANT_MARKDOWN_BOX.read_text(encoding="utf-8")
     assert "BOXED_FENCE_INFOS.has(info)" in src
     assert "SEMANTIC_FENCE_INFOS.has(info)" in src
-    assert "buffer.push(lines[index] ?? \"\", ...body, lines[closeIndex] ?? \"\")" in src
+    assert 'kind: "code"' in src
+    assert "new BackgroundFenceBoxComponent(segment.text, segment.label || \"code\")" in src
+    assert "while leaving real code fences to Pi's default Markdown renderer" not in src
 
 
 def test_semantic_box_default_types_classify_as_box():

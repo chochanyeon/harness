@@ -799,9 +799,9 @@ export function consumeSkipToken(gate: WorkflowGate): { reason: string } | null 
 
 export function formatGateBlocked(args: { gate: string; why: string; next: string[]; skip?: string; defaultHandling?: string[] }): string {
   const defaultHandling = args.defaultHandling ?? [
-    "Do not ask the user to skip this gate as the first response.",
+    "Do not ask the user to skip this gate.",
     "If the issue is fixable within the current workflow phase, fix the underlying cause and retry the workflow transition.",
-    "Ask the user only when the fix requires product/architecture input, a workflow approval boundary, or an accepted-risk exception.",
+    "Ask the user only when the fix requires product/architecture input or a workflow approval boundary.",
   ];
 
   return [
@@ -817,14 +817,14 @@ export function formatGateBlocked(args: { gate: string; why: string; next: strin
     ...args.next.map((item, index) => `  ${index + 1}. ${item}`),
     ...(args.skip ? [
       "",
-      "Exception path:",
-      "  If this gate is unnecessary for the current task,",
-      "  explain why to the user and ask for explicit approval before requesting:",
+      "Accepted-risk exception path:",
+      "  Do not propose a gate skip proactively.",
+      "  Use this only if the user independently accepts the risk or explicitly instructs a one-time exception:",
       `  ${args.skip}`,
     ] : []),
     "",
     "Caution:",
-    "  Do not bypass this gate without explicit user approval.",
+    "  Do not bypass this gate unless the user has already explicitly accepted the risk.",
   ].join("\n");
 }
 

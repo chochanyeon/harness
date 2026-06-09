@@ -1,9 +1,9 @@
 /**
  * assistant-markdown-box.ts — Pi Extension
  *
- * Renders natural-language assistant fenced Markdown blocks such as
- * ```text, ```plain, and ```plaintext as warm amber TUI background panels
- * while leaving real code fences to Pi's default Markdown renderer.
+ * Renders assistant fenced Markdown blocks as visible TUI panels. Semantic
+ * fences such as ```warning use workflow/markdown-box.ts; code and natural
+ * language fences use warm amber background panels.
  *
  * Pi currently exposes custom renderers for custom messages, not a first-class
  * assistant-message renderer hook. This extension therefore patches
@@ -25,6 +25,7 @@ const PATCH_FLAG = "__harnessAssistantMarkdownBoxPatched";
 type FenceSegment =
   | { kind: "markdown"; text: string }
   | { kind: "boxed"; label: string; text: string }
+  | { kind: "code"; label: string; text: string }
   | { kind: "semantic"; label: string; fence: "```" | "~~~"; text: string };
 
 type PatchableAssistantMessageComponent = AssistantMessageComponent & {
@@ -107,6 +108,8 @@ function addAssistantText(container: Container, text: string, markdownTheme: unk
     if (!segment.text.trim()) continue;
     if (segment.kind === "boxed") {
       container.addChild(new BackgroundFenceBoxComponent(segment.text));
+    } else if (segment.kind === "code") {
+      container.addChild(new BackgroundFenceBoxComponent(segment.text, segment.label || "code"));
     } else if (segment.kind === "semantic") {
       container.addChild(new SemanticFenceBoxComponent(segment.label, segment.fence, segment.text, markdownTheme));
     } else {
@@ -179,7 +182,8 @@ export function parseFenceSegments(markdown: string): FenceSegment[] {
       continue;
     }
 
-    buffer.push(lines[index] ?? "", ...body, lines[closeIndex] ?? "");
+    flushMarkdown();
+    segments.push({ kind: "code", label: info || "code", text: body.join("\n") });
     index = closeIndex;
   }
 
@@ -223,7 +227,7 @@ class BackgroundFenceBoxComponent {
   private cachedWidth?: number;
   private cachedLines?: string[];
 
-  constructor(private readonly text: string) {}
+  constructor(private readonly text: string, private readonly label?: string) {}
 
   render(width: number): string[] {
     const safeWidth = Math.max(1, width);
@@ -236,12 +240,14 @@ class BackgroundFenceBoxComponent {
 
     const bodyLines = this.text.split("\n");
     const rendered: string[] = [blank];
+    if (this.label) {
+      rendered.push(renderBackgroundLine(bg, this.label, innerWidth, paddingX));
+      rendered.push(blank);
+    }
     for (const bodyLine of bodyLines.length > 0 ? bodyLines : [""]) {
       const chunks = wrapTextWithAnsi(bodyLine, innerWidth);
       for (const chunk of chunks.length > 0 ? chunks : [""]) {
-        const clipped = truncateToWidth(chunk, innerWidth, "");
-        const rightPad = " ".repeat(Math.max(0, innerWidth - visibleWidth(clipped)));
-        rendered.push(bg(`${" ".repeat(paddingX)}${clipped}${rightPad}${" ".repeat(paddingX)}`));
+        rendered.push(renderBackgroundLine(bg, chunk, innerWidth, paddingX));
       }
     }
     rendered.push(blank);
@@ -255,4 +261,10 @@ class BackgroundFenceBoxComponent {
     this.cachedWidth = undefined;
     this.cachedLines = undefined;
   }
+}
+
+function renderBackgroundLine(bg: (value: string) => string, value: string, innerWidth: number, paddingX: number): string {
+  const clipped = truncateToWidth(value, innerWidth, "");
+  const rightPad = " ".repeat(Math.max(0, innerWidth - visibleWidth(clipped)));
+  return bg(`${" ".repeat(paddingX)}${clipped}${rightPad}${" ".repeat(paddingX)}`);
 }

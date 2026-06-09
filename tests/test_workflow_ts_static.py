@@ -306,9 +306,10 @@ class TestGateMessageLanguage:
     def test_guard_block_default_handling_contract(self):
         src = _src("gates.ts")
         assert "Default handling for the LLM" in src
-        assert "Do not ask the user to skip this gate as the first response" in src
+        assert "Do not ask the user to skip this gate" in src
         assert "fix the underlying cause and retry the workflow transition" in src
-        assert "Ask the user only when the fix requires product/architecture input" in src
+        assert "Ask the user only when the fix requires product/architecture input or a workflow approval boundary" in src
+        assert "Ask the user only when the fix requires product/architecture input, a workflow approval boundary, or an accepted-risk exception" not in src
 
     def test_guard_block_section_order(self):
         src = _src("gates.ts")
@@ -317,7 +318,7 @@ class TestGateMessageLanguage:
             '"Why blocked:"',
             '"Default handling for the LLM:"',
             '"Next actions:"',
-            '"Exception path:"',
+            '"Accepted-risk exception path:"',
             '"Caution:"',
         ]
         positions = [body.index(item) for item in ordered]

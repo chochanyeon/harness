@@ -82,9 +82,45 @@ class TestWorkflowTsResponsibilitySplit:
             'from "./workflow/gate-runner"',
             'from "./workflow/checkpoint-commands"',
             'from "./workflow/command-policy"',
+            'from "./workflow/application/continuation"',
+            'from "./workflow/application/prompt-context"',
+            'from "./workflow/application/tool-call-gate"',
+            'from "./workflow/application/workflow-command-router"',
         ]
         missing = [item for item in expected_imports if item not in src]
         assert not missing, f"workflow.ts must delegate responsibility groups via imports: {missing}"
+
+    def test_workflow_entrypoint_has_no_inline_continuation_or_prompt_context_logic(self):
+        src = _workflow_src()
+        assert "WORKFLOW_CONTINUATION_MARKER_PREFIX" not in src
+        assert "WORKFLOW_STEER_MARKER_PREFIX" not in src
+        assert "function buildWorkflowContinuationPrompt" not in src
+        assert "formatWorkflowReminders(scanWorkflowReminders" not in src
+        assert "async function ensureExtensionMutationApproved" not in src
+        assert "function isProductionClassPath" not in src
+        assert "hasGitDashC(cmd)" not in src
+        assert 'pi.registerCommand("workflow"' not in src
+        assert "registerWorkflowCommand(pi" in src
+        router_src = (EXT_DIR / "application" / "workflow-command-router.ts").read_text(encoding="utf-8")
+        assert "export type WorkflowCommandRequest" in router_src
+        assert "export function parseWorkflowCommand" in router_src
+        assert "parseWorkflowCommand(args)" in router_src
+        tool_call_idx = src.index('pi.on("tool_call"')
+        tool_call_block = src[tool_call_idx:tool_call_idx + 240]
+        assert "handleWorkflowToolCall(state, event, ctx" in tool_call_block
+        assert "validateWorkflowWorkspace" not in tool_call_block
+
+    def test_clean_architecture_modules_exist(self):
+        required = [
+            EXT_DIR / "application" / "continuation.ts",
+            EXT_DIR / "application" / "prompt-context.ts",
+            EXT_DIR / "application" / "extension-mutation-approval.ts",
+            EXT_DIR / "application" / "tool-call-gate.ts",
+            EXT_DIR / "application" / "workflow-command-router.ts",
+            EXT_DIR / "domain" / "production-class-policy.ts",
+        ]
+        missing = [str(path.relative_to(ROOT)) for path in required if not path.exists()]
+        assert not missing, f"Clean architecture modules missing: {missing}"
 
     def test_responsibility_modules_exist_with_named_exports(self):
         required_exports = {
@@ -101,7 +137,7 @@ class TestWorkflowTsResponsibilitySplit:
 
 class TestWorkflowTsPolicySOT:
     def test_manual_state_uses_shared_policy_phase_helpers(self):
-        src = _workflow_src()
+        src = (EXT_DIR / "application" / "workflow-command-router.ts").read_text(encoding="utf-8")
         assert "sharedWorkflowPhases" in src
         assert "isSharedWorkflowPhase" in src
         state_block = src[src.index('if (command === "state")'):]
@@ -127,8 +163,8 @@ class TestWorkflowTsShadowing:
             assert decl not in src, f"'{decl}' shadows node:path import in workflow.ts"
 
     def test_transition_path_variable_name_used(self):
-        """The input handler must use 'transitionPath', not 'path', for the transition string."""
-        src = _workflow_src()
+        """The workflow command router must use 'transitionPath', not 'path', for the transition string."""
+        src = (EXT_DIR / "application" / "workflow-command-router.ts").read_text(encoding="utf-8")
         assert "transitionPath" in src
 
 
@@ -332,7 +368,7 @@ class TestGateMessageLanguage:
         assert "interactive policy approval path" in src
 
     def test_workflow_gate_blocked_message_reinforces_default_handling(self):
-        src = _workflow_src()
+        src = (EXT_DIR / "application" / "workflow-command-router.ts").read_text(encoding="utf-8")
         assert "Default handling: do not ask the user for a skip first" in src
         assert "Fix the underlying cause within the current phase when possible" in src
         assert "Ask the user only for product/architecture input" in src

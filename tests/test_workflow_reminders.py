@@ -144,11 +144,11 @@ def test_verification_reminder_disappears_after_observed_test_command(tmp_path):
 def test_workflow_reminder_source_is_exported_and_documented():
     core = (ROOT / "target" / ".pi" / "extensions" / "workflow" / "core.ts").read_text(encoding="utf-8")
     reminder = (ROOT / "target" / ".pi" / "extensions" / "workflow" / "reminders.ts").read_text(encoding="utf-8")
-    workflow = (ROOT / "target" / ".pi" / "extensions" / "workflow.ts").read_text(encoding="utf-8")
+    prompt_context = (ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "prompt-context.ts").read_text(encoding="utf-8")
 
     assert 'export * from "./reminders";' in core
-    assert "scanWorkflowReminders" in workflow
-    assert "formatWorkflowReminders" in workflow
+    assert "scanWorkflowReminders" in prompt_context
+    assert "formatWorkflowReminders" in prompt_context
     assert "Workflow Mechanical Reminders" in reminder
     assert "Review Package" in reminder
     assert "Field Log Evidence" in reminder

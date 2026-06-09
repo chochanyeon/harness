@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 RUNTIME_UI = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-ui.ts"
 COMMAND_POLICY = ROOT / "target" / ".pi" / "extensions" / "workflow" / "command-policy.ts"
+WORKFLOW_COMMAND_ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts"
 MARKDOWN_BOX = ROOT / "target" / ".pi" / "extensions" / "workflow" / "markdown-box.ts"
 ASSISTANT_MARKDOWN_BOX = ROOT / "target" / ".pi" / "extensions" / "assistant-markdown-box.ts"
 FORMAT = ROOT / "target" / ".pi" / "extensions" / "workflow" / "format.ts"
@@ -239,35 +240,35 @@ def test_workflow_board_state_type_exported():
 # ── New subcommands ───────────────────────────────────────────────────────────
 
 def test_workflow_tools_subcommand_defined():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW_COMMAND_ROUTER.read_text(encoding="utf-8")
     assert 'command === "tools"' in src
 
 
 def test_workflow_logs_subcommand_defined():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW_COMMAND_ROUTER.read_text(encoding="utf-8")
     assert 'command === "logs"' in src
 
 
 def test_tools_command_shows_builtin_tools():
-    workflow_src = WORKFLOW.read_text(encoding="utf-8")
+    router_src = WORKFLOW_COMMAND_ROUTER.read_text(encoding="utf-8")
     policy_src = COMMAND_POLICY.read_text(encoding="utf-8")
-    idx = workflow_src.index('command === "tools"')
-    block = workflow_src[idx:idx + 500]
+    idx = router_src.index('command === "tools"')
+    block = router_src[idx:idx + 500]
     assert "formatWorkflowToolsListing" in block
     assert "Built-in tools" in policy_src or "builtins" in policy_src
 
 
 def test_tools_command_shows_catalog_commands():
-    workflow_src = WORKFLOW.read_text(encoding="utf-8")
+    router_src = WORKFLOW_COMMAND_ROUTER.read_text(encoding="utf-8")
     policy_src = COMMAND_POLICY.read_text(encoding="utf-8")
-    idx = workflow_src.index('command === "tools"')
-    block = workflow_src[idx:idx + 500]
+    idx = router_src.index('command === "tools"')
+    block = router_src[idx:idx + 500]
     assert "formatWorkflowToolsListing" in block
     assert "Catalog commands" in policy_src or "catalogCmds" in policy_src
 
 
 def test_logs_command_uses_format_recent_field_logs():
-    src = WORKFLOW.read_text(encoding="utf-8")
+    src = WORKFLOW_COMMAND_ROUTER.read_text(encoding="utf-8")
     assert "formatRecentFieldLogs" in src
     idx = src.index('command === "logs"')
     block = src[idx:idx + 200]

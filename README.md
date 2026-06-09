@@ -8,7 +8,7 @@ Pi 기반 LLM 개발 세션에 **workflow 거버넌스**, **기계적 guard**, *
 
 TUI 시인성 개선을 위해 배포 템플릿에 project-local 테마 `target/.pi/themes/workflow-console.json`을 포함합니다. 이 테마는 어두운 배경을 유지하면서 상태/강조 요소에 cyan, pink, yellow, green 계열을 더 선명하게 쓰는 colorful console 팔레트입니다. 설치된 프로젝트에서는 `.pi/themes/workflow-console.json`으로 배치되며, Pi의 `/settings`에서 `workflow-console`을 선택해 사용할 수 있습니다.
 
-TUI 개선용 harness extension helper `target/.pi/extensions/workflow/markdown-box.ts`는 semantic fenced block 타입 `note`, `warning`, `error`, `plan`, `review`, `decision`, `tip`을 박스형 line rendering으로 변환합니다. `target/.pi/extensions/assistant-markdown-box.ts`는 이 helper를 실제 assistant 응답 렌더링 경로에서 사용해 semantic fenced block을 박스로 표시하고, code fence(`ts`, `python`, `bash` 등)와 자연어 fenced block info string(`text`, `plain`, `plaintext`, `txt`)도 따뜻한 amber 배경 패널로 렌더링합니다. provider context/session에 저장되는 assistant 메시지 원문은 바꾸지 않습니다.
+TUI 개선용 harness extension helper `target/.pi/extensions/workflow/markdown-box.ts`는 semantic fenced block 타입 `note`, `warning`, `error`, `plan`, `review`, `decision`, `tip`을 박스형 line rendering으로 변환합니다. `target/.pi/extensions/assistant-markdown-box.ts`는 이 helper를 실제 assistant 응답 렌더링 경로에서 사용해 semantic fenced block을 박스로 표시하고, code fence(`ts`, `python`, `bash` 등)와 자연어 fenced block info string(`text`, `plain`, `plaintext`, `txt`)도 상하 margin이 있는 muted teal 배경 패널로 렌더링합니다. provider context/session에 저장되는 assistant 메시지 원문은 바꾸지 않습니다.
 
 설치된 프로젝트의 루트에는 기본적으로 다음만 노출됩니다.
 

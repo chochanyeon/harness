@@ -233,13 +233,14 @@ class BackgroundFenceBoxComponent {
     const safeWidth = Math.max(1, width);
     if (this.cachedLines && this.cachedWidth === safeWidth) return this.cachedLines;
 
-    const paddingX = 2;
-    const innerWidth = Math.max(1, safeWidth - paddingX * 2);
-    const bg = (value: string) => `\x1b[48;2;92;58;12m${value}\x1b[0m`;
-    const blank = bg(" ".repeat(safeWidth));
+    const paddingX = 1;
+    const panelWidth = safeWidth;
+    const innerWidth = Math.max(1, panelWidth - paddingX * 2);
+    const bg = (value: string) => `\x1b[48;2;24;48;58m${value}\x1b[0m`;
+    const blank = bg(" ".repeat(panelWidth));
 
     const bodyLines = this.text.split("\n");
-    const rendered: string[] = [blank];
+    const rendered: string[] = ["", blank];
     if (this.label) {
       rendered.push(renderBackgroundLine(bg, this.label, innerWidth, paddingX));
       rendered.push(blank);
@@ -250,7 +251,7 @@ class BackgroundFenceBoxComponent {
         rendered.push(renderBackgroundLine(bg, chunk, innerWidth, paddingX));
       }
     }
-    rendered.push(blank);
+    rendered.push(blank, "");
 
     this.cachedWidth = safeWidth;
     this.cachedLines = rendered;

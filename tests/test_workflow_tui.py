@@ -312,6 +312,17 @@ def test_assistant_markdown_box_renders_code_fences_as_background_boxes():
     assert "while leaving real code fences to Pi's default Markdown renderer" not in src
 
 
+def test_assistant_markdown_box_background_has_vertical_margin_and_cool_muted_color():
+    src = ASSISTANT_MARKDOWN_BOX.read_text(encoding="utf-8")
+    assert "const paddingX = 1" in src
+    assert "const panelWidth = safeWidth" in src
+    assert "const rendered: string[] = [\"\", blank]" in src
+    assert "rendered.push(blank, \"\")" in src
+    assert "24;48;58" in src
+    assert "92;58;12" not in src
+    assert "54;42;24" not in src
+
+
 def test_semantic_box_default_types_classify_as_box():
     data = _run_markdown_box(r'''
         const types = ['note', 'warning', 'error', 'plan', 'review', 'decision', 'tip'];

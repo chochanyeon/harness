@@ -593,11 +593,11 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "workflow_state",
     label: "Manual phase recovery",
-    description: "Move the workflow one step forward or backward for manual recovery. Use only when the workflow is stuck in an incorrect phase. For normal advancement, use workflow_approve.",
-    promptSnippet: "Move workflow phase one step for manual recovery",
+    description: "Move the workflow one step forward or backward. Backward transitions from review phases (code_review → implement, plan_review → plan) require no user approval. For normal forward advancement, use workflow_approve.",
+    promptSnippet: "Move workflow phase one step; review-phase backward transitions are automatic",
     promptGuidelines: [
-      "Use workflow_state only for recovery when the workflow is in a wrong phase.",
-      "For normal phase advancement, use workflow_approve instead.",
+      "Use workflow_state with direction: 'prev' to return to a previous phase when issues are found during review (e.g. code_review → implement, plan_review → plan). No user approval required for these backward transitions.",
+      "For normal forward phase advancement, use workflow_approve instead.",
       "direction: 'next' moves forward one step, 'prev' moves backward one step.",
     ],
     parameters: Type.Object({
@@ -607,9 +607,6 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (!state.workflow) {
         return { content: [{ type: "text", text: "No active workflow." }], details: { ok: false } };
-      }
-      if (!ctx.hasUI) {
-        return { content: [{ type: "text", text: "UI required for manual phase recovery." }], details: { ok: false } };
       }
 
       const currentPhase = state.workflow.phase;
@@ -621,18 +618,30 @@ export default function (pi: ExtensionAPI) {
       }
       const targetPhase = phases[targetIdx];
 
-      const confirmed = await ctx.ui.confirm(
-        `수동 복구: '${currentPhase}' → '${targetPhase}'
+      // Backward transitions from review phases are autonomous corrections — no user approval needed.
+      // code_review → implement: LLM found issues in review, returning to fix.
+      // plan_review → plan: LLM found plan ambiguity, returning to revise.
+      const REVIEW_BACK_PHASES: WorkflowPhase[] = ["code_review", "plan_review"];
+      const isAutoBack = params.direction === "prev" && REVIEW_BACK_PHASES.includes(currentPhase);
+
+      if (!isAutoBack) {
+        if (!ctx.hasUI) {
+          return { content: [{ type: "text", text: "UI required for manual phase recovery." }], details: { ok: false } };
+        }
+        const confirmed = await ctx.ui.confirm(
+          `수동 복구: '${currentPhase}' → '${targetPhase}'
 
 사유: ${params.reason}
 
 진행할까요?`,
-      );
-      if (!confirmed) {
-        return { content: [{ type: "text", text: "Cancelled." }], details: { ok: false, reason: "user-declined" } };
+        );
+        if (!confirmed) {
+          return { content: [{ type: "text", text: "Cancelled." }], details: { ok: false, reason: "user-declined" } };
+        }
       }
 
-      transitionWorkflow(state.workflow, targetPhase, `manual-recovery: ${params.reason}`);
+      const transitionReason = isAutoBack ? `review-back: ${params.reason}` : `manual-recovery: ${params.reason}`;
+      transitionWorkflow(state.workflow, targetPhase, transitionReason);
       applyPhaseToolPolicy(targetPhase);
       refreshBoard(ctx);
       refreshStatus(ctx);

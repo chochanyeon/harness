@@ -54,22 +54,6 @@ function Get-ManagedPaths {
                     ".pi/schemas/harness-memory-entry.schema.json"
                 ) | ForEach-Object { $paths.Add($_) }
             }
-            "claude-workflow" {
-                @(
-                    ".claude/settings.json",
-                    ".claude/hooks/workflow-gate.cjs",
-                    ".claude/commands/workflow",
-                    ".harness/.gitignore",
-                    ".harness/README.md",
-                    ".harness/workflow-policy.json",
-                    ".pi/dpaa",
-                    ".pi/sbadr",
-                    ".pi/corenlp",
-                    ".pi/pyproject.toml",
-                    ".pi/setup_corenlp.sh",
-                    ".pi/setup_corenlp.ps1"
-                ) | ForEach-Object { $paths.Add($_) }
-            }
         }
     }
     return $paths | Select-Object -Unique

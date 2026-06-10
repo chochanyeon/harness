@@ -55,23 +55,6 @@ COMPONENT_PATHS = {
         ".pi/extensions/memory.ts",
         ".pi/schemas/harness-memory-entry.schema.json",
     },
-    "claude-workflow": {
-        ".claude/settings.json",
-        ".claude/hooks/workflow-gate.cjs",
-        ".claude/commands/workflow",
-        ".harness/.gitignore",
-        ".harness/README.md",
-        ".harness/workflow-policy.json",
-        ".harness/state.json",
-        ".harness/workflow.json",
-        ".harness/proposal",
-        ".harness/authority",
-        ".pi/dpaa",
-        ".pi/sbadr",
-        ".pi/pyproject.toml",
-        ".pi/setup_corenlp.sh",
-        ".pi/setup_corenlp.ps1",
-    },
 }
 
 DEFAULT_EXCLUDES = {
@@ -188,7 +171,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--component",
         action="append",
-        choices=["all", "workflow", "memory", "claude-workflow"],
+        choices=["all", "workflow", "memory"],
         default=None,
         help="Component to initialize. Repeatable. Default: all.",
     )

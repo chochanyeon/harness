@@ -17,7 +17,7 @@ AGENTS.md
 .pi/
 ```
 
-workflow 내부 구현, DPAA, skills, personas, schemas 등은 `.pi/` 아래에 위치합니다. Claude Code workflow gate를 설치한 경우 `.claude/`와 `.harness/`도 함께 배치됩니다.
+workflow 내부 구현, DPAA, skills, personas, schemas 등은 `.pi/` 아래에 위치합니다.
 
 ---
 
@@ -144,13 +144,11 @@ python -m pytest tests/test_workflow_reminders.py tests/test_workflow_run_comman
 = workflow + memory
 ```
 
-`all`은 Pi workflow와 memory를 뜻합니다. Claude Code용 workflow gate는 명시적으로 `--component claude-workflow`를 지정해 설치합니다.
-
 ---
 
 ## component별 설치
 
-필요하면 workflow, memory, claude-workflow만 따로 설치할 수 있습니다.
+필요하면 workflow, memory만 따로 설치할 수 있습니다.
 
 ### workflow만 설치
 
@@ -162,32 +160,6 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
-```
-
-### Claude Code workflow gate만 설치
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude-workflow
-```
-
-설치되는 `.claude/settings.json`은 Claude Code hook을 설정합니다. Bash sandbox는 UX 저하가 커 기본 운영 모델에서 제외하고, workflow hook/reminder와 tool-call gate를 중심으로 동작합니다.
-
-- `UserPromptSubmit`: 현재 phase, 다음 phase, 단계 생략 금지, subagent 사용 지침을 계속 상기
-- `PreToolUse`: `.claude/**`, `.harness/state.json`, `.harness/authority/**` 등 gate 파일에 대한 file tool 수정을 차단하고 phase별 tool 사용을 검사
-- `PostToolUse`: 산출물 조건을 재평가해 workflow state 자동 전이
-- `.harness/workflow-policy.json`: Pi/Claude adapter가 공유하는 phase 순서, auto-advance, 승인 경계, transition policy, reminder/context 정책. phase 순서와 승인 경계의 SSOT입니다.
-- DPAA/SBADR 런타임(`.pi/dpaa`, `.pi/sbadr`)과 `codeQualityGuard`, push policy scan, checkpoint/restore, field-log 기능을 함께 설치
-
-운영 모델:
-
-- sandbox로 Bash를 강하게 가두지 않습니다. UX를 해치지 않기 위해 Claude Code hook/reminder와 PreToolUse 검사를 기본 guardrail로 사용합니다.
-- 정상 작업은 workflow의 다음 phase로만 전이해야 하며, 단계를 생략하는 수동 복구는 비정상/복구 상황으로만 다룹니다.
-- context 소모가 큰 implement/code_review/대량 로그 분석은 subagent를 우선 사용해 main agent context pollution을 줄입니다.
-
-Windows PowerShell 예:
-
-```powershell
-$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Component claude-workflow
 ```
 
 기존 설치를 깨끗하게 다시 설치하려면 `-Clean`을 사용합니다. 이 옵션은 하네스가 관리하는 런타임 경로를 먼저 삭제한 뒤 다시 복사합니다. `AGENTS.md`, `.pi/LOCAL.md`, `.ai/interview` 산출물은 보존됩니다.
@@ -229,8 +201,6 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update
 # memory만 업데이트
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.sh | sh -s -- --component memory
 
-# Claude Code workflow gate만 업데이트
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/update-harness.sh | sh -s -- --component claude-workflow
 ```
 
 업데이트는 upstream-managed 파일만 덮어씁니다. 프로젝트 소유 파일은 보존됩니다.
@@ -377,7 +347,7 @@ code_review → review_approved → document → commit
 
 reminder는 기본적으로 차단하지 않습니다. 대신 LLM은 반드시 처리하거나, 해당 항목이 필요 없는 이유를 명시해야 합니다.
 
-추가로 `.harness/workflow-policy.json`의 짧은 `[WORKFLOW HARD RULES]` 블록을 Pi/Claude prompt에 주입합니다. 이 블록은 현재 phase 준수, phase skip 금지, implement/push 전 승인, code_review 내부 fix loop, subagent 우선 사용, main context 최소화를 간결하게 상기시킵니다.
+추가로 `.harness/workflow-policy.json`의 짧은 `[WORKFLOW HARD RULES]` 블록을 Pi prompt에 주입합니다. 이 블록은 현재 phase 준수, phase skip 금지, implement/push 전 승인, code_review 내부 fix loop, subagent 우선 사용, main context 최소화를 간결하게 상기시킵니다.
 
 `implement`, `code_review`, `document`, `commit`에서는 현재 phase의 `[CONTEXT STRATEGY]`도 함께 주입합니다. main agent가 보관할 요약, 피해야 할 raw context, subagent 반환 형식을 짧게 표시합니다.
 

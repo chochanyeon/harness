@@ -4,7 +4,7 @@
 
 Pi workflow harness source repository.
 
-Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. The template includes a colorful high-visibility console theme at `target/.pi/themes/workflow-console.json`; it keeps a dark base while using brighter cyan, pink, yellow, and green accents for status and emphasis. In an initialized project it is installed as `.pi/themes/workflow-console.json` and can be selected as `workflow-console` in Pi's `/settings`. In an initialized project, `AGENTS.md`, `.pi/`, and optional Claude Code workflow-gate files under `.claude/` and `.harness/` are placed at the project root. Claude Code and Pi share workflow policy declarations through `.harness/workflow-policy.json` while keeping runtime-specific adapters separate.
+Pi workflow runtime files are isolated under `target/` so developing the harness from this repository root does not automatically load the harness extension, skills, or context files. The template includes a colorful high-visibility console theme at `target/.pi/themes/workflow-console.json`; it keeps a dark base while using brighter cyan, pink, yellow, and green accents for status and emphasis. In an initialized project it is installed as `.pi/themes/workflow-console.json` and can be selected as `workflow-console` in Pi's `/settings`. In an initialized project, `AGENTS.md`, `.pi/`, and `.harness/workflow-policy.json` are placed at the project root.
 
 The TUI-improvement harness extension helper `target/.pi/extensions/workflow/markdown-box.ts` renders semantic fenced block types `note`, `warning`, `error`, `plan`, `review`, `decision`, and `tip` as boxed lines. The `target/.pi/extensions/assistant-markdown-box.ts` extension now uses that helper in the actual assistant-response rendering path for semantic fenced blocks, and also renders code fences (`ts`, `python`, `bash`, etc.) and natural-language assistant fenced blocks with info strings (`text`, `plain`, `plaintext`, and `txt`) as muted-teal TUI background panels with vertical margins. The raw assistant message stored in provider context/session history is not changed.
 
@@ -92,8 +92,6 @@ Current MVP commands:
 
 Planned later: candidate extraction, approve/reject workflow, merge/supersede, export, and AGENTS.md promotion. These are intentionally not automatic in the MVP.
 
-Default `--component all` means Pi `workflow + memory`. Claude Code workflow gates are intentionally separate; install them explicitly with `--component claude-workflow`.
-
 Install only one component when needed:
 
 ```bash
@@ -102,22 +100,11 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 
 # memory only
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
-
-# Claude Code workflow gate only
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude-workflow
 ```
-
-The Claude Code component installs `.claude/settings.json` with workflow hooks. The built-in Bash sandbox is intentionally not enabled by default because it harms UX too much; the default guardrail is hook/reminder-driven workflow enforcement.
-
-- `UserPromptSubmit` repeatedly reminds the agent of the current phase, next phase, no-skip rule, and subagent guidance.
-- `PreToolUse` blocks file-tool writes to `.claude/**`, `.harness/state.json`, `.harness/authority/**`, and other protected gate paths, then checks phase-appropriate tool use.
-- `PostToolUse` reevaluates artifacts and advances workflow state automatically when exit conditions pass.
-- `.harness/workflow-policy.json` declares shared Pi/Claude phase order, auto-advance, approval-boundary, transition, reminder, and context-management policy. It is the SSOT for phase order and approval boundaries.
-- The component also installs DPAA/SBADR runtime files (`.pi/dpaa`, `.pi/sbadr`) plus the default workflow interview/planning support, codeQualityGuard, push policy scan, checkpoint/restore, and field-log support.
 
 Operating model:
 
-- Bash is not strongly sandboxed. To preserve UX, Claude Code uses reminders and PreToolUse checks as the default guardrail.
+- Bash is not strongly sandboxed.
 - Normal work must advance only to the next workflow phase; skipped phases/manual state recovery are treated as abnormal recovery paths.
 - Automatic advancement phases are `interview → plan → plan_review`, `implement → code_review`, and `review_approved → document → commit`. User approval is required at `plan_review → implement` and `commit → push`; `code_review → review_approved` requires `submit_review_package` and the quality gate instead of simple user approval. When a guard blocks a transition, the blocked message includes the default LLM handling: do not ask for a skip first, fix the underlying cause within the current phase when possible, then retry the transition. User input is reserved for product/architecture decisions, approval boundaries, or accepted-risk exceptions. The first standardization slice covers transition guard messages in `gates.ts`, related workflow failure or steering text, static tests, and both README files. AGENTS.md, `.pi/WORKFLOW.md`, `.harness/workflow-policy.json`, and the full tool or phase policy block-message cleanup are deferred to a second slice.
 - `/workflow status`, `/workflow start`, `/workflow load`, `/workflow approve`, and `/workflow state <phase>` output include an `[LLM WORKFLOW ACTION]` block that states the current phase, next phase, transition mode, and required LLM action. After an automatic transition segment completes, the extension sends one continuation prompt only when the agent is idle and no pending messages exist, so the agent can continue the current phase. This continuation never crosses approval boundaries and is protected by stale/duplicate marker guards. When a phase changes, stale steer markers from earlier phases are cleaned up; if an old steer arrives late, it is consumed regardless of whether Pi reports it as extension or user input, preventing old `plan_review` or `code_review` guidance from overriding the current phase. In read-only phases such as `plan_review`, `code_review`, and `review_approved`, `write/edit` tool calls are blocked immediately instead of queuing follow-up steering, and workflow continuation is not queued while the agent is busy, preventing repeated `Follow-up: ⚠️ ...` warnings or stale continuations from accumulating in the TUI. In the `push` phase, a successful real `git push` bash `tool_result` is consumed as the completion event and advances `push → done` automatically. `workflow_approve` cannot advance `push → done`; the active workflow remains until a successful push is observed. The completion history remains persisted but the active workflow is cleared immediately so stale phase continuations are not injected into later prompts. `/workflow state <phase>` is manual recovery only. Normal operation should not ask the user to type `/workflow approve`; approval boundaries are handled with a TUI yes/no dialog, while automatic transition segments advance without user confirmation. The workflow approval dashboard safely normalizes transition metadata to strings so missing values are not rendered as `undefined`.
@@ -147,8 +134,6 @@ $p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubu
 # Clean reinstall managed harness runtime files, preserving AGENTS.md, .pi/LOCAL.md, and .ai/interview artifacts
 $p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Clean
 
-# Install only one component
-$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Component claude-workflow
 ```
 
 macOS/Linux:
@@ -166,8 +151,6 @@ curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-t
 # Clean reinstall managed harness runtime files, preserving AGENTS.md, .pi/LOCAL.md, and .ai/interview artifacts
 curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --clean
 
-# Install only one component
-curl -fsSL https://raw.githubusercontent.com/cycho21/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude-workflow
 ```
 
 ## Update an installed harness

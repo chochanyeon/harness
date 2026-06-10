@@ -98,20 +98,6 @@ managed_paths_for() {
         .pi/.gitignore \
         .pi/extensions/memory.ts \
         .pi/schemas/harness-memory-entry.schema.json ;;
-    claude-workflow)
-      printf '%s\n' \
-        .claude/settings.json \
-        .claude/hooks/workflow-gate.cjs \
-        .claude/commands/workflow \
-        .harness/.gitignore \
-        .harness/README.md \
-        .harness/workflow-policy.json \
-        .pi/dpaa \
-        .pi/sbadr \
-        .pi/corenlp \
-        .pi/pyproject.toml \
-        .pi/setup_corenlp.sh \
-        .pi/setup_corenlp.ps1 ;;
     *) echo "Unknown component: $1" >&2; exit 2 ;;
   esac
 }

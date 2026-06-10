@@ -146,6 +146,10 @@ Create these files from the interview context:
 ```markdown
 # Implementation Plan: <title>
 
+Risk: normal
+Work type: feature
+Ambiguity gate: standard
+
 ## Approach
 <high-level strategy and key design decisions>
 

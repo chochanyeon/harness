@@ -35,6 +35,9 @@ def test_field_log_runtime_writes_project_memory_and_exports_redacted_logs():
     assert "events.jsonl" in text
     assert "exportFieldLogs" in text
     assert "formatRecentFieldLogs" in text
+    assert "formatFieldLogSummary" in text
+    assert "By category" in text
+    assert "By severity" in text
     assert "writeFieldLogEvent" in text
     assert "exportableToHarnessRepo" in text
     assert "problemForHarnessRepo" in text

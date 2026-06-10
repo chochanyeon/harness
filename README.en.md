@@ -70,7 +70,7 @@ Requirements discovery now focuses on the default workflow `interview → plan` 
 
 Artifacts are written under `.ai/interview/`. Korean `.ko.md` files are the human source of truth, and English `.md` files are DPAA/SBADR-friendly machine-check artifacts.
 
-Harness failures are logged locally under `.project-memory/harness/events.jsonl` when gates block or are explicitly skipped. Review and export redacted logs with:
+Harness failures are logged locally under `.project-memory/harness/events.jsonl` when gates block or are explicitly skipped. `/workflow failures` shows recent events plus category/severity counts so recurring guard friction or policy false positives are easy to spot. Review and export redacted logs with:
 
 ```text
 /workflow failures

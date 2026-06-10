@@ -27,6 +27,24 @@ The extension checks the current plan from:
 2. `docs/superpowers/plans/plan.md`
 3. newest `docs/superpowers/plans/*.md`
 
+## Adaptive Gate Metadata
+
+At the top of each plan, include explicit metadata so DPAA/SBADR applies the intended strictness instead of relying only on keyword fallback:
+
+```markdown
+Risk: normal
+Work type: feature
+Ambiguity gate: standard
+```
+
+Allowed values:
+
+- `Risk: low|normal|high`
+- `Work type: docs|cosmetic|discovery|feature|api|security|migration|data|deploy`
+- `Ambiguity gate: advisory|standard|strict`
+
+Use `advisory` only for low-risk documentation/cosmetic/discovery plans. Use `strict` for API contracts, schema/database changes, security/privacy, migrations, data loss, CI/deploy/release, or destructive behavior.
+
 ## When DPAA Blocks
 
 Triage each finding and act autonomously where possible. **Do not ask the user unless a genuine business decision is required.**

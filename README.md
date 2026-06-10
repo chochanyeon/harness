@@ -441,6 +441,8 @@ bash rm/mv/cp/sed -i/tee/> 등
 /workflow failures
 ```
 
+출력에는 최근 event 표와 함께 category/severity별 집계가 포함되어 반복적으로 막히는 guard나 정책 false positive를 빠르게 파악할 수 있습니다.
+
 redacted export:
 
 ```text

@@ -293,6 +293,17 @@ class TestCatalogTs:
         assert '".claude"' in src
 
 
+class TestPlanMetadataDocs:
+    def test_plan_templates_document_ambiguity_policy_metadata(self):
+        plan_template = (ROOT / "target" / ".pi" / "skills" / "planning-and-task-breakdown" / "references" / "plan-template.md").read_text(encoding="utf-8")
+        interview_skill = (ROOT / "target" / ".pi" / "skills" / "interview" / "SKILL.md").read_text(encoding="utf-8")
+        dpaa_skill = (ROOT / "target" / ".pi" / "skills" / "dpaa" / "SKILL.md").read_text(encoding="utf-8")
+        combined = "\n".join([plan_template, interview_skill, dpaa_skill])
+        assert "Ambiguity gate:" in combined
+        assert "Risk:" in combined
+        assert "Work type:" in combined
+
+
 # ---------------------------------------------------------------------------
 # format.ts — phase guidance
 # ---------------------------------------------------------------------------

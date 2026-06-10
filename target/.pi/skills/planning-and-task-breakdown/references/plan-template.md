@@ -5,8 +5,21 @@ Use this template when planning multi-step features for Java/Spring Boot project
 ```markdown
 # Implementation Plan: [Feature Name]
 
+Risk: normal
+Work type: feature
+Ambiguity gate: standard
+
 ## Overview
 [One paragraph summary of what we're building]
+
+## Ambiguity Gate Metadata
+Set these fields deliberately so DPAA/SBADR uses the intended strictness before implementation:
+
+- `Risk: low|normal|high`
+- `Work type: docs|cosmetic|discovery|feature|api|security|migration|data|deploy`
+- `Ambiguity gate: advisory|standard|strict`
+
+Use `advisory` only for low-risk documentation/cosmetic/discovery work. Use `strict` for API contracts, schema/database changes, security/privacy, migrations, data loss, CI/deploy/release, or destructive behavior.
 
 ## Architecture Decisions
 - **Layer separation:** Controller → Service → Repository (no skipping)

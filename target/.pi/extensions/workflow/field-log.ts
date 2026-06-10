@@ -260,6 +260,8 @@ export function formatRecentFieldLogs(limitCount = 10): string {
   if (events.length === 0) return [banner("🧾 Harness field logs"), "No field log events found."].join("\n");
   return [
     banner("🧾 Harness field logs"),
+    formatFieldLogSummary(events),
+    "",
     table([
       ["Time", "Category", "Type", "Severity", "Summary"],
       ...events.map((event) => [
@@ -273,6 +275,22 @@ export function formatRecentFieldLogs(limitCount = 10): string {
     "",
     "Export redacted logs: /workflow failures export",
   ].join("\n");
+}
+
+export function formatFieldLogSummary(events: any[]): string {
+  return [
+    "By category: " + formatCounts(events.map((event) => event.event?.category ?? "unknown")),
+    "By severity: " + formatCounts(events.map((event) => event.event?.severity ?? "unknown")),
+  ].join("\n");
+}
+
+function formatCounts(values: string[]): string {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([value, count]) => `${value}=${count}`)
+    .join(", ");
 }
 
 export function exportFieldLogs(): string {

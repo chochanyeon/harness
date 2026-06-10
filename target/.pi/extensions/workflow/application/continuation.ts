@@ -129,7 +129,7 @@ export function createWorkflowContinuationService(state: WorkflowRuntimeState, p
       "",
       "Rules:",
       "- Continue only within the current phase and its required actions.",
-      "- Do not cross a user-approval boundary automatically.",
+      "- The only user-approval boundary is commit → push. All other transitions are autonomous.",
       "- Do not bypass DPAA, SBADR, submit_review_package, quality, policy, or workspace guards.",
       "- If the current phase requires user approval, present the required summary/question and stop.",
       "",

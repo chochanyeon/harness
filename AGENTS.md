@@ -23,7 +23,7 @@ interview → plan → plan_review → implement → code_review → review_appr
 Rules:
 
 - Work only in the current phase.
-- Ask the user before crossing approval-required boundaries. Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review`, and `review_approved → document → commit`. In `code_review`, run main self-review, independent reviewer/subagent review, and quality gates, then call `submit_review_package`.
+- The only user-approval boundary is `commit → push`. From interview through commit everything is autonomous — guards that fail must be fixed and retried without asking the user. Auto-chain: `interview → plan → plan_review → implement → code_review → review_approved → document → commit`. In `code_review`, run main self-review, independent review, and quality gates, then call `submit_review_package`.
 - If a guard blocks, read the reason, attempt to fix the underlying cause, and retry the operation autonomously. Do not report to the user unless the same guard blocks repeatedly — the extension will prompt for an explicit skip after repeated failures.
 - If a workflow reminder is injected, address it explicitly; do not silently skip missing documentation, verification, review-package, commit-summary, or field-log evidence reminders.
 - Do not simulate guard results, write token files, or claim approval on behalf of the user.

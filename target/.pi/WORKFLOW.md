@@ -21,7 +21,7 @@ interview
 |------|---------|------------------------|
 | `interview` | Clarify requirements and unknowns. | Auto-advances to `plan` after user approval starts forward progress. |
 | `plan` | Write/update spec + plan artifacts. | Auto-advances to `plan_review`; this means "ready for plan review", not plan approval. |
-| `plan_review` | Present plan and resolve ambiguity. | User approval + DPAA PASS required before `implement`. |
+| `plan_review` | Present plan and resolve ambiguity. | DPAA PASS required before `implement`. Auto-advances on pass; auto-returns to `plan` on fail. |
 | `implement` | Implement only the approved plan. | Auto-starts review/quality flow after implementation work is ready. |
 | `code_review` | Main-agent and reviewer-agent review/fix/re-review loop. | Auto-advances to `review_approved` after review/quality gates pass. |
 | `review_approved` | Review gates passed. | Auto-advances to `document`. |
@@ -33,8 +33,8 @@ interview
 ## Operating Rules for the LLM
 
 - Follow `/workflow status`; work only in the current phase.
-- Ask before crossing approval-required boundaries: `plan_review → implement`, `commit → push`, gate skip/state/abort, and git push confirmation.
-- Preparation/review transitions auto-chain: `interview → plan → plan_review`, `implement → code_review`, and `review_approved → document → commit`. `code_review → review_approved` is triggered by `submit_review_package` after main review, independent reviewer/subagent review, and quality gates pass.
+- The only user-approval boundary is `commit → push`. Everything from interview through commit is autonomous.
+- Auto-chain sequence: `interview → plan → plan_review → implement → code_review → review_approved → document → commit`. Each transition is automatic once the phase work is complete and guards pass. `code_review → review_approved` is triggered by `submit_review_package` after main review, independent review, and quality gates pass.
 - The extension injects mechanical reminders instead of blocking for easy-to-forget deliverables: documentation markdown/HTML/indexes, verification evidence before commit, review package summary in code review, commit summary/message, and field-log evidence for harness-runtime changes. Address each reminder or explicitly state why it is not applicable.
 - Natural-language approval is accepted only from the interactive user.
 - If a DPAA/SBADR guard blocks, attempt to repair the plan autonomously (rewrite vague sentences, add missing metrics, remove placeholders, fix syntactic ambiguity) and retry `/workflow approve`. Repeat until DPAA PASS or a genuine business decision is required. Only then ask the user.

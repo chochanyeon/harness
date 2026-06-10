@@ -37,7 +37,7 @@ const DEFAULT_POLICY: SharedWorkflowPolicy = {
   schemaVersion: 1,
   phases: WORKFLOW_PHASES,
   autoAdvanceFromPhases: ["interview", "plan", "implement", "review_approved", "document"],
-  approvalBoundaries: ["plan_review:implement", "commit:push"],
+  approvalBoundaries: ["commit:push"],
   gates: ["dpaa", "code-quality", "policy-scan"],
   transitionPolicy: {
     strictNextPhaseOnly: true,

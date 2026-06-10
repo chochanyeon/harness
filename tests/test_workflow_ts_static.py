@@ -157,6 +157,9 @@ class TestAmbiguityGatePolicy:
         assert "ADVISORY_PATTERNS" in src
         assert "titleSource" in src
         assert "strictSource" in src
+        assert "parseAmbiguityPolicyMetadata" in src
+        assert "ambiguity gate" in src
+        assert "work type" in src
 
     def test_dpaa_gate_uses_adaptive_policy_before_blocking(self):
         src = _src("gates.ts")
@@ -283,6 +286,11 @@ class TestCatalogTs:
     def test_doctor_checks_dpaa_import(self):
         src = _src("catalog.ts")
         assert "dpaa.cli" in src
+
+    def test_doctor_checks_removed_claude_assets(self):
+        src = _src("catalog.ts")
+        assert "legacy .claude assets" in src
+        assert '".claude"' in src
 
 
 # ---------------------------------------------------------------------------

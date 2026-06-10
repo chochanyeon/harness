@@ -68,7 +68,7 @@ def test_python_initializer_can_install_workflow_only(tmp_path):
     assert not (tmp_path / ".pi" / "schemas" / "harness-memory-entry.schema.json").exists()
 
 
-def test_python_initializer_installs_only_workflow_claude_commands(tmp_path):
+def test_python_initializer_rejects_removed_claude_workflow_component(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
@@ -87,14 +87,9 @@ def test_python_initializer_installs_only_workflow_claude_commands(tmp_path):
         stderr=subprocess.PIPE,
         timeout=30,
     )
-    assert result.returncode == 0, result.stderr
-
-    assert (tmp_path / ".claude" / "commands" / "workflow" / "start.md").exists()
-    assert not (tmp_path / ".claude" / "commands" / "feature-interview.md").exists()
-    assert not (tmp_path / ".claude" / "commands" / "feature-planning-room.md").exists()
-    assert not (tmp_path / ".claude" / "commands" / "requirements-room.md").exists()
-    assert not (tmp_path / ".ai" / "interview" / "feature-planning-room-protocol.md").exists()
-    assert not (tmp_path / ".ai" / "interview" / "requirements-room-protocol.md").exists()
+    assert result.returncode != 0
+    assert "invalid choice: 'claude-workflow'" in result.stderr
+    assert not (tmp_path / ".claude").exists()
 
 
 def test_update_scripts_are_component_granular():

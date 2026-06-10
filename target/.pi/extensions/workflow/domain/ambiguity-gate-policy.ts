@@ -10,6 +10,12 @@ export type AmbiguityGatePolicy = {
   blocksSbadrFail: boolean;
 };
 
+type AmbiguityPolicyMetadata = {
+  ambiguityGate?: AmbiguityGateStrictness;
+  risk?: "low" | "normal" | "high";
+  workType?: string;
+};
+
 const STRICT_PATTERNS = [
   /\b(api|endpoint|contract|schema|migration|database|db|auth|security|permission|role|payment|billing|money|delete|destructive|privacy|pii|token|secret|credential|docker|ci|deploy|release)\b/i,
   /\bbreaking\s+change\b/i,
@@ -22,35 +28,89 @@ const ADVISORY_PATTERNS = [
   /\b(small|minor|tiny|quick|simple)\b/i,
 ];
 
+const STRICT_WORK_TYPES = new Set(["api", "contract", "schema", "security", "migration", "database", "data", "deploy", "release"]);
+const ADVISORY_WORK_TYPES = new Set(["docs", "documentation", "cosmetic", "discovery", "research", "spike", "style", "theme"]);
+
 export function classifyAmbiguityGatePolicy(workflow: WorkflowInstance, planText = ""): AmbiguityGatePolicy {
+  const metadata = parseAmbiguityPolicyMetadata(planText);
+  const metadataPolicy = policyFromMetadata(metadata);
+  if (metadataPolicy) return metadataPolicy;
+
   const titleSource = workflow.title;
   const strictSource = `${workflow.title}\n${planText}`;
   if (STRICT_PATTERNS.some((pattern) => pattern.test(strictSource))) {
-    return {
-      strictness: "strict",
-      reason: "High-risk/API/schema/security/data/deployment keyword detected.",
-      requiresPlan: true,
-      blocksDpaaFail: true,
-      blocksSbadrFail: true,
-    };
+    return buildPolicy(
+      "strict",
+      "High-risk/API/schema/security/data/deployment keyword detected.",
+    );
   }
 
   if (ADVISORY_PATTERNS.some((pattern) => pattern.test(titleSource))) {
-    return {
-      strictness: "advisory",
-      reason: "Low-risk, documentation/cosmetic, or discovery-oriented keyword detected.",
-      requiresPlan: false,
-      blocksDpaaFail: false,
-      blocksSbadrFail: false,
-    };
+    return buildPolicy(
+      "advisory",
+      "Low-risk, documentation/cosmetic, or discovery-oriented keyword detected.",
+    );
   }
 
+  return buildPolicy("standard", "Default feature/workflow ambiguity policy.");
+}
+
+function policyFromMetadata(metadata: AmbiguityPolicyMetadata): AmbiguityGatePolicy | undefined {
+  if (metadata.ambiguityGate) {
+    return buildPolicy(metadata.ambiguityGate, `Explicit plan metadata selected ambiguity gate '${metadata.ambiguityGate}'.`);
+  }
+  if (metadata.risk === "high") {
+    return buildPolicy("strict", "Explicit plan metadata marked risk as high.");
+  }
+  if (metadata.workType && STRICT_WORK_TYPES.has(metadata.workType)) {
+    return buildPolicy("strict", `Explicit plan metadata marked work type '${metadata.workType}' as high risk.`);
+  }
+  if (metadata.risk === "low") {
+    return buildPolicy("advisory", "Explicit plan metadata marked risk as low.");
+  }
+  if (metadata.workType && ADVISORY_WORK_TYPES.has(metadata.workType)) {
+    return buildPolicy("advisory", `Explicit plan metadata marked work type '${metadata.workType}' as low risk.`);
+  }
+  if (metadata.risk === "normal") {
+    return buildPolicy("standard", "Explicit plan metadata marked risk as normal.");
+  }
+  return undefined;
+}
+
+function parseAmbiguityPolicyMetadata(planText: string): AmbiguityPolicyMetadata {
+  const metadata: AmbiguityPolicyMetadata = {};
+  for (const line of planText.split(/\r?\n/).slice(0, 40)) {
+    const match = line.match(/^\s*(?:[-*]\s*)?(risk|work\s*type|ambiguity\s*gate)\s*:\s*([^#]+?)\s*$/i);
+    if (!match) continue;
+    const key = match[1].toLowerCase().replace(/\s+/g, " ");
+    const value = normalizeMetadataValue(match[2]);
+    if (key === "ambiguity gate" && isAmbiguityGateStrictness(value)) metadata.ambiguityGate = value;
+    if (key === "risk" && isRiskValue(value)) metadata.risk = value;
+    if (key === "work type") metadata.workType = value;
+  }
+  return metadata;
+}
+
+function normalizeMetadataValue(value: string): string {
+  return value.trim().toLowerCase().replace(/^['"]|['"]$/g, "").replace(/[_.\s]+/g, "-");
+}
+
+function isAmbiguityGateStrictness(value: string): value is AmbiguityGateStrictness {
+  return value === "advisory" || value === "standard" || value === "strict";
+}
+
+function isRiskValue(value: string): value is "low" | "normal" | "high" {
+  return value === "low" || value === "normal" || value === "high";
+}
+
+function buildPolicy(strictness: AmbiguityGateStrictness, reason: string): AmbiguityGatePolicy {
+  const blocks = strictness !== "advisory";
   return {
-    strictness: "standard",
-    reason: "Default feature/workflow ambiguity policy.",
-    requiresPlan: true,
-    blocksDpaaFail: true,
-    blocksSbadrFail: true,
+    strictness,
+    reason,
+    requiresPlan: strictness !== "advisory",
+    blocksDpaaFail: blocks,
+    blocksSbadrFail: blocks,
   };
 }
 

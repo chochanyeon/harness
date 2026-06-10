@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import type { WorkflowRuntimeState } from "../runtime-state";
 import { ensureExtensionMutationApproved } from "./extension-mutation-approval";
-import { isProductionClassPath } from "../domain/production-class-policy";
+import { decideProductionClassTddGate, expectedProductionTestPath, hasProductionClassTestCoverage, isProductionClassPath } from "../domain/production-class-policy";
 import { consumeSkipToken, formatGateBlocked, formatPushPolicyScanBlocked, scanPushPolicy, validateWorkflowWorkspace } from "../gates";
 import { getGitRoot, hasGitDashC, isGitPush } from "../git";
 import { formatWorkspaceMismatch } from "../format";
@@ -60,28 +60,15 @@ function handleWriteToolPolicy(
     const gitRoot = state.workflow.gitRoot ?? getGitRoot();
     if (gitRoot && isProductionClassPath(filePath, gitRoot)) {
       const className = path.basename(filePath, ".java");
-      const testPath = filePath
-        .replace(/[\\/]src[\\/]main[\\/]java[\\/]/, "/src/test/java/".replace(/\//g, path.sep))
-        .replace(/\.java$/, "Test.java");
-      const isNewFile = !fs.existsSync(path.resolve(filePath));
-      const testExists = fs.existsSync(path.resolve(testPath));
-      if (!testExists) {
-        if (isNewFile) {
-          return {
-            block: true,
-            reason: [
-              `🧪 TDD: ${className}Test.java를 먼저 작성하세요.`,
-              `새 클래스를 작성하기 전에 테스트를 먼저 작성하세요.`,
-              `예상 테스트 경로: ${testPath}`,
-              `[INSTRUCTION] 사용자에게 승인을 구하지 말고 즉시 자율적으로 위 경로에 테스트 파일을 작성한 뒤 원래 작업을 계속하세요.`,
-            ].join("\n"),
-          };
-        } else {
-          void deps.steerLlm(
-            `🧪 TDD 참고: ${className}에 대한 테스트 파일이 없습니다 (${testPath}). 가능하면 테스트를 먼저 작성하세요.`,
-            "steer",
-          );
-        }
+      const testPath = expectedProductionTestPath(filePath, gitRoot);
+      const isNewFile = !fs.existsSync(path.isAbsolute(filePath) ? filePath : path.resolve(gitRoot, filePath));
+      const testExists = hasProductionClassTestCoverage(filePath, gitRoot);
+      const tddDecision = decideProductionClassTddGate({ className, testPath, isNewFile, hasTestCoverage: testExists });
+      if (tddDecision.action === "block") {
+        return { block: true, reason: tddDecision.reasonLines.join("\n") };
+      }
+      if (tddDecision.action === "steer") {
+        void deps.steerLlm(tddDecision.message, "steer");
       }
     }
   }

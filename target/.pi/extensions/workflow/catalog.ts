@@ -265,6 +265,7 @@ export function formatHarnessDoctor(): string {
     (f) => f.startsWith("stanford-corenlp-") && f.endsWith(".jar") && !f.includes("javadoc") && !f.includes("sources") && !f.includes("models"),
   );
   const javaOk = commandOk("java -version");
+  const legacyClaudeAssets = fs.existsSync(path.join(HARNESS_ROOT, ".claude"));
   const projectRootForDoctor = getGitRoot() ?? HARNESS_ROOT;
   const bs = detectBuildSystem(projectRootForDoctor);
   const qualityGateLabel = bs.qualityCommand
@@ -284,6 +285,7 @@ export function formatHarnessDoctor(): string {
     ["java >= 17", javaOk ? "OK" : "MISSING (required for SBADR/CoreNLP)"],
     ["CoreNLP", coreNlpInstalled ? "OK" : `MISSING (auto-installed on first DPAA gate; run ${process.platform === "win32" ? ".pi/setup_corenlp.ps1" : ".pi/setup_corenlp.sh"} to install manually)`],
     ["setup_corenlp", fs.existsSync(path.join(PI_ROOT, process.platform === "win32" ? "setup_corenlp.ps1" : "setup_corenlp.sh")) ? "OK" : "MISSING"],
+    ["legacy .claude assets", legacyClaudeAssets ? "WARN (remove target/project .claude workflow assets; Pi runtime is canonical)" : "OK"],
     ["project build system", bs.type],
     ["code quality gate", qualityGateLabel],
     ["project AGENTS.md", fs.existsSync(path.join(HARNESS_ROOT, "AGENTS.md")) ? "OK" : "FAIL"],

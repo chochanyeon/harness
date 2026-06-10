@@ -20,7 +20,7 @@ Options:
   --dest DIR   Project root to update (default: current directory)
   --ref REF    Branch or tag to clone
   --dry-run    Print planned changes without writing files
-  --component NAME Component to update: all, workflow, memory, claude-workflow (repeatable; default: all)
+  --component NAME Component to update: all, workflow, memory (repeatable; default: all)
   --keep-temp  Keep temporary clone directory
   -h, --help   Show this help
 EOF

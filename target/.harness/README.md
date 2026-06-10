@@ -1,12 +1,12 @@
-# Claude Code Workflow Gate
+# Pi Workflow Runtime State
 
-This directory contains the lightweight Claude Code port of the pi workflow gate. Claude Code integration lives in `.claude/`; workflow state, shared policy, authority files, and compatibility proposal artifacts live here.
+This directory stores runtime state, policy, authority files, and compatibility proposal artifacts for the Pi workflow extension.
 
-The Claude Code component does not enable the built-in Bash sandbox by default because the UX cost is high. Instead, `UserPromptSubmit` reminders keep workflow rules visible and the `PreToolUse` hook blocks Claude Code file tools (`Edit`, `Write`, `MultiEdit`) from touching protected paths or skipping phases.
+The executable workflow integration lives under `.pi/extensions/workflow.ts` and `.pi/extensions/workflow/`. This `.harness/` directory is data/config only.
 
 ## State flow
 
-The default phase model mirrors the pi workflow extension. Phase order and approval boundaries are declared in `.harness/workflow-policy.json`, which is the shared Pi/Claude policy SSOT:
+The default phase model is declared in `.harness/workflow-policy.json`:
 
 ```text
 interview -> plan -> plan_review -> implement -> code_review -> review_approved -> document -> commit -> push -> done
@@ -27,59 +27,46 @@ plan_review -> implement
 commit -> push
 ```
 
-## Claude slash commands
+## Pi workflow commands
 
-The component seeds prompt commands under `.claude/commands/workflow/`:
-
-```text
-/workflow:start <goal>
-/workflow:status
-/workflow:approve
-/workflow:list
-/workflow:load
-/workflow:history
-/workflow:snapshot <reason>
-/workflow:submit-review-package critical=0 major=0 minor=0 summary="..."
-/workflow:undo
-/workflow:redo
-/workflow:skip <gate> <reason>
-/workflow:failures [export]
-/workflow:doctor
-/workflow:state <phase>
-/workflow:abort
-```
-
-These commands call the gate CLI:
-
-```bash
-node .claude/hooks/workflow-gate.cjs <command>
-```
-
-Additional ported pi commands:
+Use Pi's workflow tools or `/workflow` commands from the Pi TUI:
 
 ```text
-/workflow:checkpoint <reason>
-/workflow:checkpoints
-/workflow:restore <checkpoint-prefix>
-/workflow:dpaa-audit
+/workflow start <goal>
+/workflow status
+/workflow approve
+/workflow list
+/workflow load
+/workflow history
+/workflow snapshot <reason>
+/workflow submit-review-package critical=0 major=0 minor=0 summary="..."
+/workflow undo
+/workflow redo
+/workflow skip <gate> <reason>
+/workflow failures [export]
+/workflow doctor
+/workflow state <phase>
+/workflow abort
+/workflow checkpoint <reason>
+/workflow checkpoints
+/workflow restore <checkpoint-prefix>
+/workflow dpaa-audit
 ```
 
-## Ported mechanical gates
+## Mechanical gates
 
-- `plan_review -> implement`: requires `plan-review.json` approval, then runs DPAA against `.ai/interview/plan.md` or `docs/superpowers/plans/*.md`. If CoreNLP is available or installable, SBADR runs after DPAA PASS.
-- `code_review -> review_approved`: requires `review-package.json` approval, then runs `HARNESS_CODE_QUALITY_GUARD_CMD` or Gradle `codeQualityGuard` when a Gradle project is detected.
-- `commit -> push`: scans risky changed paths and requires `push-approval.json` if the scan finds protected harness or secret-like files. `push-approval.json` may include a `signature` matching the policy scan.
+- `plan_review -> implement`: requires plan-review evidence, then runs DPAA/SBADR ambiguity checks. Low-risk documentation/cosmetic/discovery work may be advisory; API/schema/security/migration/data/deploy work remains strict.
+- `code_review -> review_approved`: requires `submit_review_package` evidence and code quality verification.
+- `commit -> push`: scans risky changed paths and requires policy review or a one-use accepted-risk exception if findings are present.
 - Push guard: blocks `git -C <path> push`, workspace/branch mismatches, and pushes outside the `push` phase.
-- Workspace checkpoints: stores staged/unstaged patches and untracked files under `.harness/checkpoints/<workflow-id>/` and can restore by prefix. Phase transitions create checkpoints; `/workflow:undo` and `/workflow:redo` restore workspace state as well as phase state.
+- Workspace checkpoints: stores staged/unstaged patches and untracked files under `.harness/checkpoints/<workflow-id>/` and can restore by prefix. Phase transitions create checkpoints; `/workflow undo` and `/workflow redo` restore workspace state as well as phase state.
 - Field logs: gate failures and policy blocks append JSONL events to `.project-memory/harness/events.jsonl`.
-- Workflow catalog: `/workflow:list` shows the active/persisted workflow and `.pi/workflows/*.md` catalog entries.
-- Natural-language approval: `UserPromptSubmit` detects explicit approvals such as `응 진행해` at approval boundaries and advances the workflow.
-- Prompt guidance: `UserPromptSubmit` injects current phase guidance as a system message each turn, including next-phase/no-skip/subagent reminders from `.harness/workflow-policy.json`.
+- Workflow catalog: `/workflow list` shows the active/persisted workflow and `.pi/workflows/*.md` catalog entries.
 - Context management: implementation, code review, large diff analysis, and log analysis should prefer subagents so the main agent remains a workflow controller.
 
-## Claude-writable artifacts
+## Workflow artifacts
 
-Primary pi-compatible artifacts:
+Primary Pi-compatible artifacts:
 
 - `.ai/interview/spec.md`
 - `.ai/interview/spec.ko.md`
@@ -96,13 +83,12 @@ Compatibility proposal files:
 
 ## Protected gate files
 
-The hook and Claude Code settings treat these as protected paths. Claude should not edit them directly.
+These files are workflow runtime state or authority records. Agents should not edit them directly unless a workflow command or approved edit scope performs the change.
 
-- `.claude/**`
 - `.harness/state.json`
 - `.harness/workflow.json`
-- `.harness/.authority-runtime/**` — generated runtime recovery/skip artifacts; hook only; ignored by `.harness/.gitignore`
-- `.harness/workflow-policy.json` — shared Pi/Claude workflow policy declaration
+- `.harness/.authority-runtime/**` — generated runtime recovery/skip artifacts; ignored by `.harness/.gitignore`
+- `.harness/workflow-policy.json` — workflow policy declaration
 - `.harness/checkpoints/**`, `.harness/dpaa-runs/**` — generated runtime artifacts; ignored by `.harness/.gitignore`
 - `.harness/authority/**`
 - `.harness/policy.yaml`
@@ -118,25 +104,9 @@ To approve implementation, a human/reviewer updates `plan-review.json`:
 ```json
 {
   "status": "approved",
-  "approved_allowed_files": ["src/example.ts"],
-  "approved_test_plan": ["npm test"]
+  "approved_allowed_files": ["src/main/java/example/Foo.java"],
+  "notes": "Plan reviewed."
 }
 ```
 
-To approve the code review package, update `review-package.json`:
-
-```json
-{
-  "status": "approved",
-  "summary": "Self-review, independent review, and quality checks passed.",
-  "critical": 0,
-  "major": 0,
-  "minor": 0
-}
-```
-
-To approve push, update `push-approval.json`:
-
-```json
-{ "status": "approved", "reason": "Policy scan accepted" }
-```
+To submit a review package, use the Pi workflow tool rather than editing authority files by hand.

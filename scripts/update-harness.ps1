@@ -8,7 +8,7 @@ param(
     [string]$Repo = "https://github.com/cycho21/harness.git",
     [string]$Dest = (Get-Location).Path,
     [string]$Ref = "",
-    [ValidateSet("all", "workflow", "memory", "claude-workflow")]
+    [ValidateSet("all", "workflow", "memory")]
     [string[]]$Component = @("all"),
     [switch]$DryRun,
     [switch]$KeepTemp

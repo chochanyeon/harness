@@ -359,12 +359,13 @@ hard guard는 자동 진행 중에도 우회할 수 없습니다.
 
 | Guard | 위치 | 의미 |
 |---|---|---|
-| DPAA/SBADR | `plan_review → implement` | 사용자 승인창 표시 전 계획 모호성/검증 가능성 검사. `advisory`/`standard`/`strict` 강도를 정합니다. docs/cosmetic/discovery/small 작업은 작업 제목 기준으로 advisory가 될 수 있어 FAIL도 advisory로 낮추고 plan 부재도 허용할 수 있습니다. API/schema/security/migration/data/deploy 계열은 제목과 plan 내용 중 어느 쪽에서 감지돼도 strict로 유지합니다. acceptance는 숫자 metric뿐 아니라 `command exits 0`, `tests pass`, `README updated`, `no blockers/errors` 같은 binary/observable 조건도 검증 가능 조건으로 인정합니다. `WARN`은 advisory로 표시하되 전이는 허용합니다. |
+| DPAA/SBADR | `plan_review → implement` | 사용자 승인창 표시 전 계획 모호성/검증 가능성 검사. `advisory`/`standard`/`strict` 강도를 정합니다. 계획 상단 metadata의 `Ambiguity gate: advisory\|standard\|strict`, `Risk: low\|normal\|high`, `Work type: docs\|feature\|api\|security\|migration` 값을 우선 적용하고, metadata가 없으면 기존 keyword fallback을 사용합니다. docs/cosmetic/discovery/small 작업은 작업 제목 기준으로 advisory가 될 수 있어 FAIL도 advisory로 낮추고 plan 부재도 허용할 수 있습니다. API/schema/security/migration/data/deploy 계열은 metadata나 제목/plan 내용에서 strict로 유지합니다. acceptance는 숫자 metric뿐 아니라 `command exits 0`, `tests pass`, `README updated`, `no blockers/errors` 같은 binary/observable 조건도 검증 가능 조건으로 인정합니다. `WARN`은 advisory로 표시하되 전이는 허용합니다. |
 | Code quality | review package 제출 시 | `codeQualityGuard` 또는 설정된 품질 명령 실행 |
 | Workspace | `git push` | workflow 시작 workspace/branch와 현재 상태 일치 검사 |
 | Push policy scan | `commit → push`, `git push` | 위험 변경 확인 |
 | Push phase | `git push` | 현재 workflow phase가 `push`인지 검사 |
 | Review completion | `code_review → review_approved`, `commit → push` | review package/quality gate와 순차 전이 이력으로 검사 |
+| TDD write policy | `implement` 중 Java production class 작성/수정 | 새 production class는 관련 테스트가 먼저 있어야 합니다. `FooTest`, `FooTests`, `FooIT`, `FooIntegrationTest`를 같은 test package 기준으로 인정하며, 기존 class 수정은 hard block 대신 steer reminder로 완화합니다. |
 | Extension modification approval | `.pi/extensions/**` 수정 | 사용자 승인 없는 extension 수정 차단 |
 
 Guard block 메시지는 `Why blocked`, `Default handling for the LLM`, `Next actions`, 조건부 `Exception path`, `Caution` 순서로 표시됩니다. `Exception path`는 skip 경로가 있는 guard에서만 표시됩니다. `Default handling for the LLM`은 skip-first 금지, 수정 가능한 실패의 원인 수정 후 재시도, 사용자 질문 조건 제한을 먼저 제시합니다. Workspace guard는 파일 수정·workflow state 변경·evidence 시뮬레이션을 금지하고 올바른 directory/branch 복귀를 요청합니다. Policy-scan guard는 위험 변경을 숨기거나 조용히 수정하지 말고 위험 요약과 interactive policy approval path를 제시하도록 안내합니다.

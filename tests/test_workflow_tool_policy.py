@@ -17,6 +17,7 @@ RUNTIME_POLICY = ROOT / "target" / ".pi" / "extensions" / "workflow" / "runtime-
 WORKFLOW_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 TOOL_CALL_GATE = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "tool-call-gate.ts"
 CONTINUATION = ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "continuation.ts"
+PRODUCTION_CLASS_POLICY = ROOT / "target" / ".pi" / "extensions" / "workflow" / "domain" / "production-class-policy.ts"
 
 
 def _policy(text: str) -> dict[str, list[str]]:
@@ -140,7 +141,11 @@ def test_steer_llm_defaults_to_steer_not_followup():
 
 
 def test_tdd_gate_checks_write_and_edit_calls_in_implement_phase():
-    src = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + TOOL_CALL_GATE.read_text(encoding="utf-8")
+    src = (
+        WORKFLOW_EXTENSION.read_text(encoding="utf-8")
+        + TOOL_CALL_GATE.read_text(encoding="utf-8")
+        + PRODUCTION_CLASS_POLICY.read_text(encoding="utf-8")
+    )
     assert 'state.workflow?.phase === "implement"' in src
     assert 'event.toolName === "write" || event.toolName === "edit"' in src
     assert "isProductionClassPath" in src

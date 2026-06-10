@@ -42,6 +42,21 @@ def test_ambiguity_gate_policy_classification_runtime(tmp_path):
           '- Verification: tests pass.',
           '- Verification: README updated.',
         ].join('\n');
+        const explicitAdvisoryPlan = [
+          '---',
+          'Risk: low',
+          'Work type: docs',
+          'Ambiguity gate: advisory',
+          '---',
+          '# Plan',
+          '- Update API documentation wording only.',
+        ].join('\n');
+        const explicitStrictPlan = [
+          'Risk: high',
+          'Work type: migration',
+          '# Plan',
+          '- Rename copy in README.',
+        ].join('\n');
         console.log(JSON.stringify({
           readmeTypo: classifyAmbiguityGatePolicy(wf('Fix README typo')).strictness,
           investigation: classifyAmbiguityGatePolicy(wf('Investigate flaky test')).strictness,
@@ -49,6 +64,8 @@ def test_ambiguity_gate_policy_classification_runtime(tmp_path):
           apiEndpoint: classifyAmbiguityGatePolicy(wf('Add API endpoint')).strictness,
           databaseMigration: classifyAmbiguityGatePolicy(wf('Run database migration')).strictness,
           securityToken: classifyAmbiguityGatePolicy(wf('Update security token handling')).strictness,
+          explicitAdvisoryMetadata: classifyAmbiguityGatePolicy(wf('Update API documentation'), explicitAdvisoryPlan).strictness,
+          explicitStrictMetadata: classifyAmbiguityGatePolicy(wf('README copy edit'), explicitStrictPlan).strictness,
         }));
         '''
     )
@@ -60,26 +77,38 @@ def test_ambiguity_gate_policy_classification_runtime(tmp_path):
     assert data["apiEndpoint"] == "strict"
     assert data["databaseMigration"] == "strict"
     assert data["securityToken"] == "strict"
+    assert data["explicitAdvisoryMetadata"] == "advisory"
+    assert data["explicitStrictMetadata"] == "strict"
 
 
 def test_production_class_policy_handles_relative_and_absolute_paths(tmp_path):
     project = tmp_path / "project"
     service = project / "src" / "main" / "java" / "com" / "example" / "FooService.java"
     dto = project / "src" / "main" / "java" / "com" / "example" / "dto" / "FooDto.java"
+    exact_test = project / "src" / "test" / "java" / "com" / "example" / "FooServiceTest.java"
+    integration_test = project / "src" / "test" / "java" / "com" / "example" / "FooServiceIntegrationTest.java"
     service.parent.mkdir(parents=True)
     dto.parent.mkdir(parents=True)
+    exact_test.parent.mkdir(parents=True)
+    integration_test.write_text("class FooServiceIntegrationTest {}\n", encoding="utf-8")
     script = textwrap.dedent(
         rf'''
         const path = require('path');
         const {{ createJiti }} = require('jiti');
         const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
-        const {{ isProductionClassPath }} = jiti(path.resolve('target/.pi/extensions/workflow/domain/production-class-policy.ts'));
+        const {{ isProductionClassPath, expectedProductionTestPath, hasProductionClassTestCoverage, decideProductionClassTddGate }} = jiti(path.resolve('target/.pi/extensions/workflow/domain/production-class-policy.ts'));
         const gitRoot = {json.dumps(str(project))};
         console.log(JSON.stringify({{
           relativeService: isProductionClassPath('src/main/java/com/example/FooService.java', gitRoot),
           absoluteService: isProductionClassPath({json.dumps(str(service))}, gitRoot),
           dtoExcluded: isProductionClassPath({json.dumps(str(dto))}, gitRoot),
           testClassExcluded: isProductionClassPath('src/test/java/com/example/FooServiceTest.java', gitRoot),
+          expectedTestPath: expectedProductionTestPath('src/main/java/com/example/FooService.java', gitRoot).replace(/\\/g, '/'),
+          relatedIntegrationTestCounts: hasProductionClassTestCoverage('src/main/java/com/example/FooService.java', gitRoot),
+          missingRelatedTest: hasProductionClassTestCoverage('src/main/java/com/example/BarService.java', gitRoot),
+          newClassWithoutTest: decideProductionClassTddGate({{ className: 'BarService', testPath: 'BarServiceTest.java', isNewFile: true, hasTestCoverage: false }}).action,
+          existingClassWithoutTest: decideProductionClassTddGate({{ className: 'BarService', testPath: 'BarServiceTest.java', isNewFile: false, hasTestCoverage: false }}).action,
+          classWithCoverage: decideProductionClassTddGate({{ className: 'FooService', testPath: 'FooServiceTest.java', isNewFile: true, hasTestCoverage: true }}).action,
         }}));
         '''
     )
@@ -89,6 +118,12 @@ def test_production_class_policy_handles_relative_and_absolute_paths(tmp_path):
     assert data["absoluteService"] is True
     assert data["dtoExcluded"] is False
     assert data["testClassExcluded"] is False
+    assert data["expectedTestPath"].endswith("src/test/java/com/example/FooServiceTest.java")
+    assert data["relatedIntegrationTestCounts"] is True
+    assert data["missingRelatedTest"] is False
+    assert data["newClassWithoutTest"] == "block"
+    assert data["existingClassWithoutTest"] == "steer"
+    assert data["classWithCoverage"] == "allow"
 
 
 def test_workflow_extension_runtime_registers_and_allows_restored_push(tmp_path):

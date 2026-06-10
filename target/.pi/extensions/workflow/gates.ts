@@ -19,6 +19,78 @@ const CORENLP_DIR = path.join(PI_ROOT, "corenlp");
 
 export type WorkflowGate = "dpaa" | "code-quality" | "policy-scan";
 
+// ── Diff-aware quality gate helpers ─────────────────────────────────────────
+
+/** Returns absolute paths of all files that differ from HEAD (staged + unstaged + untracked). */
+function getChangedFileAbsPaths(root: string): string[] {
+  try {
+    const out = execSync("git status --porcelain=v1", {
+      cwd: root, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 10 * 1024 * 1024,
+    }).trim();
+    if (!out) return [];
+    return out.split(/\r?\n/).map((line) => {
+      // porcelain v1: "XY filename" or "XY old -> new" (rename)
+      const filePart = line.slice(3).trim().split(" -> ").pop() ?? "";
+      return filePart ? path.resolve(root, filePart) : "";
+    }).filter(Boolean);
+  } catch { return []; }
+}
+
+/**
+ * Extracts absolute file paths that appear in quality tool violation output.
+ * Handles Checkstyle ([ant:checkstyle] … /path/File.java:N:) and PMD (/path/File.java:N).
+ * Returns empty array when no paths could be parsed (format unknown → caller falls back).
+ */
+function extractViolationFilePaths(output: string, root: string): string[] {
+  const results = new Set<string>();
+  // Match Unix absolute paths: /some/path/File.java:N  or  C:\path\File.java:N
+  const RE = /(?:^|[\s\[\("'])((?:[A-Za-z]:[\\]|\/)(?:[^\s:"'*?<>|]+[\\])*[^\s:"'*?<>|]+\.(?:java|kt|groovy|scala|xml))(?=:\d)/gm;
+  let m: RegExpExecArray | null;
+  while ((m = RE.exec(output)) !== null) {
+    const filePath = m[1].trim();
+    if (filePath) results.add(path.normalize(path.resolve(root, filePath)));
+  }
+  return [...results];
+}
+
+/**
+ * Diff-aware gate check: if quality check failed but ALL violations are in UNCHANGED files,
+ * return a passing result. Returns null when the logic is inconclusive (fall back to full failure).
+ */
+function diffAwareGateCheck(
+  output: string,
+  root: string,
+  workflow: WorkflowInstance,
+  command: string,
+): { ok: true; message: string } | null {
+  const changedFiles = getChangedFileAbsPaths(root);
+  if (changedFiles.length === 0) return null;
+
+  const changedSet = new Set(changedFiles.map((f) => path.normalize(f)));
+  const violationFiles = extractViolationFilePaths(output, root);
+  if (violationFiles.length === 0) return null; // couldn't parse → fall back to full failure
+
+  const changedViolations = violationFiles.filter((f) => changedSet.has(f));
+  if (changedViolations.length > 0) return null; // violations in changed files → real failure
+
+  // All violations are in pre-existing (unchanged) files
+  const relPaths = violationFiles.map((f) => path.relative(root, f)).slice(0, 5);
+  const msg = [
+    `✅ Code quality gate passed (diff-aware): ${changedFiles.length} changed file(s) are clean.`,
+    `   Pre-existing violations in ${violationFiles.length} unchanged file(s) — not counted against this commit.`,
+    `   Pre-existing: ${relPaths.join(", ")}${violationFiles.length > 5 ? ` … +${violationFiles.length - 5}` : ""}`,
+  ].join("\n");
+  writeFieldLogEvent({
+    type: "gate.passed", category: "code-quality", severity: "info", status: "diff-aware-pass", workflow,
+    summary: msg,
+    expected: "Code quality gate clean, or changed files are clean.",
+    actual: `${violationFiles.length} pre-existing violation file(s); ${changedFiles.length} changed file(s) clean.`,
+    impact: "Pre-existing violations not counted. Fix them separately as tech-debt.",
+    primaryMessage: msg, command, improvementKind: "incremental-quality",
+  });
+  return { ok: true, message: msg };
+}
+
 function quoteCommand(command: string): string {
   return `"${escapeForDoubleQuotedArg(command)}"`;
 }
@@ -266,7 +338,8 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
       // Build system quality command: use execFileSync (structured argv, no shell interpolation)
       // Windows: .bat files need cmd /c wrapper
       let exe = qc!.executable;
-      let eArgs = qc!.args;
+      // Force fresh execution to avoid stale Gradle incremental build cache returning old results.
+      let eArgs = buildSystem.type === "gradle" ? [...qc!.args, "--rerun-tasks"] : [...qc!.args];
       if (process.platform === "win32" && /\.bat$/i.test(exe)) {
         eArgs = ["/c", exe, ...eArgs];
         exe = "cmd.exe";
@@ -297,6 +370,11 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
       return { ok: true, message: `Code quality guard skipped: subprocess environment error (exit unknown). Run ${command} manually to verify.` };
     }
     const output = [err.stdout, err.stderr].filter(Boolean).join("\n").trim();
+
+    // Diff-aware check: pass if all violations are in pre-existing (unchanged) files
+    const diffAware = diffAwareGateCheck(output, root, workflow, command);
+    if (diffAware) return diffAware;
+
     const tail = output.split(/\r?\n/).slice(-80).join("\n");
     writeFieldLogEvent({
       type: "gate.failed",

@@ -67,11 +67,9 @@ DPAA와 SBADR은 상호 보완적입니다.
 
 산출물은 `.ai/interview/` 아래에 저장됩니다. 한국어 `.ko.md` 파일은 사람용 source of truth이고, 영어 `.md` 파일은 DPAA/SBADR 친화적인 machine-check artifact입니다. Spec에는 topology와 필요한 용어 정의가 포함되고, plan step은 관련 topology component 및 acceptance criteria에 매핑됩니다.
 
-보조 사고 프로토콜 skill도 포함됩니다. `trace`는 workflow/guard/runtime/test 이상을 수정하기 전에 관찰·가설·증거·반증·다음 판별 probe로 원인을 좁히고, `verify`는 완료 주장 전에 실제 검증 증거를 정리하며, `cleanup`은 동작 보존을 전제로 중복/죽은 코드/불필요한 추상화 같은 AI slop을 작고 검증 가능한 pass로 제거합니다. `/workflow trace <관찰>`은 trace 프로토콜을 현재 workflow context와 함께 LLM에게 즉시 시작하도록 연결합니다.
+보조 protocol은 기본 workflow에 항상 추가되는 필수 단계가 아니라 조건부 안전장치입니다. 기본 흐름과 조건부 protocol taxonomy는 [`docs/workflow-protocol-taxonomy.md`](docs/workflow-protocol-taxonomy.md)에 정리되어 있습니다. OMC에서 이미 흡수한 패턴과 중복 방지 규칙은 [`docs/omc-borrowed-patterns.md`](docs/omc-borrowed-patterns.md)에 기록합니다. 대표 protocol은 원인 분석용 `trace`, 완료/회귀 증거용 `evidence-verification`, 실패·pending work 복구용 `continuation-safety`, context 압축용 `compact-handoff`, worktree 작업용 `worktree-safety`, 동작 보존 cleanup용 `cleanup`입니다. `/workflow trace <관찰>`은 trace protocol을 현재 workflow context와 함께 LLM에게 즉시 시작하도록 연결합니다.
 
-고위험 plan은 `plan_review`에서 추가 consensus 절차를 요구합니다. Plan metadata가 `Risk: high`, `Ambiguity gate: strict`, 또는 `Work type: api|security|migration|data|deploy`이면 구현 승인 전에 Architect/Critic 관점으로 feasibility/testability gap을 검토하고 plan을 보수해야 합니다.
-
-긴 세션을 안전하게 압축하기 위한 `compact-handoff` skill도 포함됩니다. 이 skill은 현재 workflow phase, 결정, artifact, 변경 파일, 검증, 다음 작업, guard/risk 상태를 짧은 resume note로 정리하지만 native compaction 명령을 대신 실행하지는 않습니다. 큰 review/trace/verification/DPAA 출력은 `target/.pi/extensions/workflow/artifact-descriptor.ts`의 descriptor contract(`kind`, `path`, `producer`, `retention`, `sizeBytes`, `sha256`, `summary`)로 파일 참조화할 수 있게 표준 필드를 제공합니다. `tool-error-recovery` skill은 실패한 tool/command/guard/edit/transition을 retryability 기준으로 분류하고, 안전한 다음 복구 조치를 제시합니다. `worktree-safety` skill은 `.worktrees/` 전용 생성, dirty worktree 보존, symlink 거부, stale directory 삭제 금지 같은 worktree 안전 규칙을 명시합니다.
+고위험 plan은 `plan_review`에서 추가 consensus 절차를 요구합니다. Plan metadata가 `Risk: high`, `Ambiguity gate: strict`, 또는 `Work type: api|security|migration|data|deploy`이면 구현 승인 전에 Architect/Critic 관점으로 feasibility/testability gap을 검토하고 plan을 보수해야 합니다. 큰 review/trace/verification/DPAA 출력은 `target/.pi/extensions/workflow/artifact-descriptor.ts`의 descriptor contract(`kind`, `path`, `producer`, `retention`, `sizeBytes`, `sha256`, `summary`)로 파일 참조화할 수 있게 표준 필드를 제공합니다.
 
 | | DPAA | SBADR |
 |---|---|---|

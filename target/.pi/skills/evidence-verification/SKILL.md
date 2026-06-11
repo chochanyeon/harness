@@ -1,0 +1,82 @@
+---
+name: evidence-verification
+description: Use before claiming completion or after changing workflow prompts, guards, interview behavior, review protocols, or runtime routing. Combines concrete verification evidence with small regression benchmark matrices. Output language is Korean.
+---
+
+# Evidence Verification Skill
+
+Use this skill whenever a feature, fix, refactor, workflow change, documentation rendering, guard behavior, or prompt/protocol change must be proven before completion is claimed.
+
+## Goal
+
+Report only what was actually verified. For workflow behavior changes, record what should improve, what must not regress, and whether dogfood is still required.
+
+## Verification Order
+
+Prefer the narrowest reliable check first:
+
+1. Existing targeted tests for the touched behavior.
+2. Typecheck, build, lint, or static tests relevant to the touched area.
+3. Narrow direct command or smoke check.
+4. Manual validation steps with observable evidence.
+5. Dogfood/full workflow run for UX or LLM-procedure-only behavior.
+6. If none is realistic, explicitly state what remains unverified.
+
+## Standard Verification Summary
+
+```markdown
+## Verification Summary
+- Claim: <what is being verified>
+- Result: passed / failed / partially verified / not verified
+
+## Checks Run
+| Check | Command / Method | Result | Evidence |
+|-------|------------------|--------|----------|
+| ... | ... | pass/fail | ... |
+
+## Acceptance Criteria Coverage
+- [ ] <criterion>: verified by <check>
+
+## Remaining Unverified Items
+- <none or explicit residual risk>
+```
+
+## Workflow Regression Benchmark
+
+Use this matrix when changing workflow prompts, guards, interview flow, review routing, continuation text, safety protocols, or runtime behavior.
+
+```markdown
+## Workflow Regression Benchmark
+| Scenario | Baseline | Target behavior | Verification | Regression risk |
+|----------|----------|-----------------|--------------|-----------------|
+| interview start | <old behavior> | <new behavior> | <test/manual check> | <what could break> |
+```
+
+Consider only relevant scenarios:
+
+- Interview kickoff and wizard question ordering
+- Plan review DPAA/SBADR failure and repair loop
+- High-risk consensus prompt behavior
+- Implement → code_review auto-transition
+- Code review package and quality gate evidence
+- Document/commit reminders
+- Commit → push approval boundary
+- Real `git push` completion event
+- Trace/evidence/cleanup/continuation/worktree skill activation
+- Compact handoff resume quality
+
+## Evidence Levels
+
+1. Static prompt/contract token test
+2. Fake runtime or fixture prompt test
+3. Manual dogfood transcript summary
+4. Full workflow run in a disposable branch/worktree
+
+## Rules
+
+- Do not say "complete", "done", or "works" unless the verification evidence supports it.
+- Distinguish "not run" from "passed".
+- Do not claim runtime UX is validated by static tests alone.
+- If behavior is LLM-procedure-only and not mechanically enforced, label it as dogfood-required.
+- If verification is skipped because the change is documentation-only, say why no runtime check was needed and still run `git diff --check` when practical.
+- For workflow/code-review phases, respect phase tool policy and use workflow-approved commands when available.

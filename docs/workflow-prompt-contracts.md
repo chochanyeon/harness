@@ -18,7 +18,7 @@ Add or update tests when changing text that controls:
 - accepted-risk skip wording
 - workspace mismatch and policy scan recovery instructions
 - push execution constraints
-- compact handoff, trace, cleanup, verify, and tool-error-recovery protocols
+- compact handoff, trace, cleanup, evidence-verification, continuation-safety, and worktree-safety protocols
 
 ## Test Styles
 

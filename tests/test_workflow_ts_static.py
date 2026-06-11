@@ -362,13 +362,17 @@ class TestCompactionAndArtifactContracts:
         assert "does not create guard evidence" in guide
         assert "Large handoffs should use an artifact descriptor" in guide
 
-    def test_tool_error_recovery_skill_documents_retryability(self):
-        skill = (ROOT / "target" / ".pi" / "skills" / "tool-error-recovery" / "SKILL.md").read_text(encoding="utf-8")
+    def test_continuation_safety_skill_documents_retryability_and_pending_work(self):
+        skill = (ROOT / "target" / ".pi" / "skills" / "continuation-safety" / "SKILL.md").read_text(encoding="utf-8")
         assert "Retryability" in skill
         assert "workflow_apply_approved_edit" in skill
         assert "DPAA/SBADR failure" in skill
         assert "Workspace mismatch" in skill
         assert "Do not silently retry mutating operations" in skill
+        assert "subagent/reviewer is still running" in skill
+        assert "Do not submit `submit_review_package`" in skill
+        assert "Do not treat a timed-out subagent as success" in skill
+        assert "background generator/test/server may still mutate" in skill
 
     def test_worktree_safety_skill_documents_cleanup_guards(self):
         skill = (ROOT / "target" / ".pi" / "skills" / "worktree-safety" / "SKILL.md").read_text(encoding="utf-8")
@@ -376,6 +380,24 @@ class TestCompactionAndArtifactContracts:
         assert "Do not remove dirty worktrees" in skill
         assert "Refuse symlinked worktree paths" in skill
         assert "Do not delete a stale plain directory automatically" in skill
+
+    def test_evidence_verification_skill_documents_checks_and_benchmark(self):
+        skill = (ROOT / "target" / ".pi" / "skills" / "evidence-verification" / "SKILL.md").read_text(encoding="utf-8")
+        assert "Verification Summary" in skill
+        assert "Acceptance Criteria Coverage" in skill
+        assert "Workflow Regression Benchmark" in skill
+        assert "Baseline" in skill
+        assert "Target behavior" in skill
+        assert "Regression risk" in skill
+        assert "Do not claim runtime UX is validated by static tests alone" in skill
+        assert "dogfood-required" in skill
+
+    def test_workflow_guide_mentions_merged_safety_and_evidence_protocols(self):
+        guide = (ROOT / "target" / ".pi" / "WORKFLOW.md").read_text(encoding="utf-8")
+        assert "continuation-safety" in guide
+        assert "subagents, async jobs, background commands, or delegated reviewers" in guide
+        assert "evidence-verification" in guide
+        assert "baseline, target behavior, verification evidence, and dogfood gaps" in guide
 
     def test_workflow_guide_documents_phase_protection_levels(self):
         guide = (ROOT / "target" / ".pi" / "WORKFLOW.md").read_text(encoding="utf-8")
@@ -392,6 +414,35 @@ class TestCompactionAndArtifactContracts:
         assert "git push" in doc
         assert "/workflow trace" in doc
         assert "compact-handoff" in doc
+
+    def test_protocol_taxonomy_separates_default_flow_from_conditional_protocols(self):
+        doc = (ROOT / "docs" / "workflow-protocol-taxonomy.md").read_text(encoding="utf-8")
+        assert "Default Flow" in doc
+        assert "Conditional Protocols" in doc
+        assert "do **not** add mandatory steps to every workflow" in doc
+        assert "interview → plan → plan_review → implement → code_review → review_approved → document → commit → push → done" in doc
+        for token in ["trace", "evidence-verification", "continuation-safety", "compact-handoff", "worktree-safety", "cleanup"]:
+            assert token in doc
+        assert "Prefer merging over adding" in doc
+
+    def test_omc_borrowed_patterns_ledger_prevents_duplicate_borrowing(self):
+        doc = (ROOT / "docs" / "omc-borrowed-patterns.md").read_text(encoding="utf-8")
+        assert "OMC Borrowed Patterns Ledger" in doc
+        assert "Adopted Patterns" in doc
+        assert "Partially Adopted Patterns" in doc
+        assert "Deferred / Not Adopted Yet" in doc
+        assert "Anti-Duplication Rules for Future Sessions" in doc
+        assert "Check this ledger before borrowing more from OMC" in doc
+        assert "Deep interview / topology-first discovery" in doc
+        assert "Artifact descriptor integration" in doc
+        assert "Full self-improve autonomous loop" in doc
+
+    def test_workflow_guide_points_to_protocol_taxonomy(self):
+        guide = (ROOT / "target" / ".pi" / "WORKFLOW.md").read_text(encoding="utf-8")
+        assert "Default Flow vs Conditional Protocols" in guide
+        assert "situational safety tools" in guide
+        assert "do not add them as mandatory checklist items" in guide
+        assert "docs/workflow-protocol-taxonomy.md" in guide
 
     def test_prompt_contracts_doc_lists_contract_surfaces(self):
         doc = (ROOT / "docs" / "workflow-prompt-contracts.md").read_text(encoding="utf-8")

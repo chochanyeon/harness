@@ -30,6 +30,10 @@ interview
 | `push` | Push only after extension guards pass. | Successful push, then mark done. If workspace risk signature changed after approval, policy scan asks again. |
 | `done` | No active work. | Start a new workflow if needed. |
 
+## Default Flow vs Conditional Protocols
+
+The default path is the phase sequence above. Conditional protocols (`trace`, `evidence-verification`, `continuation-safety`, `compact-handoff`, `worktree-safety`, `cleanup`) are situational safety tools; do not add them as mandatory checklist items unless their trigger applies. See `docs/workflow-protocol-taxonomy.md` in the repository for the full taxonomy.
+
 ## Operating Rules for the LLM
 
 - Follow `/workflow status`; work only in the current phase.
@@ -37,6 +41,8 @@ interview
 - Auto-chain sequence: `interview → plan → plan_review → implement → code_review → review_approved → document → commit`. Each transition is automatic once the phase work is complete and guards pass. `code_review → review_approved` is triggered by `submit_review_package` after main review, independent review, and quality gates pass.
 - The extension injects mechanical reminders instead of blocking for easy-to-forget deliverables: documentation markdown/HTML/indexes, verification evidence before commit, review package summary in code review, commit summary/message, and field-log evidence for harness-runtime changes. Address each reminder or explicitly state why it is not applicable.
 - For long sessions, use the `compact-handoff` skill before manual compaction. It prepares a concise resume note but does not invoke compaction itself.
+- Before phase advancement, review package submission, commit, push, or compaction, use the `continuation-safety` protocol when a tool/guard/transition failed or when subagents, async jobs, background commands, or delegated reviewers may still be running or uncollected.
+- After changing workflow prompts, guards, interview behavior, review protocols, or runtime routing, use `evidence-verification` to record baseline, target behavior, verification evidence, and dogfood gaps.
 - Natural-language approval is accepted only from the interactive user.
 - If plan metadata says `Risk: high`, `Ambiguity gate: strict`, or `Work type: api|security|migration|data|deploy`, perform an Architect/Critic consensus review in `plan_review` and repair feasibility/testability gaps before implementation approval.
 - If a DPAA/SBADR guard blocks, attempt to repair the plan autonomously (rewrite vague sentences, add missing metrics, remove placeholders, fix syntactic ambiguity) and retry `/workflow approve`. Repeat until DPAA PASS or a genuine business decision is required. Only then ask the user.

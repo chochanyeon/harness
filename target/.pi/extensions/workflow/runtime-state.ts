@@ -1,3 +1,4 @@
+import type { ArtifactDescriptor } from "./artifact-descriptor";
 import type { EditScope, WorkflowInstance, WorkflowPhase, WorkflowGate } from "./types";
 
 export type WorkflowContinuationPending = {
@@ -30,7 +31,18 @@ export type WorkflowRuntimeState = {
   gateFailures: Map<WorkflowGate, number>;
   lastInputCheckpointSignature: string | null;
   recentVerificationCommands: Array<{ command: string; timestamp: number; phase?: string }>;
-  reviewPackageToken: null | { workflowId: string; timestamp: number; critical: number; major: number; minor: number; mainSummary: string; reviewerSummary: string; qualitySummary: string };
+  reviewPackageToken: null | {
+    workflowId: string;
+    timestamp: number;
+    critical: number;
+    major: number;
+    minor: number;
+    mainSummary: string;
+    reviewerSummary: string;
+    qualitySummary: string;
+    reviewArtifact?: ArtifactDescriptor;
+    reviewArtifactError?: string;
+  };
   workflowContinuationPending: WorkflowContinuationPending | null;
   pendingSteerMessages: Map<string, WorkflowSteerMessage>;
   cancelledWorkflowContinuationMarkers: Set<string>;

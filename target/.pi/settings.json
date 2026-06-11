@@ -1,5 +1,12 @@
 {
   "compaction": {
     "keepRecentTokens": 40000
+  },
+  "subagents": {
+    "agentOverrides": {
+      "reviewer": {
+        "maxExecutionTimeMs": 300000
+      }
+    }
   }
 }

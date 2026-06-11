@@ -77,6 +77,11 @@ import {
 } from "./workflow/core";
 import { launchInterviewWizard, type InterviewQuestion } from "./workflow/interview-ui";
 import {
+  DEFAULT_INLINE_ARTIFACT_THRESHOLD_BYTES,
+  writeTextArtifact,
+  type ArtifactDescriptor,
+} from "./workflow/artifact-descriptor";
+import {
   createWorkflowRuntimeState,
   HARNESS_TOKEN_TYPES,
 } from "./workflow/runtime-state";
@@ -438,6 +443,49 @@ export default function (pi: ExtensionAPI) {
         return { content: [{ type: "text", text: `Review package rejected: Critical=${critical} (required 0), Major=${major} (required ≤2). Return to implement, fix issues, then review again.` }], details: { ok: false, critical, major, minor } };
       }
 
+      const reviewPackageMarkdown = [
+        "# Review Package",
+        "",
+        `Workflow: ${state.workflow.title}`,
+        `Workflow ID: ${state.workflow.id}`,
+        `Submitted At: ${new Date().toISOString()}`,
+        "",
+        "## Severity Counts",
+        `- Critical: ${critical}`,
+        `- Major: ${major}`,
+        `- Minor: ${minor}`,
+        "",
+        "## Main Agent Self-Review",
+        String(params.mainReviewSummary),
+        "",
+        "## Independent Reviewer / Subagent Review",
+        String(params.reviewerReviewSummary),
+        "",
+        "## Quality Gate Summary",
+        String(params.qualityGateSummary),
+      ].join("\n");
+      let reviewArtifact: ArtifactDescriptor | undefined;
+      let reviewArtifactError: string | undefined;
+      if (Buffer.byteLength(reviewPackageMarkdown, "utf8") > DEFAULT_INLINE_ARTIFACT_THRESHOLD_BYTES) {
+        const artifactPath = path.join(process.cwd(), ".ai", "workflow-artifacts", state.workflow.id, `review-package-${Date.now()}.md`);
+        try {
+          reviewArtifact = writeTextArtifact({
+            filePath: artifactPath,
+            content: reviewPackageMarkdown,
+            kind: "review",
+            producer: { system: "harness", component: "submit_review_package" },
+            retention: "until-completion",
+            summary: `Review package accepted: Critical=${critical}, Major=${major}, Minor=${minor}.`,
+          });
+        } catch (error) {
+          reviewArtifactError = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      const reviewArtifactReference = reviewArtifact
+        ? `Stored in review artifact: ${path.relative(process.cwd(), reviewArtifact.path)} (sha256=${reviewArtifact.sha256})`
+        : null;
+
       cancelWorkflowContinuationPending();
       state.reviewPackageToken = {
         workflowId: state.workflow.id,
@@ -445,9 +493,11 @@ export default function (pi: ExtensionAPI) {
         critical,
         major,
         minor,
-        mainSummary: String(params.mainReviewSummary),
-        reviewerSummary: String(params.reviewerReviewSummary),
-        qualitySummary: String(params.qualityGateSummary),
+        mainSummary: reviewArtifactReference ?? String(params.mainReviewSummary),
+        reviewerSummary: reviewArtifactReference ?? String(params.reviewerReviewSummary),
+        qualitySummary: reviewArtifactReference ?? String(params.qualityGateSummary),
+        reviewArtifact,
+        reviewArtifactError,
       };
       persistGuardToken(HARNESS_TOKEN_TYPES.REVIEW_PACKAGE, state.reviewPackageToken as unknown as Record<string, unknown>);
 
@@ -455,6 +505,11 @@ export default function (pi: ExtensionAPI) {
       const notices: string[] = [
         `Review package accepted: Critical=${critical}, Major=${major}, Minor=${minor}.`,
       ];
+      if (reviewArtifact) {
+        notices.push(`Review package artifact: ${path.relative(process.cwd(), reviewArtifact.path)} (${reviewArtifact.sizeBytes} bytes, sha256=${reviewArtifact.sha256.slice(0, 12)}…)`);
+      } else if (reviewArtifactError) {
+        notices.push(`Review package artifact warning: descriptor write failed (${reviewArtifactError}). Review evidence was still recorded in the guard token.`);
+      }
       if (result.ok) {
         state.codeQualityGuardSatisfiedToken = { workflowId: state.workflow.id, issuedAt: Date.now(), reason: "automated_review_package" };
         state.codeReviewGuardSatisfiedToken = { critical, major, minor, timestamp: Date.now() };
@@ -475,7 +530,7 @@ export default function (pi: ExtensionAPI) {
         refreshStatus(ctx);
         await queueWorkflowContinuation(pi, ctx, state.workflow, result.transitions);
       }
-      return { content: [{ type: "text", text: notices.join("\n") }], details: { ok: result.ok, critical, major, minor, workflowPhase: state.workflow.phase } };
+      return { content: [{ type: "text", text: notices.join("\n") }], details: { ok: result.ok, critical, major, minor, workflowPhase: state.workflow.phase, reviewArtifact, reviewArtifactError } };
     },
 
     renderCall(args, theme) {

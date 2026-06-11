@@ -8,6 +8,7 @@ Checks for known failure patterns without running Node.js:
   - Gate message language (LLM-facing strings must be English)
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -435,7 +436,12 @@ class TestCompactionAndArtifactContracts:
         assert "Check this ledger before borrowing more from OMC" in doc
         assert "Deep interview / topology-first discovery" in doc
         assert "Artifact descriptor integration" in doc
+        assert "reviewer subagent timeout is raised" in doc
         assert "Full self-improve autonomous loop" in doc
+
+    def test_template_settings_raise_reviewer_subagent_timeout(self):
+        settings = json.loads((ROOT / "target" / ".pi" / "settings.json").read_text(encoding="utf-8"))
+        assert settings["subagents"]["agentOverrides"]["reviewer"]["maxExecutionTimeMs"] == 300000
 
     def test_workflow_guide_points_to_protocol_taxonomy(self):
         guide = (ROOT / "target" / ".pi" / "WORKFLOW.md").read_text(encoding="utf-8")

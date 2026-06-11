@@ -378,6 +378,251 @@ def test_workflow_extension_runtime_auto_advances_low_risk_phase_boundaries(tmp_
     assert "Workflow 전이: review_approved → document → commit" in joined
 
 
+def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topology_and_clarity(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const captured = { questions: [] };
+        const notifications = [];
+        const ctx = {
+          hasUI: true,
+          ui: {
+            notify: (text, level) => notifications.push({ text, level }),
+            confirm: async () => true,
+            setWidget: () => {},
+            custom: async (factory) => {
+              const donePromise = new Promise((resolve) => {
+                const widget = factory({ requestRender() {} }, {}, {}, resolve);
+                captured.questions = widget.questions.map((q) => ({ id: q.id, title: q.title, allowFreeText: q.allowFreeText, allowSkip: q.allowSkip }));
+                resolve({
+                  completed: true,
+                  summaryMarkdown: '## Interview Summary\n- captured',
+                  answers: captured.questions.map((q) => ({ questionId: q.id, selectedChoiceIds: [], freeText: 'answer', skipped: false })),
+                });
+              });
+              return await donePromise;
+            },
+          },
+        };
+        const baseline = ['scope', 'motivation', 'acceptance', 'modules', 'constraints'].map((id) => ({
+          id,
+          title: id,
+          prompt: `question ${id}`,
+          helpText: `help ${id}`,
+          required: true,
+          choices: [{ id: `${id}_choice`, label: id }],
+        }));
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime interview wizard', ctx);
+          const result = await pi.tools.workflow_interview_wizard.execute('call-1', { questions: baseline }, undefined, undefined, ctx);
+          console.log(JSON.stringify({
+            ids: captured.questions.map((q) => q.id),
+            first: captured.questions[0],
+            last: captured.questions[captured.questions.length - 1],
+            ok: result.details.ok,
+            mode: result.details.mode,
+            text: result.content[0].text,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ids"][0] == "round_0_topology"
+    assert data["ids"][-1] == "clarity_checkpoint"
+    assert data["ids"][1:6] == ["scope", "motivation", "acceptance", "modules", "constraints"]
+    assert data["first"]["allowFreeText"] is True
+    assert data["first"]["allowSkip"] is False
+    assert data["last"]["allowFreeText"] is True
+    assert data["last"]["allowSkip"] is True
+    assert data["ok"] is True
+    assert data["mode"] == "deep-interview-lite"
+    assert "weakest clarity dimension" in data["text"]
+
+
+def test_workflow_extension_runtime_trace_command_sends_runtime_trace_prompt(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const sentMessages = [];
+        const pi = {
+          events: {},
+          commands: {},
+          tools: {},
+          on(name, fn) { this.events[name] = fn; },
+          registerCommand(name, spec) { this.commands[name] = spec; },
+          registerTool(spec) { this.tools[spec.name] = spec; },
+          sendUserMessage(text, options) { sentMessages.push({ text, options }); },
+        };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime trace context', ctx);
+          await pi.commands.workflow.handler('trace DPAA blocked after plan review', ctx);
+          console.log(JSON.stringify({ sentMessages, notifications: notifications.map((item) => item.text) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+    trace_messages = [item["text"] for item in data["sentMessages"] if "Run the harness trace protocol" in item["text"]]
+
+    assert len(trace_messages) == 1
+    trace = trace_messages[0]
+    assert "Observation:\nDPAA blocked after plan review" in trace
+    assert "Active workflow: [interview] Runtime trace context" in trace
+    assert "Evidence For/Against" in trace
+    assert "Discriminating Probe" in trace
+    assert "Do not edit files during trace" in trace
+
+
+def test_workflow_extension_runtime_trace_command_warns_when_observation_is_missing(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const sentMessages = [];
+        const pi = {
+          events: {},
+          commands: {},
+          tools: {},
+          on(name, fn) { this.events[name] = fn; },
+          registerCommand(name, spec) { this.commands[name] = spec; },
+          registerTool(spec) { this.tools[spec.name] = spec; },
+          sendUserMessage(text, options) { sentMessages.push({ text, options }); },
+        };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('trace', ctx);
+          console.log(JSON.stringify({ sentMessages, notifications: notifications.map((item) => item.text) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["sentMessages"] == []
+    assert any("사용법: /workflow trace <관찰된 실패/이상 동작>" in item for item in data["notifications"])
+
+
+def test_workflow_extension_runtime_trace_command_warns_when_send_user_message_is_unavailable(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('trace DPAA failed', ctx);
+          console.log(JSON.stringify({ notifications: notifications.map((item) => item.text) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert any("trace kickoff 메시지 전송을 지원하지 않습니다" in item for item in data["notifications"])
+
+
+def test_workflow_extension_runtime_unknown_command_falls_back_to_status_without_mutation(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime unknown command fallback', ctx);
+          const before = notifications.length;
+          await pi.commands.workflow.handler('does-not-exist', ctx);
+          console.log(JSON.stringify({
+            fallbackNotification: notifications.slice(before).map((item) => item.text).join('\n'),
+            allNotifications: notifications.map((item) => item.text),
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert "Current phase: interview" in data["fallbackNotification"]
+    assert "[LLM WORKFLOW ACTION]" in data["fallbackNotification"]
+    assert "Workflow 전이" not in data["fallbackNotification"]
+
+
+def test_workflow_extension_runtime_plan_review_continuation_mentions_high_risk_consensus(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const sentMessages = [];
+        const pi = {
+          events: {},
+          commands: {},
+          tools: {},
+          on(name, fn) { this.events[name] = fn; },
+          registerCommand(name, spec) { this.commands[name] = spec; },
+          registerTool(spec) { this.tools[spec.name] = spec; },
+          sendUserMessage(text, options) { sentMessages.push({ text, options }); },
+        };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, isIdle: () => true, hasPendingMessages: () => false, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime high risk continuation', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          console.log(JSON.stringify({ sentMessages }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+    continuation_messages = [item["text"] for item in data["sentMessages"] if "Continue the workflow from the current phase" in item["text"]]
+
+    assert len(continuation_messages) == 1
+    prompt = continuation_messages[0]
+    assert "Current phase: plan_review" in prompt
+    assert "high-risk (Risk: high, Ambiguity gate: strict, or Work type: api/security/migration/data/deploy)" in prompt
+    assert "Architect/Critic consensus review" in prompt
+    assert "Do not ask the user for permission to re-enter a review phase" in prompt
+
+
 def test_workflow_extension_runtime_does_not_queue_continuation_while_busy_after_auto_transition(tmp_path):
     script = textwrap.dedent(
         r'''
@@ -530,6 +775,84 @@ def test_workflow_extension_runtime_moves_implement_to_code_review_then_review_p
     assert "review_approved" not in data["beforePackage"]
     assert "Workflow 전이: code_review → review_approved → document → commit" in data["toolResult"]
     assert "Automated review approved" in data["toolResult"]
+
+
+def test_workflow_extension_runtime_submit_review_package_writes_descriptor_for_large_review_output(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const fs = require('fs');
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+        process.env.HARNESS_CODE_QUALITY_GUARD_CMD = 'node -e "process.exit(0)"';
+
+        const entries = [];
+        const pi = {
+          events: {},
+          commands: {},
+          tools: {},
+          on(name, fn) { this.events[name] = fn; },
+          registerCommand(name, spec) { this.commands[name] = spec; },
+          registerTool(spec) { this.tools[spec.name] = spec; },
+          appendEntry(type, data) { entries.push({ type, data }); },
+        };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+        const large = 'review evidence line\n'.repeat(700);
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime large review artifact', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          const result = await pi.tools.submit_review_package.execute('review-large', {
+            mainReviewSummary: large,
+            reviewerReviewSummary: large,
+            qualityGateSummary: large,
+            critical: 0,
+            major: 0,
+            minor: 0,
+          }, undefined, undefined, ctx);
+          const artifact = result.details.reviewArtifact;
+          const exists = artifact && fs.existsSync(artifact.path);
+          const content = exists ? fs.readFileSync(artifact.path, 'utf8') : '';
+          const relativePath = artifact ? path.relative(process.cwd(), artifact.path).replace(/\\/g, '/') : '';
+          const reviewEntry = entries.find((entry) => entry.type === 'harness-review-package-token');
+          try { fs.rmSync(path.join(process.cwd(), '.ai', 'workflow-artifacts'), { recursive: true, force: true }); } catch {}
+          console.log(JSON.stringify({
+            ok: result.details.ok,
+            mode: artifact ? 'descriptor' : 'inline',
+            artifact,
+            exists,
+            relativePath,
+            contentHasReviewPackage: content.includes('# Review Package'),
+            contentHasQualityGate: content.includes('## Quality Gate Summary'),
+            toolText: result.content[0].text,
+            reviewEntry,
+            reviewEntryHasInlineLargePayload: reviewEntry ? JSON.stringify(reviewEntry.data).includes('review evidence line') : null,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ok"] is True
+    assert data["mode"] == "descriptor"
+    assert data["exists"] is True
+    assert data["relativePath"].startswith(".ai/workflow-artifacts/")
+    assert data["artifact"]["kind"] == "review"
+    assert data["artifact"]["producer"]["component"] == "submit_review_package"
+    assert data["artifact"]["retention"] == "until-completion"
+    assert data["artifact"]["sizeBytes"] > 8 * 1024
+    assert len(data["artifact"]["sha256"]) == 64
+    assert data["contentHasReviewPackage"] is True
+    assert data["contentHasQualityGate"] is True
+    assert "Review package artifact:" in data["toolText"]
+    assert data["reviewEntry"]["data"]["reviewArtifact"]["kind"] == "review"
+    assert data["reviewEntry"]["data"]["mainSummary"].startswith("Stored in review artifact:")
+    assert data["reviewEntryHasInlineLargePayload"] is False
 
 
 def test_extension_modification_requires_interactive_user_approval(tmp_path):

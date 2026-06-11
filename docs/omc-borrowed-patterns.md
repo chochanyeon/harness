@@ -40,14 +40,14 @@ https://github.com/yeachan-heo/oh-my-claudecode
 
 | OMC pattern | Current harness state | Future extension rule |
 |-------------|-----------------------|-----------------------|
-| Subagent tracker / async ownership | Guidance exists in `continuation-safety`; no mechanical runtime tracker yet | Extend workflow status/review gates if mechanizing. Do not add another pending-work skill. |
+| Subagent tracker / async ownership | Guidance exists in `continuation-safety`; reviewer subagent timeout is raised in `target/.pi/settings.json`; no mechanical runtime tracker yet | Extend workflow status/review gates if mechanizing. Do not add another pending-work skill. |
 | Stop/idle hook blocking | Some continuation/reminder behavior exists; pending async ownership is not mechanically blocked | Add runtime checks only if real dogfood shows missed pending work. |
-| Artifact descriptor integration | Descriptor helpers exist; review/trace/DPAA outputs are not yet automatically stored as descriptors | Wire existing `artifact-descriptor.ts` into outputs instead of defining a second descriptor format. |
-| Dogfood/runtime fixture benchmarks | Static tests cover contracts; runtime UX still needs dogfood/fake-runtime expansion | Add fixture tests under existing workflow test suites, using `evidence-verification` for evidence. |
+| Artifact descriptor integration | Descriptor helpers exist and large `submit_review_package` payloads are written as review descriptors referenced from guard/audit tokens; trace/verification/DPAA outputs are not yet automatically stored as descriptors | Continue wiring existing `artifact-descriptor.ts` into outputs instead of defining a second descriptor format. |
+| Dogfood/runtime fixture benchmarks | Runtime fixture tests now cover interview wizard topology/clarity wrapping, `/workflow trace` routing, and high-risk plan-review continuation prompts; full manual dogfood is still pending | Extend existing workflow runtime tests for new behavior, using `evidence-verification` for evidence. |
 | Phase protection levels | Documented only; not a hard gate taxonomy | Mechanize only where a concrete phase safety bug appears. |
 | Compact lifecycle | `compact-handoff` exists; no automatic resume validation | Extend `compact-handoff`, do not add a separate resume skill. |
 | Status/HUD surfacing | Not implemented beyond existing workflow status/docs | Add status hints only if they reduce confusion; avoid making conditional protocols look mandatory. |
-| Bridge routing/fallback | Existing command router has some tests; OMC-style fallback matrix not fully adopted | Prefer targeted command-router fixture tests over new protocol docs. |
+| Bridge routing/fallback | Runtime fixture tests now cover trace observation-missing fallback, sendUserMessage-unavailable fallback, and unknown-command status fallback; a full OMC-style routing matrix is not adopted | Prefer targeted command-router fixture tests over new protocol docs. |
 | Security/review hardening | Some path/policy/worktree rules exist | Add focused tests/rules for concrete protected-path or policy failures. |
 
 ## Deferred / Not Adopted Yet
@@ -73,7 +73,7 @@ https://github.com/yeachan-heo/oh-my-claudecode
 
 If future work continues OMC borrowing, prioritize:
 
-1. Dogfood/fake-runtime tests for actual workflow behavior.
-2. Wiring `artifact-descriptor.ts` into large review/trace/verification outputs.
-3. Minimal status surfacing for pending work or last failure, without making protocols mandatory.
-4. Focused command-router fallback tests.
+1. Wiring `artifact-descriptor.ts` into trace/verification/DPAA outputs beyond review packages.
+2. Minimal status surfacing for pending work or last failure, without making protocols mandatory.
+3. Additional command-router fallback tests only when a new route or capability fallback is added.
+4. Additional manual dogfood transcripts for full `/workflow start` UX.

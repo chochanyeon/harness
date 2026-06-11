@@ -44,7 +44,7 @@ The default path is the phase sequence above. Conditional protocols (`trace`, `e
 - Before phase advancement, review package submission, commit, push, or compaction, use the `continuation-safety` protocol when a tool/guard/transition failed or when subagents, async jobs, background commands, or delegated reviewers may still be running or uncollected.
 - After changing workflow prompts, guards, interview behavior, review protocols, or runtime routing, use `evidence-verification` to record baseline, target behavior, verification evidence, and dogfood gaps.
 - Natural-language approval is accepted only from the interactive user.
-- If plan metadata says `Risk: high`, `Ambiguity gate: strict`, or `Work type: api|security|migration|data|deploy`, perform an Architect/Critic consensus review in `plan_review` and repair feasibility/testability gaps before implementation approval.
+- If plan metadata says `Risk: high`, `Ambiguity gate: strict`, or `Work type: api|security|migration|data|deploy`, perform an Architect/Critic consensus review in `plan_review` and repair feasibility/testability gaps before implementation approval. This is a **separate layer from DPAA** (DPAA checks linguistic clarity; Critic checks logical soundness). Critic review steps: (1) extract key assumptions and rate each VERIFIED/REASONABLE/FRAGILE — FRAGILE assumptions are highest-priority targets; (2) run a pre-mortem: assume this plan was executed and failed, generate 3 concrete failure scenarios, verify the plan addresses each; (3) apply executor perspective: can each step be completed with only what is written, without asking questions? Repair any FRAGILE assumption or unaddressed failure scenario before requesting implementation approval.
 - If a DPAA/SBADR guard blocks, attempt to repair the plan autonomously (rewrite vague sentences, add missing metrics, remove placeholders, fix syntactic ambiguity) and retry `/workflow approve`. Repeat until DPAA PASS or a genuine business decision is required. Only then ask the user.
 - For all other guards, report the blocker and wait. Do not bypass or simulate guard results.
 - Modifying `.pi/extensions/**` or `target/.pi/extensions/**` requires explicit interactive user approval for that tool call. The approval is extension in-memory only; do not create approval files.
@@ -69,7 +69,7 @@ Use these levels as design guidance for new reminders, tool policy, and recovery
 
 | Guard | Enforced by extension | Notes |
 |------|------------------------|-------|
-| High-risk consensus | `plan_review` LLM procedure | Architect/Critic review is required for high-risk metadata before requesting implementation approval. |
+| High-risk consensus | `plan_review` LLM procedure | Architect/Critic review (assumption FRAGILE rating, pre-mortem, executor perspective) is required for high-risk metadata before requesting implementation approval. Independent layer from DPAA. |
 | DPAA | `plan_review → implement` | Checks the plan and blocks ambiguous implementation. |
 | Code quality | `code_review → review_approved` | Runs `codeQualityGuard` / `HARNESS_CODE_QUALITY_GUARD_CMD`. |
 | Code review | `code_review → review_approved` | `submit_review_package` must include main self-review, independent reviewer/subagent review, quality-gate summary, Critical=0, and Major≤2 before review approval. |

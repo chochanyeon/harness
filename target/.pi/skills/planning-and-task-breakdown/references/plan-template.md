@@ -29,6 +29,25 @@ Required when `Risk: high`, `Ambiguity gate: strict`, or `Work type: api|securit
 - [ ] Critic review: acceptance criteria, alternatives, risks, and verification steps are testable and coherent.
 - [ ] Plan repaired after review; no major open feasibility or testability gaps remain.
 
+## Key Assumptions *(Risk: high 플랜 필수)*
+
+| 가정 | 등급 | 근거 |
+|------|------|------|
+| [가정 1] | VERIFIED / REASONABLE / FRAGILE | [실제 코드/문서 값] |
+| [가정 2] | ... | ... |
+
+- FRAGILE = 실험 전 검증이 필요한 가정. FRAGILE 항목이 플랜 수정의 최우선 대상.
+
+## Pre-mortem *(Risk: high 플랜 필수)*
+
+"이 플랜대로 실행했는데 실패했다"는 가정 하에 3개 구체적 실패 시나리오를 작성하고, 각각을 플랜이 다루고 있는지 확인:
+
+1. [실패 시나리오 1] → 플랜에서 다루는가? [ ] Yes [ ] No
+2. [실패 시나리오 2] → 플랜에서 다루는가? [ ] Yes [ ] No
+3. [실패 시나리오 3] → 플랜에서 다루는가? [ ] Yes [ ] No
+
+- No로 더 많으면 실패 대응 전략을 플랜에 추가 후 Critic 단계 재실행.
+
 ## Architecture Decisions
 - **Layer separation:** Controller → Service → Repository (no skipping)
 - **DTO/Entity separation:** DTOs for API, Entities for persistence

@@ -15,6 +15,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXT_DIR = ROOT / "target" / ".pi" / "extensions" / "workflow"
 WORKFLOW_TS = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
+CODE_REVIEW_SKILL = ROOT / "target" / ".pi" / "skills" / "code-review" / "SKILL.md"
+
+
+def _skill_src(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
 
 def _src(name: str) -> str:
@@ -593,6 +598,70 @@ class TestGateMessageLanguage:
 # ---------------------------------------------------------------------------
 # reminders.ts — all English (LLM-injected)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# code-review/SKILL.md — Critic 7-step protocol contract tests
+# ---------------------------------------------------------------------------
+
+class TestCodeReviewSkillCriticProtocol:
+    """Guard that the Critic protocol keywords remain present in the code-review skill."""
+
+    def test_pre_commitment_present(self):
+        """Phase 0: pre-commitment prediction step must be in the review process."""
+        src = _skill_src(CODE_REVIEW_SKILL)
+        assert "pre-commitment" in src.lower(), (
+            "code-review/SKILL.md must contain 'pre-commitment' step "
+            "(Critic protocol Phase 0 — deliberate search before reading code)"
+        )
+
+    def test_gap_analysis_present(self):
+        """Gap analysis ('what is missing') must be an explicit review step."""
+        src = _skill_src(CODE_REVIEW_SKILL)
+        assert "gap analysis" in src.lower(), (
+            "code-review/SKILL.md must contain 'gap analysis' step "
+            "(explicit search for missing error handling, tests, edge cases)"
+        )
+
+    def test_self_audit_present(self):
+        """Self-audit step must be present to filter low-confidence findings."""
+        src = _skill_src(CODE_REVIEW_SKILL)
+        assert "self-audit" in src.lower(), (
+            "code-review/SKILL.md must contain 'self-audit' step "
+            "(LOW-confidence findings moved to 검토 필요 section)"
+        )
+
+    def test_realist_check_present(self):
+        """Realist Check must be present to pressure-test severity labels."""
+        src = _skill_src(CODE_REVIEW_SKILL)
+        assert "realist check" in src.lower(), (
+            "code-review/SKILL.md must contain 'realist check' step "
+            "(severity pressure-test before final report)"
+        )
+
+    def test_adversarial_escalation_present(self):
+        """ADVERSARIAL escalation rule must be in Review Rules."""
+        src = _skill_src(CODE_REVIEW_SKILL)
+        assert "adversarial" in src.lower(), (
+            "code-review/SKILL.md must contain 'ADVERSARIAL' escalation rule "
+            "(expand scope when Critical >= 1 is confirmed)"
+        )
+
+    def test_output_format_has_gap_section(self):
+        """Output format must include a 'what is missing' section."""
+        src = _skill_src(CODE_REVIEW_SKILL)
+        assert "뭐가 빠졌나" in src, (
+            "code-review/SKILL.md output format must include '뭐가 빠졌나?' section "
+            "(gap analysis results visible to the user)"
+        )
+
+    def test_output_format_has_review_needed_section(self):
+        """Output format must include a low-confidence findings section."""
+        src = _skill_src(CODE_REVIEW_SKILL)
+        assert "검토 필요" in src, (
+            "code-review/SKILL.md output format must include '검토 필요' section "
+            "(self-audit low-confidence findings)"
+        )
+
 
 class TestRemindersTs:
     def test_mechanical_reminder_strings_english(self):

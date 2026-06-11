@@ -26,6 +26,7 @@ https://github.com/yeachan-heo/oh-my-claudecode
 | Verify before claim | Merged into `evidence-verification` so completion claims and workflow regressions share one evidence protocol | `target/.pi/skills/evidence-verification/SKILL.md` |
 | AI slop cleanup | `cleanup` skill for behavior-preserving cleanup passes | `target/.pi/skills/cleanup/SKILL.md` |
 | High-risk plan critique | Architect/Critic consensus guidance for high-risk/strict/API/security/migration/data/deploy plans | `target/.pi/WORKFLOW.md`, `target/.pi/extensions/workflow/application/continuation.ts`, `target/.pi/skills/planning-and-task-breakdown/references/plan-template.md` |
+| Critic 7-step review protocol | Pre-commitment predictions, gap analysis (what’s missing), self-audit (LOW-confidence findings → 검토 필요), realist check (severity pressure-test), ADVERSARIAL escalation (Critical ≥1 → expand scope) added to code-review skill; FRAGILE assumption rating and pre-mortem added to plan_review high-risk path; DPAA (linguistic clarity) and Critic (logical soundness) kept as independent layers | `target/.pi/skills/code-review/SKILL.md`, `target/.pi/WORKFLOW.md`, `target/.pi/skills/planning-and-task-breakdown/references/plan-template.md` |
 | Manual compact handoff | `compact-handoff` skill; prepares resume note but does not invoke native compaction | `target/.pi/skills/compact-handoff/SKILL.md` |
 | Artifact descriptor handoff | Standard descriptor contract for large handoffs with kind/path/producer/retention/size/hash/summary | `target/.pi/extensions/workflow/artifact-descriptor.ts` |
 | Tool failure recovery | Merged into `continuation-safety`; retryability classes and harness-specific recovery patterns | `target/.pi/skills/continuation-safety/SKILL.md` |
@@ -68,6 +69,7 @@ https://github.com/yeachan-heo/oh-my-claudecode
 4. Prefer merging over adding when the idea is another form of verification, continuation safety, cleanup, or context handoff.
 5. Keep the default workflow linear; conditional protocols must stay trigger-based.
 6. When adding new OMC-derived behavior, update this ledger with status, adaptation, files, and future rule.
+7. Critic protocol is now Adopted; do not re-borrow `agents/critic.md` patterns as a new concept. Extend `code-review/SKILL.md` or `WORKFLOW.md` instead.
 
 ## Suggested Next Borrowing Targets
 
@@ -77,3 +79,5 @@ If future work continues OMC borrowing, prioritize:
 2. Additional status surfacing only for concrete pending-work/last-failure triggers, without making protocols mandatory.
 3. Additional command-router fallback tests only when a new route or capability fallback is added.
 4. Additional manual dogfood transcripts for full `/workflow start` UX.
+5. deep-interview mathematical ambiguity scoring (per-component topology scoring, ontology stability tracking) — extend existing interview skill when a concrete dogfood gap appears.
+6. Ralplan pre-execution gate — intercepts vague execution requests; evaluate if harness workflow needs this or if the interview phase already covers it adequately.

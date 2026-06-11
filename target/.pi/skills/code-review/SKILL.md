@@ -37,9 +37,12 @@ Follow this workflow for every code review request:
 3. **Identify the target**: Determine what code to review (files, directories, or git diff)
 4. **Load project context**:
    - For Java/Spring Boot: read `references/java-checklist.md` before analysis — without it, you'll flag Jackson/JPA fields as "unused" and miss ADR-0001 violations specific to this codebase
-5. **Read the code**: Use appropriate tools to read file contents
-6. **Analyze by dimension**: Apply the five-dimension framework above, using language-specific checklists
-7. **Generate report**: Provide prioritized findings with clear explanations
+5. **Pre-commitment**: Based on the change type (e.g., auth, DB, async, API) and domain, predict 3–5 most likely problem areas *before* reading the code. Record them explicitly. Verify or refute each prediction during analysis — comparing predictions to findings reveals blind spots.
+6. **Read the code**: Use appropriate tools to read file contents
+7. **Analyze by dimension**: Apply the five-dimension framework above, using language-specific checklists
+8. **Gap analysis**: Explicitly look for what is *missing*, not just what is wrong. Ask: what error paths are unhandled? What edge cases have no tests? What assumptions are unstated? What would fail silently?
+9. **Self-audit + Realist Check**: For each Critical/Major finding: (a) rate confidence HIGH/MEDIUM/LOW — move LOW-confidence findings to "검토 필요"; (b) pressure-test severity — what is the realistic worst case, what mitigating factors exist? Downgrade with explicit 완화 근거 if warranted. If Critical ≥ 1 survives, activate ADVERSARIAL mode (see Review Rules).
+10. **Generate report**: Provide prioritized findings with clear explanations
 
 ## Diff-Aware Review
 
@@ -143,6 +146,12 @@ For focused or in-depth reviews, load additional perspective-specific checklists
 ## ✅ 긍정적 관찰사항 (최소 1개 필수)
 [잘 작성된 부분, 좋은 패턴 — 구체적으로 명시]
 
+## ⚠️ 뭐가 빠졌나?
+[누락된 에러 처리, 미테스트 경계값, 암묵적 가정 — 없으면 "없음"]
+
+## 🔎 검토 필요 (신뢰도 낮음)
+[저자가 반박 가능하거나 신뢰도 LOW인 관찰 — 없으면 "없음"]
+
 ## 🔍 검증 현황
 - 테스트 검토: [예/아니오, 관찰 사항]
 - 빌드 확인: [예/아니오]
@@ -175,6 +184,7 @@ User: "Check if this code is ready to commit"
 5. **No approval with Critical** — don't approve code that has Critical issues
 6. **Uncertainty → say so** — if uncertain, flag it and suggest investigation rather than guessing; "I'm not sure if X is intentional" is more useful than a wrong confident statement
 7. **Diff-aware** — focus on changed lines; never flag pre-existing code unless it directly interacts with the change
+8. **ADVERSARIAL escalation** — if Critical ≥ 1 survives the Realist Check, expand search to related functions and direct callers in the same file; note "ADVERSARIAL mode" in the review header
 
 ## Workflow Integration
 

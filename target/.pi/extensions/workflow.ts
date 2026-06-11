@@ -442,10 +442,12 @@ export default function (pi: ExtensionAPI) {
     ],
     parameters: Type.Object({
       commandId: Type.String({ description: "Catalog command ID. Use /workflow tools to see available IDs for the current phase." }),
+      args: Type.Optional(Type.Array(Type.String(), { description: "Extra arguments for commands with allowUserArgs (e.g. git-commit: ['-m', 'message']). Passed to execFileSync — no shell interpolation." })),
       reason: Type.Optional(Type.String({ description: "Why this command is being run (for audit log)" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      return executeWorkflowCatalogCommand(state, params.commandId, ctx);
+      const userArgs = Array.isArray(params.args) ? (params.args as string[]).map(String) : [];
+      return executeWorkflowCatalogCommand(state, params.commandId, ctx, userArgs);
     },
 
     renderCall(args, theme) {

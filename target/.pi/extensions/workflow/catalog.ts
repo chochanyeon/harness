@@ -384,6 +384,20 @@ export const COMMAND_CATALOG: readonly CommandSpec[] = [
     requiresApproval: false,
   },
   {
+    id: "git-commit",
+    description: "Commit staged changes. Supply message via args: [\"-m\", \"your message\"]. No shell — injection-safe.",
+    executable: "git",
+    fixedArgs: ["commit"],
+    allowUserArgs: true,
+    allowedPhases: ["implement", "commit"],
+    cwdPolicy: "git-root",
+    timeoutMs: 30_000,
+    maxOutputBytes: 20_000,
+    outputPolicy: "inline",
+    riskLevel: "low",
+    requiresApproval: false,
+  },
+  {
     id: "git-add-all",
     description: "Stage all changes (git add -A) — use before git commit via bash",
     executable: "git",
@@ -485,6 +499,7 @@ export function isPhaseAllowed(spec: CommandSpec, phase: WorkflowPhase): boolean
 export function runCatalogCommand(
   spec: CommandSpec,
   gitRoot: string | null,
+  extraArgs: string[] = [],
 ): CatalogCommandResult {
   const startMs = Date.now();
   const cwd =
@@ -493,7 +508,7 @@ export function runCatalogCommand(
     : process.cwd();
 
   let executable = spec.executable;
-  let args = [...spec.fixedArgs];
+  let args = [...spec.fixedArgs, ...extraArgs];
 
   // Resolve build-system-aware sentinels (auto-test / auto-build / auto-quality)
   if (executable === "auto-test" || executable === "auto-build" || executable === "auto-quality") {

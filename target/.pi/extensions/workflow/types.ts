@@ -131,6 +131,12 @@ export interface CommandSpec {
   riskLevel: "read" | "low" | "medium" | "high" | "destructive";
   /** If true, always ask user confirmation before executing */
   requiresApproval: boolean;
+  /**
+   * If true, the caller may supply additional string arguments via workflow_run_command args[].
+   * Args are passed to execFileSync (no shell) — injection is prevented at the OS level.
+   * Only commands that explicitly opt in may receive user-supplied args.
+   */
+  allowUserArgs?: boolean;
 }
 
 export type CatalogCommandResult = {

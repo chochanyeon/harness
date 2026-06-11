@@ -19,6 +19,7 @@ export async function executeWorkflowCatalogCommand(
   state: WorkflowCatalogCommandState,
   commandId: string,
   ctx: any,
+  userArgs: string[] = [],
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> }> {
   const spec = getCatalogCommand(commandId);
   if (!spec) {
@@ -26,6 +27,12 @@ export async function executeWorkflowCatalogCommand(
     return {
       content: [{ type: "text", text: `Unknown command ID: "${commandId}".\nAvailable:\n${available}` }],
       details: { ok: false, reason: "unknown-command" },
+    };
+  }
+  if (userArgs.length > 0 && !spec.allowUserArgs) {
+    return {
+      content: [{ type: "text", text: `Command "${spec.id}" does not accept user-supplied args. Remove the args parameter.` }],
+      details: { ok: false, reason: "user-args-not-allowed" },
     };
   }
 
@@ -54,7 +61,7 @@ export async function executeWorkflowCatalogCommand(
     }
   }
 
-  const result = runCatalogCommand(spec, getGitRoot());
+  const result = runCatalogCommand(spec, getGitRoot(), userArgs);
   const formatted = formatCatalogCommandResult(result, spec);
 
   if (["code-quality", "project-test"].includes(spec.id)) {

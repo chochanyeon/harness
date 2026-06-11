@@ -66,7 +66,8 @@
       "Follow the current workflow phase.",
       "Never skip phases; only advance to the next phase.",
       "The only user-approval boundary is commit → push. Everything from interview through commit is autonomous.",
-      "In code_review, fix/review/quality loop stays in code_review.",
+      "plan ↔ plan_review is a repair loop: DPAA fail → auto-return to plan → fix → workflow_approve → plan_review → repeat until DPAA passes.",
+      "implement ↔ code_review is a repair loop: quality/review fail → workflow_state prev → implement → fix → workflow_approve → code_review → repeat until review passes.",
       "Use subagents for implementation, review, large diffs, and logs.",
       "Keep main context to decisions, changed files, verification, blockers, next phase."
     ]
@@ -106,7 +107,7 @@
     "plan": "Write the implementation plan; do not modify production code yet.",
     "plan_review": "Review the plan and run DPAA. Auto-advances to implement on DPAA pass; auto-returns to plan on fail.",
     "implement": "Implement only the approved plan; prefer subagents for context-heavy implementation work.",
-    "code_review": "Run self-review, independent/subagent review, and quality gates before review approval.",
+    "code_review": "Repair loop: run self-review, independent review, and quality gate. If quality fails or Critical/Major found, call workflow_state prev to return to implement, fix, then workflow_approve back to code_review. Repeat autonomously until review passes (Critical=0, Major≤2), then submit_review_package.",
     "review_approved": "Prepare documentation after review approval.",
     "document": "Update required documentation before commit.",
     "commit": "Present verification, risk, diff summary, and proposed commit message before push approval.",

@@ -204,6 +204,19 @@ function buildInterviewWizardCompletion(summaryMarkdown: string): string {
     "2. For brownfield work, inspect narrow repo evidence before asking codebase-direction questions.",
     "3. Report clarity across goal, scope/out-of-scope, acceptance criteria, constraints/risks, and existing context.",
     "4. Ask focused follow-up questions for the weakest clarity dimension before advancing to plan.",
+    "5. REQUIRED: Call workflow_score_interview with your per-dimension clarity scores (0-100 each).",
+    "   Scoring rubric:",
+    "   - goal (0-100): Can the objective be stated without qualifiers? Is the problem well-defined?",
+    "   - scope (0-100): Are included, excluded, deferred, and optional parts clear?",
+    "   - acceptance (0-100): Can success be judged objectively as pass/fail?",
+    "   - constraints (0-100): Are limits, compatibility, risks, and dependencies clear enough?",
+    "   - context (0-100): For brownfield, is the relevant code/system context understood?",
+    "   Threshold: any dimension < 60 → call workflow_interview_wizard again with follow-up questions",
+    "   targeting only the low-score dimensions, then re-score.",
+    "   Example call:",
+    "   workflow_score_interview({ goal: 85, scope: 70, acceptance: 45, constraints: 80, context: 90,",
+    "     reasoning: \"acceptance unclear: no pass/fail criteria for performance requirement\" })",
+    "6. Include the score table in your chat response so the user can see the assessment.",
   ].join("\n");
 }
 
@@ -252,7 +265,7 @@ export default function (pi: ExtensionAPI) {
     return continuation.queue(ctx, workflow, transitions);
   }
 
-  const SKIPPABLE_WORKFLOW_GATES = ["dpaa", "code-quality", "policy-scan"] as const;
+  const SKIPPABLE_WORKFLOW_GATES = ["dpaa", "code-quality", "policy-scan", "interview-ambiguity"] as const;
   type SkippableWorkflowGate = typeof SKIPPABLE_WORKFLOW_GATES[number];
 
   function isSkippableWorkflowGate(value: string): value is SkippableWorkflowGate {
@@ -263,6 +276,7 @@ export default function (pi: ExtensionAPI) {
     "dpaa": "DPAA ambiguity analysis gate (plan_review → implement)",
     "code-quality": "Code quality/test gate (code_review → review_approved)",
     "policy-scan": "Push policy scan gate (commit → push)",
+    "interview-ambiguity": "Interview ambiguity scoring gate (interview → plan)",
   };
 
   async function recordWorkflowGateSkip(gate: SkippableWorkflowGate, reason: string, ctx: any): Promise<{ ok: boolean; gate: SkippableWorkflowGate; reason?: string }> {
@@ -288,7 +302,13 @@ export default function (pi: ExtensionAPI) {
       state.dpaaGuardSatisfiedToken = { workflowId: state.workflow.id, issuedAt: Date.now(), reason: "skip-preapproved" };
     }
     state.gateFailures.delete(gate);
-    clearPendingWorkflowSteersForPhase(state.workflow?.id, gate === "dpaa" ? "plan_review" : gate === "code-quality" ? "code_review" : "commit");
+    clearPendingWorkflowSteersForPhase(
+      state.workflow?.id,
+      gate === "dpaa" ? "plan_review"
+        : gate === "code-quality" ? "code_review"
+        : gate === "interview-ambiguity" ? "interview"
+        : "commit",
+    );
     writeFieldLogEvent({
       type: "gate.skipped",
       category: gate === "policy-scan" ? "push-policy" : gate === "code-quality" ? "code-quality" : "dpaa",
@@ -337,6 +357,7 @@ export default function (pi: ExtensionAPI) {
     state.codeReviewGuardSatisfiedToken = null;
     state.pushExecutionGuardSatisfiedToken = null;
     state.reviewPackageToken = null;
+    state.interviewAmbiguityScoreToken = null;
     state.policyApprovals = [];
     state.gateFailures = new Map();
   }
@@ -1202,6 +1223,115 @@ ${formatWorkflowAction(state.workflow)}` }],
         return resultBox(theme, "warning", theme.fg("warning", "⚠️ 사용자가 wizard를 취소했습니다"));
       }
       return resultBox(theme, "error", theme.fg("error", "❌ interview wizard 실패"));
+    },
+  });
+
+  // ── Tool: workflow_score_interview — LLM records per-dimension ambiguity scores ──
+  pi.registerTool({
+    name: "workflow_score_interview",
+    label: "Score Interview",
+    description: [
+      "Record per-dimension clarity scores for the completed interview.",
+      "Call this after workflow_interview_wizard completes to evaluate the answer quality.",
+      "Scores gate the interview → plan transition: any dimension < 60 blocks plan progression.",
+      "If any dimension is low, run workflow_interview_wizard again with follow-up questions targeting those dimensions, then re-score.",
+    ].join(" "),
+    promptSnippet: "Record interview clarity scores and gate plan progression",
+    promptGuidelines: [
+      "Call workflow_score_interview immediately after workflow_interview_wizard completes. Score each dimension honestly 0-100. If any score < 60, run a follow-up wizard round for those dimensions before re-scoring. Include the score table in your chat response.",
+    ],
+    parameters: Type.Object({
+      goal: Type.Number({ description: "Goal/problem clarity score 0-100", minimum: 0, maximum: 100 }),
+      scope: Type.Number({ description: "Scope/out-of-scope clarity score 0-100", minimum: 0, maximum: 100 }),
+      acceptance: Type.Number({ description: "Acceptance criteria clarity score 0-100", minimum: 0, maximum: 100 }),
+      constraints: Type.Number({ description: "Constraints/risks clarity score 0-100", minimum: 0, maximum: 100 }),
+      context: Type.Number({ description: "Existing code/system context clarity score 0-100", minimum: 0, maximum: 100 }),
+      reasoning: Type.Optional(Type.String({ description: "Brief reasoning for low scores or notable gaps" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      if (!state.workflow || state.workflow.phase !== "interview") {
+        return {
+          content: [{ type: "text", text: "workflow_score_interview can only be called during the interview phase." }],
+          details: { ok: false },
+        };
+      }
+
+      const { goal, scope, acceptance, constraints, context, reasoning } = params;
+      const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+      const scores = {
+        goal: clamp(goal),
+        scope: clamp(scope),
+        acceptance: clamp(acceptance),
+        constraints: clamp(constraints),
+        context: clamp(context),
+      };
+
+      const THRESHOLD = 60;
+      const dims: Array<[string, number]> = Object.entries(scores) as Array<[string, number]>;
+      const failing = dims.filter(([, score]) => score < THRESHOLD);
+
+      state.interviewAmbiguityScoreToken = {
+        workflowId: state.workflow.id,
+        issuedAt: Date.now(),
+        ...scores,
+        ...(reasoning ? { reasoning } : {}),
+      };
+
+      const scoreTable = [
+        "| Dimension    | Score | Status |",
+        "|-------------|-------|--------|",
+        ...dims.map(([name, score]) =>
+          `| ${name.padEnd(12)} | ${String(score).padStart(3)}/100 | ${score >= THRESHOLD ? "✅ pass" : "❌ low"} |`,
+        ),
+      ].join("\n");
+
+      if (failing.length === 0) {
+        return {
+          content: [{ type: "text", text: [
+            "✅ Interview ambiguity gate: all dimensions passed.",
+            "",
+            scoreTable,
+            "",
+            "You may now proceed to plan. Call workflow_approve when ready.",
+          ].join("\n") }],
+          details: { ok: true, scores, passed: true },
+        };
+      }
+
+      const failingNames = failing.map(([name]) => name).join(", ");
+      return {
+        content: [{ type: "text", text: [
+          `⚠️ Interview ambiguity gate: ${failing.length} dimension(s) below threshold (${THRESHOLD}).`,
+          "",
+          scoreTable,
+          "",
+          `Low-score dimensions: ${failingNames}`,
+          "",
+          "Action required:",
+          "1. Call workflow_interview_wizard again with follow-up questions targeting the low-score dimensions.",
+          "2. After the follow-up wizard, call workflow_score_interview again with updated scores.",
+          "3. Repeat until all dimensions reach 60 or above (max 2 additional rounds).",
+          ...(reasoning ? ["", `Reasoning: ${reasoning}`] : []),
+        ].join("\n") }],
+        details: { ok: true, scores, passed: false, failing: failing.map(([name]) => name) },
+      };
+    },
+
+    renderCall(_args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("📊 score_interview ")) +
+        theme.fg("dim", "인터뷰 명확성 점수 기록 중…"),
+        0, 0,
+      );
+    },
+
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "점수 기록 중…"));
+      const d = result.details as Record<string, unknown>;
+      if (!d?.ok) return resultBox(theme, "error", theme.fg("error", "❌ 점수 기록 실패 (interview 단계에서만 호출 가능)"));
+      if (d?.passed) return resultBox(theme, "success", theme.fg("success", "✅ 인터뷰 명확성 점수 통과"));
+      const failing = Array.isArray(d?.failing) ? (d.failing as string[]).join(", ") : "";
+      return resultBox(theme, "warning", theme.fg("warning", `⚠️ 낮은 차원: ${failing} — 후속 wizard 라운드 필요`));
     },
   });
 

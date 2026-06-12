@@ -12,6 +12,7 @@ import {
   type WorkflowPhase,
   type WorkflowGate,
 } from "./core";
+import type { InterviewAmbiguityScoreEvidence } from "./gates";
 import { HARNESS_TOKEN_TYPES } from "./runtime-state";
 import { formatWorkflowAction } from "./format";
 import { writeAuditLogEvent } from "./field-log";
@@ -24,6 +25,7 @@ export type WorkflowApprovalState = {
   codeQualityGuardSatisfiedToken: any;
   codeReviewGuardSatisfiedToken: any;
   pushExecutionGuardSatisfiedToken: any;
+  interviewAmbiguityScoreToken: InterviewAmbiguityScoreEvidence;
   recentVerificationCommands: Array<{ command: string; timestamp: number; phase?: WorkflowPhase }>;
   gateFailures: Map<WorkflowGate, number>;
 };
@@ -152,7 +154,10 @@ export async function executeWorkflowApproval(
     }
   }
 
-  const result = await advanceWorkflow(state.workflow, "user_approved", { approvedPlanSha256: state.dpaaGuardSatisfiedToken?.planSha256 });
+  const result = await advanceWorkflow(state.workflow, "user_approved", {
+    approvedPlanSha256: state.dpaaGuardSatisfiedToken?.planSha256,
+    interviewScoreEvidence: state.interviewAmbiguityScoreToken,
+  });
   if (!result.ok) {
     if (result.gate) {
       const failures = (state.gateFailures.get(result.gate) ?? 0) + 1;

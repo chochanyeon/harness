@@ -138,6 +138,7 @@ def test_fake_llm_agent_loop_drives_full_workflow_and_recovers_from_bad_actions(
         r'''
         const observations = {};
         await command('start Fake LLM full workflow');
+        await command('skip interview-ambiguity test skip');
         await command('approve'); // interview -> plan -> plan_review
 
         observations.toolsPlanReview = pi.activeTools;
@@ -309,6 +310,7 @@ def test_fake_llm_review_package_rejects_missing_and_blocking_findings_before_ac
         r'''
         const observations = {};
         await command('start Fake LLM review guard workflow');
+        await command('skip interview-ambiguity test skip');
         await command('approve');
         await command('skip dpaa fake review guard setup');
         await command('approve'); // implement

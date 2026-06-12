@@ -419,6 +419,7 @@ def test_workflow_extension_runtime_auto_advances_low_risk_phase_boundaries(tmp_
 
         (async () => {
           await pi.commands.workflow.handler('start Runtime auto advance', ctx);
+          await pi.commands.workflow.handler('skip interview-ambiguity test skip', ctx);
           await pi.commands.workflow.handler('approve', ctx);
           await pi.commands.workflow.handler('state review_approved', ctx);
           await pi.commands.workflow.handler('approve', ctx);
@@ -662,6 +663,7 @@ def test_workflow_extension_runtime_plan_review_continuation_mentions_high_risk_
 
         (async () => {
           await pi.commands.workflow.handler('start Runtime high risk continuation', ctx);
+          await pi.commands.workflow.handler('skip interview-ambiguity test skip', ctx);
           await pi.commands.workflow.handler('approve', ctx);
           console.log(JSON.stringify({ sentMessages }));
         })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
@@ -1088,6 +1090,7 @@ def test_stale_phase_steer_message_is_consumed_after_phase_changes(tmp_path):
 
         (async () => {
           await pi.commands.workflow.handler('start stale steer workflow', ctx);
+          await pi.commands.workflow.handler('skip interview-ambiguity test skip', ctx);
           await pi.commands.workflow.handler('approve', ctx);
           const editResult = await pi.events.tool_call({ toolName: 'edit', input: { path: 'src/app.txt', edits: [] } }, ctx);
           await pi.commands.workflow.handler('skip dpaa stale steer test', ctx);
@@ -1179,6 +1182,7 @@ def test_workflow_skip_gate_tool_allows_llm_to_record_interactive_skip_and_advan
 
         (async () => {
           await pi.commands.workflow.handler('start skip tool workflow', ctx);
+          await pi.commands.workflow.handler('skip interview-ambiguity test skip', ctx);
           await pi.commands.workflow.handler('approve', ctx);
           const skip = await pi.tools.workflow_skip_gate.execute('skip-1', {
             gate: 'dpaa',
@@ -1292,6 +1296,8 @@ def test_plan_review_to_implement_requires_no_user_approval(tmp_path):
 
         (async () => {
           await pi.commands.workflow.handler('start Auto advance test', ctx);
+          // Skip interview ambiguity gate (not under test here)
+          await pi.commands.workflow.handler('skip interview-ambiguity test skip to verify no confirm dialog', ctx);
           // advance: interview → plan → plan_review (auto, no confirm expected)
           await pi.commands.workflow.handler('approve', ctx);
 

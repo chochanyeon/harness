@@ -25,6 +25,16 @@ export type WorkflowRuntimeState = {
   dpaaGuardSatisfiedToken: { workflowId: string; issuedAt: number; reason: string; planSha256?: string } | null;
   codeQualityGuardSatisfiedToken: { workflowId: string; issuedAt: number; reason: string } | null;
   pushExecutionGuardSatisfiedToken: { workflowId: string; issuedAt: number; reason: string } | null;
+  interviewAmbiguityScoreToken: {
+    workflowId: string;
+    issuedAt: number;
+    goal: number;
+    scope: number;
+    acceptance: number;
+    constraints: number;
+    context: number;
+    reasoning?: string;
+  } | null;
   policyApprovals: Array<{ timestamp: number; totalChanged: number; categories: string[]; signature: string }>;
   extensionMutationApprovedForWorkflowId: string | null;
   autoCheckpointForSession: boolean;
@@ -64,6 +74,7 @@ export function createWorkflowRuntimeState(): WorkflowRuntimeState {
     dpaaGuardSatisfiedToken: null,
     codeQualityGuardSatisfiedToken: null,
     pushExecutionGuardSatisfiedToken: null,
+    interviewAmbiguityScoreToken: null,
     policyApprovals: [],
     extensionMutationApprovedForWorkflowId: null,
     autoCheckpointForSession: false,

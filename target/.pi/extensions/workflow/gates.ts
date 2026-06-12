@@ -17,7 +17,7 @@ const PI_ROOT = path.join(HARNESS_ROOT, ".pi");
 const DPAA_VENV_DIR = path.join(PI_ROOT, ".venv");
 const CORENLP_DIR = path.join(PI_ROOT, "corenlp");
 
-export type WorkflowGate = "dpaa" | "code-quality" | "policy-scan";
+export type WorkflowGate = "dpaa" | "code-quality" | "policy-scan" | "interview-ambiguity";
 
 // ── Diff-aware quality gate helpers ─────────────────────────────────────────
 
@@ -257,12 +257,79 @@ function runSbadrAnalysis(pythonCommand: string, planPath: string): { ok: boolea
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type InterviewAmbiguityScoreEvidence = {
+  workflowId: string;
+  issuedAt: number;
+  goal: number;
+  scope: number;
+  acceptance: number;
+  constraints: number;
+  context: number;
+  reasoning?: string;
+} | null;
+
+const INTERVIEW_AMBIGUITY_THRESHOLD = 60;
+
+export function runInterviewAmbiguityGate(
+  workflow: WorkflowInstance,
+  evidence: InterviewAmbiguityScoreEvidence,
+): { ok: boolean; message: string } {
+  if (!evidence || evidence.workflowId !== workflow.id) {
+    return {
+      ok: false,
+      message: formatGateBlocked({
+        gate: "Interview Ambiguity",
+        why: "No interview ambiguity score has been recorded for this workflow. The LLM must call workflow_score_interview after the wizard completes.",
+        next: [
+          "Call workflow_score_interview with your per-dimension clarity scores (goal, scope, acceptance, constraints, context; each 0–100)",
+          "Re-run workflow_approve after recording the scores",
+        ],
+        skip: "/workflow skip interview-ambiguity <reason>",
+      }),
+    };
+  }
+
+  const dims: Array<[string, number]> = [
+    ["goal", evidence.goal],
+    ["scope", evidence.scope],
+    ["acceptance", evidence.acceptance],
+    ["constraints", evidence.constraints],
+    ["context", evidence.context],
+  ];
+  const failing = dims.filter(([, score]) => score < INTERVIEW_AMBIGUITY_THRESHOLD);
+
+  if (failing.length === 0) {
+    return { ok: true, message: "Interview ambiguity gate passed" };
+  }
+
+  const dimensionLines = failing.map(([name, score]) => `${name}: ${score}/100 (threshold: ${INTERVIEW_AMBIGUITY_THRESHOLD})`).join(", ");
+  return {
+    ok: false,
+    message: formatGateBlocked({
+      gate: "Interview Ambiguity",
+      why: `One or more clarity dimensions are below the threshold (${INTERVIEW_AMBIGUITY_THRESHOLD}). Failing: ${dimensionLines}.`,
+      next: [
+        "Call workflow_interview_wizard again with targeted follow-up questions for the failing dimensions",
+        "After the follow-up wizard, call workflow_score_interview with updated scores",
+        `Re-run workflow_approve once all dimensions reach ${INTERVIEW_AMBIGUITY_THRESHOLD} or above`,
+      ],
+      skip: "/workflow skip interview-ambiguity <reason>",
+    }),
+  };
+}
+
 export async function runPreTransitionGate(
   workflow: WorkflowInstance,
   from: WorkflowPhase,
   to: WorkflowPhase,
-  opts?: { approvedPlanSha256?: string },
+  opts?: { approvedPlanSha256?: string; interviewScoreEvidence?: InterviewAmbiguityScoreEvidence },
 ): Promise<{ ok: boolean; message: string; gate?: WorkflowGate; planSha256?: string }> {
+  if (from === "interview" && to === "plan") {
+    const skip = consumeSkipToken("interview-ambiguity");
+    if (skip) return { ok: true, message: `Interview ambiguity gate skipped: ${skip.reason}` };
+    const result = runInterviewAmbiguityGate(workflow, opts?.interviewScoreEvidence ?? null);
+    return result.ok ? result : { ...result, gate: "interview-ambiguity" };
+  }
   // MVP 3: hash staleness check — if plan was approved but has since changed, block
   if (from === "plan_review" && to === "implement" && opts?.approvedPlanSha256) {
     const currentPlanPath = findPlanForDpaa();

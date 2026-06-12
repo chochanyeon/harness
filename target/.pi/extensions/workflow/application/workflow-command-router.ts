@@ -276,6 +276,7 @@ pi.registerCommand("workflow", {
       cancelWorkflowContinuationPending();
       state.workflow = createWorkflow(rest.join(" "));
       state.codeReviewGuardSatisfiedToken = null;
+      state.interviewAmbiguityScoreToken = null;
       state.policyApprovals = [];
       state.reviewPackageToken = null;
       state.gateFailures = new Map();
@@ -542,11 +543,12 @@ pi.registerCommand("workflow", {
     }
 
     if (command === "skip") {
-      const VALID_GATES = ["dpaa", "code-quality", "policy-scan"] as const;
+      const VALID_GATES = ["dpaa", "code-quality", "policy-scan", "interview-ambiguity"] as const;
       const GATE_DESC: Record<string, string> = {
         "dpaa": "DPAA 모호성 분석 gate (plan_review → implement 전환 시 실행)",
         "code-quality": "Checkstyle/PMD/테스트 gate (code_review → review_approved 전환 시 실행)",
         "policy-scan": "push 전 위험 변경 파일 scan gate",
+        "interview-ambiguity": "인터뷰 모호성 점수 gate (interview → plan 전환 시 실행)",
       };
       const gate = rest[0] as typeof VALID_GATES[number] | undefined;
       const reason = rest.slice(1).join(" ").trim();

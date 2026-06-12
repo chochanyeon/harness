@@ -206,7 +206,35 @@ Examples:
 최소 버전이 “Topology 확인 + clarity report만 추가”라면 충분할까요?
 ```
 
-### 1.7 Exit Criteria
+### 1.7 Ambiguity Scoring (Required Before Advancing)
+
+After `workflow_interview_wizard` completes, you must call `workflow_score_interview` to record
+per-dimension clarity scores. This gates the `interview → plan` transition.
+
+**Scoring rubric (0–100 each):**
+
+| Dimension    | What to score |
+|-------------|---------------|
+| goal        | Can the objective be stated without qualifiers? |
+| scope       | Are included, excluded, deferred, and optional parts clear? |
+| acceptance  | Can success be judged objectively as pass/fail? |
+| constraints | Are limits, risks, compatibility, and dependencies clear? |
+| context     | For brownfield: is the relevant code/system context understood? |
+
+**Threshold:** any dimension < 60 → run another `workflow_interview_wizard` round targeting only the
+low-score dimensions, then call `workflow_score_interview` again. Maximum 2 additional rounds.
+
+**Always include the score table in your chat response** so the user can see the assessment.
+
+Example call:
+```
+workflow_score_interview({
+  goal: 85, scope: 70, acceptance: 45, constraints: 80, context: 90,
+  reasoning: "acceptance unclear: no pass/fail criteria for performance requirement"
+})
+```
+
+### 1.8 Exit Criteria
 
 Proceed to Phase 2 only when all are true:
 
@@ -215,6 +243,7 @@ Proceed to Phase 2 only when all are true:
 3. Every acceptance criterion can be judged objectively as pass/fail.
 4. No clarity dimension remains "낮음" unless the user explicitly accepts the risk.
 5. Brownfield direction questions cite repo evidence or state what evidence was unavailable.
+6. `workflow_score_interview` has been called and all five dimensions are ≥ 60 (or gate has been skipped with user approval).
 
 If you are not confident, ask another focused round. If the user says "just proceed", explicitly state the remaining ambiguity, affected topology components, and likely rework risk before asking for confirmation. Do not silently choose an interpretation.
 

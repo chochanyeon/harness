@@ -31,6 +31,7 @@ type WizardContext = {
   ui: {
     custom: <T>(factory: (tui: any, theme: any, keybindings: any, done: (value: T) => void) => any, options?: Record<string, unknown>) => Promise<T>;
     setWidget?: (key: string, value: unknown, options?: Record<string, unknown>) => void;
+    setWorkingVisible?: (visible: boolean) => void;
     notify?: (message: string, level?: string) => void;
   };
 };
@@ -50,6 +51,12 @@ export async function launchInterviewWizard(ctx: WizardContext, workflowTitle: s
     ctx.ui.setWidget("interview-progress", (_tui: unknown, theme: any) => renderProgressWidget(theme, currentIndex, answers, questions));
   }
 
+  // Hide the working indicator (spinner) while the wizard is visible.
+  // The spinner's setInterval fires requestRender() every ~100ms, which triggers
+  // fullRender(true) whenever the spinner line is above the viewport — causing
+  // the wizard to flicker (choices disappear/reappear) and the working indicator
+  // to flash visibly with every animation frame.
+  ctx.ui.setWorkingVisible?.(false);
   try {
     return await ctx.ui.custom<InterviewWizardResult | null>((tui, theme, _keybindings, done) => {
       return new InterviewWizard(tui, theme, workflowTitle, questions, answers, (nextIndex) => {
@@ -59,6 +66,7 @@ export async function launchInterviewWizard(ctx: WizardContext, workflowTitle: s
       }, done);
     });
   } finally {
+    ctx.ui.setWorkingVisible?.(true);
     try { ctx.ui.setWidget?.("interview-progress", undefined); } catch { /* non-fatal */ }
   }
 }

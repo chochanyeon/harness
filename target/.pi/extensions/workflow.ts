@@ -1217,7 +1217,9 @@ ${formatWorkflowAction(state.workflow)}` }],
       if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "인터뷰 wizard 대기 중…"));
       const d = result.details as Record<string, unknown>;
       if (d?.ok) {
-        return resultBox(theme, "success", theme.fg("success", "✅ 인터뷰 wizard 완료"));
+        return resultBox(theme, "success",
+          theme.fg("success", "✅ 인터뷰 wizard 완료") +
+          theme.fg("warning", " — 다음: workflow_score_interview 호출 필수 (5개 차원 점수 0-100)"));
       }
       if (d?.cancelled) {
         return resultBox(theme, "warning", theme.fg("warning", "⚠️ 사용자가 wizard를 취소했습니다"));

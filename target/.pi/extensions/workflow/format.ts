@@ -76,6 +76,7 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
       lines.push(
         "- Transition mode: automatic preparation chain.",
         "- Required now: clarify requirements, record interview artifacts, then advance through plan to plan_review when ready.",
+        "- After workflow_interview_wizard completes: call workflow_score_interview with per-dimension clarity scores (0-100). This is required before interview → plan.",
         "- User-visible next stop after the automatic preparation chain: plan_review awaiting plan approval.",
         "- Do not request user approval before plan_review.",
       );

@@ -8,6 +8,7 @@ export type ReminderRuntimeSignals = {
   recentVerificationCommands?: Array<{ command: string; timestamp: number; phase?: string }>;
   codeQualityGuardSatisfied?: boolean;
   reviewPackageSubmitted?: boolean;
+  interviewScoreRecorded?: boolean;
 };
 
 export type WorkflowReminder = {
@@ -111,6 +112,14 @@ function scanVerificationItems(root: string, phase: string, signals: ReminderRun
   ];
 }
 
+function scanInterviewScoringItems(phase: string, signals: ReminderRuntimeSignals): string[] {
+  if (phase !== "interview") return [];
+  if (signals.interviewScoreRecorded) return [];
+  return [
+    "workflow_score_interview has not been called yet. After workflow_interview_wizard completes, evaluate the 5 clarity dimensions (goal/scope/acceptance/constraints/context; each 0-100) and call workflow_score_interview. Any dimension < 60 blocks interview → plan.",
+  ];
+}
+
 function scanReviewPackageItems(phase: string, signals: ReminderRuntimeSignals): string[] {
   if (phase !== "code_review") return [];
   if (signals.reviewPackageSubmitted) return [];
@@ -150,6 +159,7 @@ export function scanWorkflowReminders(workflow?: WorkflowInstance | null, signal
   if (!workflow) return null;
   const root = projectRoot(workflow);
   const sections = [
+    { title: "Interview Scoring", items: scanInterviewScoringItems(workflow.phase, signals) },
     { title: "Documentation", items: scanDocumentationItems(root, workflow.phase) },
     { title: "Verification", items: scanVerificationItems(root, workflow.phase, signals) },
     { title: "Review Package", items: scanReviewPackageItems(workflow.phase, signals) },

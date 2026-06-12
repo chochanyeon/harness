@@ -8,8 +8,10 @@ export function formatGuardMemoryStatus(state: WorkflowRuntimeState): string {
   const workflowId = state.workflow?.id;
   const policyScan = scanPushPolicy();
   const lastPolicy = state.policyApprovals.at(-1);
+  const interviewScoreOk = Boolean(workflowId && state.interviewAmbiguityScoreToken?.workflowId === workflowId);
   return [
     "🧪 Guard memory/status",
+    `- Interview ambiguity score: ${interviewScoreOk ? `present (goal:${state.interviewAmbiguityScoreToken!.goal} scope:${state.interviewAmbiguityScoreToken!.scope} acceptance:${state.interviewAmbiguityScoreToken!.acceptance} constraints:${state.interviewAmbiguityScoreToken!.constraints} context:${state.interviewAmbiguityScoreToken!.context})` : "absent"}  (required: interview → plan)`,
     `- DPAA guard: ${workflowId && state.dpaaGuardSatisfiedToken?.workflowId === workflowId ? "satisfied" : "absent"}`,
     `- Code quality guard: ${workflowId && state.codeQualityGuardSatisfiedToken?.workflowId === workflowId ? "satisfied" : "absent"}`,
     `- Code review guard: ${state.codeReviewGuardSatisfiedToken ? `satisfied (Cr:${state.codeReviewGuardSatisfiedToken.critical} Maj:${state.codeReviewGuardSatisfiedToken.major} min:${state.codeReviewGuardSatisfiedToken.minor})` : "absent"}`,
@@ -26,8 +28,10 @@ export function buildWorkflowSystemPromptInjection(state: WorkflowRuntimeState):
   const qualOk = Boolean(state.workflow && state.codeQualityGuardSatisfiedToken?.workflowId === state.workflow.id);
   const reviewOk = Boolean(state.codeReviewGuardSatisfiedToken);
   const pushOk = Boolean(state.workflow && state.pushExecutionGuardSatisfiedToken?.workflowId === state.workflow.id);
+  const interviewScoreOk = Boolean(state.workflow && state.interviewAmbiguityScoreToken?.workflowId === state.workflow.id);
   const authLines = [
     "[Workflow Guard Evidence]",
+    `Interview ambiguity score evidence: ${interviewScoreOk ? "present" : "absent"}  (required: interview → plan; call workflow_score_interview after wizard)`,
     `DPAA guard evidence: ${dpaaOk ? "present" : "absent"}  (required: plan_review → implement)`,
     `Code quality guard evidence: ${qualOk ? "present" : "absent"}  (required: code_review → review_approved)`,
     `Code review guard evidence: ${reviewOk ? "present" : "absent"}  (required: submit_review_package before review_approved)`,
@@ -43,6 +47,7 @@ export function buildWorkflowSystemPromptInjection(state: WorkflowRuntimeState):
     authLines,
     formatWorkflowReminders(scanWorkflowReminders(state.workflow, {
       recentVerificationCommands: state.recentVerificationCommands,
+      interviewScoreRecorded: Boolean(state.workflow && state.interviewAmbiguityScoreToken?.workflowId === state.workflow.id),
       codeQualityGuardSatisfied: Boolean(state.workflow && state.codeQualityGuardSatisfiedToken?.workflowId === state.workflow.id),
       reviewPackageSubmitted: Boolean(state.workflow && state.reviewPackageToken?.workflowId === state.workflow.id),
     })),

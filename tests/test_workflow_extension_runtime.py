@@ -445,18 +445,20 @@ def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topolog
         const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
         jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
 
-        const captured = { questions: [] };
+        const captured = { questions: [], widgetUpdates: 0 };
         const notifications = [];
         const ctx = {
           hasUI: true,
           ui: {
             notify: (text, level) => notifications.push({ text, level }),
             confirm: async () => true,
-            setWidget: () => {},
+            setWidget: () => { captured.widgetUpdates += 1; },
             custom: async (factory) => {
               const donePromise = new Promise((resolve) => {
                 const widget = factory({ requestRender() {} }, {}, {}, resolve);
                 captured.questions = widget.questions.map((q) => ({ id: q.id, title: q.title, allowFreeText: q.allowFreeText, allowSkip: q.allowSkip }));
+                widget.handleInput(' ');
+                widget.handleInput('n');
                 resolve({
                   completed: true,
                   summaryMarkdown: '## Interview Summary\n- captured',
@@ -486,6 +488,7 @@ def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topolog
             ok: result.details.ok,
             mode: result.details.mode,
             text: result.content[0].text,
+            widgetUpdates: captured.widgetUpdates,
           }));
         })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
         '''
@@ -502,6 +505,7 @@ def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topolog
     assert data["ok"] is True
     assert data["mode"] == "deep-interview-lite"
     assert "weakest clarity dimension" in data["text"]
+    assert data["widgetUpdates"] >= 3
 
 
 def test_workflow_extension_runtime_trace_command_sends_runtime_trace_prompt(tmp_path):

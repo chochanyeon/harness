@@ -47,9 +47,11 @@ export async function launchInterviewWizard(ctx: WizardContext, workflowTitle: s
   }));
   let currentIndex = 0;
 
-  if (typeof ctx.ui.setWidget === "function") {
+  const refreshProgressWidget = () => {
+    if (typeof ctx.ui.setWidget !== "function") return;
     ctx.ui.setWidget("interview-progress", (_tui: unknown, theme: any) => renderProgressWidget(theme, currentIndex, answers, questions));
-  }
+  };
+  refreshProgressWidget();
 
   // Hide the working indicator (spinner) while the wizard is visible.
   // The spinner's setInterval fires requestRender() every ~100ms, which triggers
@@ -60,9 +62,10 @@ export async function launchInterviewWizard(ctx: WizardContext, workflowTitle: s
   try {
     return await ctx.ui.custom<InterviewWizardResult | null>((tui, theme, _keybindings, done) => {
       return new InterviewWizard(tui, theme, workflowTitle, questions, answers, (nextIndex) => {
-        // Only update the external progress widget. Do NOT call tui.requestRender here;
+        // Update only the external progress widget. Do NOT call tui.requestRender here;
         // InterviewWizard.requestRender() calls it after updating all internal state.
         currentIndex = nextIndex;
+        refreshProgressWidget();
       }, done);
     });
   } finally {

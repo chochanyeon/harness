@@ -100,6 +100,7 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
       lines.push(
         "- Transition mode: automatic after implementation is complete.",
         "- Required now: implement only the approved scope, run the narrowest relevant verification, summarize changed files.",
+        "- If the approved scope is already satisfied, record concrete evidence, state that no code changes are needed, run the narrowest relevant verification, then proceed to code_review instead of inventing edits.",
         "- TDD: if writing new production code, write the failing test first without asking the user. Complete the full cycle (failing test → implement → pass) autonomously.",
         "- Static analysis: write code that already follows the project's Checkstyle/PMD conventions (naming rules, line length, method size, import style). If violations occur anyway, fix them silently without reporting to the user. Do not ask; just fix and re-run.",
       );

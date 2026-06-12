@@ -81,6 +81,7 @@ def _workflow_script(project: Path) -> str:
     (async () => {
       const observations = {};
       const start = await command('start Consumer smoke workflow');
+      const skipInterview = await command('skip interview-ambiguity smoke test preapproval');
       const prepare = await command('approve');
       const toolsAfterPrepare = [...(pi.activeTools || [])];
       const skip = await command('skip dpaa smoke test preapproval');
@@ -89,6 +90,7 @@ def _workflow_script(project: Path) -> str:
       observations.start = detailsOf(start);
       observations.prepare = detailsOf(prepare);
       observations.prepareText = textOf(prepare);
+      observations.skipInterview = detailsOf(skipInterview);
       observations.skip = detailsOf(skip);
       observations.implement = detailsOf(implement);
       observations.implementText = textOf(implement);
@@ -136,6 +138,7 @@ def test_update_harness_fixture_and_workflow_phase_smoke(tmp_path):
     data = _run_node(_workflow_script(consumer), consumer, tmp_path / "workflow-log-root")
     assert "edit" not in data["toolsAfterPrepare"], data
     assert "workflow_propose_edit" in data["toolsAfterImplement"], data
+    assert data["observations"]["skipInterview"].get("ok", True) is True
     assert data["observations"]["skip"].get("ok", True) is True
     assert data["observations"]["implement"].get("ok", True) is True
     assert any("dpaa" in (item["title"] + item["text"]).lower() for item in data["confirms"])

@@ -26,7 +26,7 @@ const PROTECTED_PATTERNS: RegExp[] = [
   /^\.pi\/.*\.(ts|js)$/,       // any harness TS/JS files (running harness only)
   /(^|\/)node_modules(\/|$)/,            // npm dependencies
   /(^|\/)\.git(\/|$)/,                   // git internals
-  /(^|\/)\.env(\.|$)/,                   // .env, .env.local, etc.
+  /(^|\/)\.env[^/]*(\/|$)/,             // .env, .env.local, .envrc, etc.
   /(^|\/)secrets(\/|$)/,                 // secret material directories
   /(^|\/)\.ssh(\/|$)/,                   // SSH private keys/config
   /^\.harness\/workflow-policy\.json$/,  // policy file (admin only)

@@ -254,6 +254,7 @@ const gitRoot = path.resolve('.');
 const cases = {
   gitConfig: mod.validateEditPath('.git/config', gitRoot, false),
   envLocal: mod.validateEditPath('apps/api/.env.local', gitRoot, false),
+  envrc: mod.validateEditPath('.envrc', gitRoot, false),
   secretsFile: mod.validateEditPath('config/secrets/prod.key', gitRoot, false),
   sshKey: mod.validateEditPath('.ssh/id_rsa', gitRoot, false),
   nestedSshKey: mod.validateEditPath('ops/.ssh/deploy_key', gitRoot, false),

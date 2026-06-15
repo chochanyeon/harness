@@ -334,14 +334,27 @@ export function readRecentFieldLogEvents(limitCount = 10): any[] {
   }).filter(Boolean);
 }
 
-export function formatLatestActionableFailureHint(limitCount = 20): string {
+export function formatLatestActionableFailureHint(
+  limitCount = 20,
+  options: { activeGateFailures?: Iterable<string> } = {},
+): string {
+  const activeGateFailures = options.activeGateFailures ? new Set([...options.activeGateFailures].map(String)) : null;
   const latest = readRecentFieldLogEvents(limitCount)
     .reverse()
-    .find((event) => event?.event?.status !== "resolved" && !isOptionalEnvironmentFollowUp(event));
+    .find((event) => event?.event?.status !== "resolved" && !isOptionalEnvironmentFollowUp(event) && !isStaleGateFailure(event, activeGateFailures));
   if (!latest) return "";
   const category = String(latest.event?.category ?? "unknown");
   const summary = String(latest.failure?.summary ?? latest.event?.summary ?? "unknown failure").slice(0, 120);
   return `- last actionable failure (${category}) → use trace/continuation-safety before retrying: ${summary}`;
+}
+
+const GATE_FAILURE_CATEGORIES = new Set(["dpaa", "code-quality", "push-policy"]);
+
+function isStaleGateFailure(event: any, activeGateFailures: Set<string> | null): boolean {
+  if (!activeGateFailures) return false;
+  const category = String(event?.event?.category ?? "");
+  const type = String(event?.event?.type ?? "");
+  return GATE_FAILURE_CATEGORIES.has(category) && type === "gate.failed" && !activeGateFailures.has(category);
 }
 
 function isOptionalEnvironmentFollowUp(event: any): boolean {

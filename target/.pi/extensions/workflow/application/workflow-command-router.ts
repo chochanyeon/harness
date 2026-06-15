@@ -101,7 +101,9 @@ function formatConditionalProtocolHints(state: WorkflowRuntimeState): string {
     hints.push("- review artifact write failed → use evidence-verification to cite the guard token and preserve review evidence before commit.");
   }
 
-  const latestActionableFailure = formatLatestActionableFailureHint();
+  const latestActionableFailure = formatLatestActionableFailureHint(20, {
+    activeGateFailures: failedGates.map(([gate]) => gate),
+  });
   if (latestActionableFailure) hints.push(latestActionableFailure);
 
   if (workflow.history.length >= 8) {

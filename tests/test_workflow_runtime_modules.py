@@ -130,6 +130,37 @@ def test_field_log_actionable_hint_ignores_optional_corenlp_noise(tmp_path):
     assert "CoreNLP" not in data["hint"]
 
 
+def test_field_log_actionable_hint_suppresses_resolved_gate_categories(tmp_path):
+    script = textwrap.dedent(
+        rf'''
+        const fs = require('fs');
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const mod = jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "field-log.ts"))});
+
+        const root = process.env.HARNESS_FIELD_LOG_ROOT;
+        const logDir = path.join(root, '.project-memory', 'harness');
+        fs.mkdirSync(logDir, {{ recursive: true }});
+        const event = {{
+          timestamp: '2026-06-12T00:01:00.000Z',
+          event: {{ category: 'dpaa', type: 'gate.failed', severity: 'warning', status: 'open' }},
+          failure: {{ summary: 'Failed to read DPAA report: ENOENT' }},
+        }};
+        fs.writeFileSync(path.join(logDir, 'events.jsonl'), JSON.stringify(event) + '\n', 'utf8');
+        console.log(JSON.stringify({{
+          stale: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: [] }}),
+          active: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: ['dpaa'] }}),
+        }}));
+        '''
+    )
+    data = _run_node(script, tmp_path)
+
+    assert data["stale"] == ""
+    assert "last actionable failure" in data["active"]
+    assert "dpaa" in data["active"]
+
+
 def test_write_dpaa_receipt_includes_report_descriptor(tmp_path):
     plan = tmp_path / "plan.md"
     report = tmp_path / "dpaa-report.json"

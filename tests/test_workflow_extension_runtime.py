@@ -368,6 +368,7 @@ def test_workflow_extension_runtime_push_approve_does_not_complete_without_git_p
 def test_workflow_extension_runtime_blocks_cd_and_git_shell_chains_during_workflow(tmp_path):
     script = textwrap.dedent(
         r'''
+        const fs = require('fs');
         const path = require('path');
         const { createJiti } = require('jiti');
         process.chdir('target');
@@ -383,8 +384,14 @@ def test_workflow_extension_runtime_blocks_cd_and_git_shell_chains_during_workfl
         (async () => {
           await pi.commands.workflow.handler('start Runtime cd git chain block', ctx);
           await pi.commands.workflow.handler('state implement', ctx);
-          const result = await pi.events.tool_call({ toolName: 'bash', input: { command: 'cd ../target && git status --short' } }, ctx);
-          console.log(JSON.stringify({ result, sentMessages }));
+          const result = await pi.events.tool_call({ toolName: 'bash', input: { command: 'cd ../target && env FOO=1 git status --short' } }, ctx);
+          const addResult = await pi.events.tool_call({ toolName: 'bash', input: { command: 'cd ../target && git add README.md' } }, ctx);
+          const eventsPath = path.join(process.env.HARNESS_FIELD_LOG_ROOT, '.project-memory', 'harness', 'events.jsonl');
+          const events = fs.existsSync(eventsPath)
+            ? fs.readFileSync(eventsPath, 'utf-8').trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
+            : [];
+          const shellChainEvent = events.reverse().find((event) => event.failure?.summary === 'Shell cd/git chain was blocked during an active workflow.');
+          console.log(JSON.stringify({ result, addResult, sentMessages, shellChainEvent }));
         })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
         '''
     )
@@ -394,6 +401,10 @@ def test_workflow_extension_runtime_blocks_cd_and_git_shell_chains_during_workfl
     assert "cd ... && git" in data["result"]["reason"]
     assert "workflow_run_command" in data["result"]["reason"]
     assert "git-status" in data["result"]["reason"]
+    assert data["addResult"]["block"] is True
+    assert "git-add-all" not in data["addResult"]["reason"]
+    assert "path-specific git add" in data["addResult"]["reason"]
+    assert data["shellChainEvent"]["event"]["severity"] == "major"
 
 
 def test_workflow_extension_runtime_git_push_catalog_command_completes_push_phase(tmp_path):

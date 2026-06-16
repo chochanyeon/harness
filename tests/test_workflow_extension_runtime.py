@@ -365,6 +365,37 @@ def test_workflow_extension_runtime_push_approve_does_not_complete_without_git_p
     assert "Current phase: push" in data["prompt"]
 
 
+def test_workflow_extension_runtime_blocks_cd_and_git_shell_chains_during_workflow(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const sentMessages = [];
+        const ctx = { hasUI: true, ui: { notify: () => {}, confirm: async () => true } };
+        pi.requestAttention = async (payload) => { sentMessages.push(payload.message); };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime cd git chain block', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          const result = await pi.events.tool_call({ toolName: 'bash', input: { command: 'cd ../target && git status --short' } }, ctx);
+          console.log(JSON.stringify({ result, sentMessages }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["result"]["block"] is True
+    assert "cd ... && git" in data["result"]["reason"]
+    assert "workflow_run_command" in data["result"]["reason"]
+    assert "git-status" in data["result"]["reason"]
+
+
 def test_workflow_extension_runtime_git_push_catalog_command_completes_push_phase(tmp_path):
     repo = tmp_path / "repo"
     remote = tmp_path / "remote.git"

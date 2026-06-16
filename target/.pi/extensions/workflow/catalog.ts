@@ -399,7 +399,7 @@ export const COMMAND_CATALOG: readonly CommandSpec[] = [
   },
   {
     id: "git-add-all",
-    description: "Stage all changes (git add -A) — use before git commit via bash",
+    description: "Stage all changes (git add -A) — use before git commit via workflow_run_command",
     executable: "git",
     fixedArgs: ["add", "-A"],
     allowedPhases: ["implement", "commit"],
@@ -502,13 +502,18 @@ export function runCatalogCommand(
   extraArgs: string[] = [],
 ): CatalogCommandResult {
   const startMs = Date.now();
-  const cwd =
+  let cwd =
     spec.cwdPolicy === "git-root" ? (gitRoot ?? HARNESS_EXT_ROOT)
     : spec.cwdPolicy === "harness-root" ? HARNESS_EXT_ROOT
     : process.cwd();
 
   let executable = spec.executable;
   let args = [...spec.fixedArgs, ...extraArgs];
+  if (executable === "git" && spec.cwdPolicy === "git-root") {
+    const commandRoot = gitRoot ?? HARNESS_EXT_ROOT;
+    args = ["-C", commandRoot, ...args];
+    cwd = HARNESS_EXT_ROOT;
+  }
 
   // Resolve build-system-aware sentinels (auto-test / auto-build / auto-quality)
   if (executable === "auto-test" || executable === "auto-build" || executable === "auto-quality") {

@@ -402,7 +402,7 @@ commit → push
   └─ 위험 변경 있으면 policy scan confirmation
 ```
 
-push phase에서는 raw shell보다 `workflow_run_command`의 `git-push` catalog command를 우선 사용합니다. 이 command는 `push` phase에서만 허용되며 추가 인자를 받지 않아 임의 remote/branch/force push를 방지합니다. 실제 `git push` 시에는 다시 scan합니다.
+push phase에서는 raw shell보다 `workflow_run_command`의 `git-push` catalog command를 우선 사용합니다. 이 command는 `push` phase에서만 허용되며 추가 인자를 받지 않아 임의 remote/branch/force push를 방지합니다. catalog의 git 계열 command는 shell `cd ... && git ...` 대신 구조화 argv의 `git -C <workflow-root> ...` 형태로 실행되며, active workflow 중 `cd ... && git ...` bash chain은 catalog 사용 안내와 함께 차단됩니다. 실제 `git push` 시에는 다시 scan합니다.
 
 ```text
 동일 workspace risk signature → 추가 확인 없이 통과

@@ -44,6 +44,8 @@ export async function handleWorkflowToolCall(
 
   const cmd = String((event.input as any).command ?? "");
   recordVerificationCommand(state, cmd);
+  const shellGitDecision = handleShellChainedGitCommand(state, cmd, deps);
+  if (shellGitDecision) return shellGitDecision;
   if (!isGitPush(cmd)) return;
 
   const pushDecision = await handleGitPushToolCall(state, cmd, ctx, deps);
@@ -119,6 +121,54 @@ function recordVerificationCommand(state: WorkflowRuntimeState, cmd: string): vo
     state.recentVerificationCommands.push({ command: cmd, timestamp: Date.now(), phase: state.workflow?.phase });
     if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
   }
+}
+
+function isShellChainedGitCommand(cmd: string): boolean {
+  return /(?:^|[;&|]\s*)cd\s+[^;&|]+(?:&&|;|\|\|)\s*\(?\s*git\b/i.test(cmd)
+    || /(?:^|[;&|]\s*)pushd\s+[^;&|]+(?:&&|;|\|\|)\s*\(?\s*git\b/i.test(cmd);
+}
+
+function suggestCatalogCommandForGitShellChain(cmd: string): string {
+  const gitPart = cmd.split(/(?:&&|;|\|\|)\s*/).find((part) => /\bgit\b/i.test(part)) ?? "";
+  if (/\bgit\s+status\b/i.test(gitPart)) return "git-status";
+  if (/\bgit\s+diff\b/i.test(gitPart) && /(?:--cached|--staged)\b/i.test(gitPart)) return "git-diff-staged";
+  if (/\bgit\s+diff\b/i.test(gitPart)) return "git-diff";
+  if (/\bgit\s+log\b/i.test(gitPart)) return "git-log";
+  if (/\bgit\s+push\b/i.test(gitPart)) return "git-push";
+  if (/\bgit\s+add\b/i.test(gitPart)) return "git-add-all";
+  if (/\bgit\s+commit\b/i.test(gitPart)) return "git-commit";
+  return "the closest git-* catalog command";
+}
+
+function handleShellChainedGitCommand(
+  state: WorkflowRuntimeState,
+  cmd: string,
+  deps: WorkflowToolCallDeps,
+): WorkflowToolCallDecision {
+  if (!state.workflow || !isShellChainedGitCommand(cmd)) return;
+
+  const suggestion = suggestCatalogCommandForGitShellChain(cmd);
+  const message = [
+    "Shell cd/git chain blocked during active workflow.",
+    "Use workflow_run_command instead of `cd ... && git ...`; catalog git commands run with structured argv and `git -C <workflow-root>`.",
+    `Suggested commandId: ${suggestion}`,
+  ].join("\n");
+
+  writeFieldLogEvent({
+    type: "phase.violation",
+    category: "tool",
+    severity: "warning",
+    workflow: state.workflow,
+    summary: "Shell cd/git chain was blocked during an active workflow.",
+    expected: "Git commands use workflow_run_command catalog entries with structured argv and git -C.",
+    actual: "A bash command chained directory changes with git execution.",
+    impact: "Shell chaining can bypass phase-aware command policy and workspace binding UX.",
+    primaryMessage: message,
+    command: cmd,
+    improvementKind: "workflow-rule",
+  });
+  void deps.steerLlm(`${message}\nExample: workflow_run_command({ commandId: "${suggestion}", reason: "replace shell cd/git chain" })`, "steer");
+  return { block: true, reason: `${message}\nExample: workflow_run_command({ commandId: "${suggestion}", reason: "replace shell cd/git chain" })` };
 }
 
 async function handleGitPushToolCall(

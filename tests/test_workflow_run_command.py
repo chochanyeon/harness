@@ -87,6 +87,15 @@ def test_no_shell_true_in_exec_file():
     assert "shell: true" not in src
 
 
+def test_git_root_catalog_commands_use_git_dash_c_not_shell_cd():
+    src = CATALOG.read_text(encoding="utf-8")
+    assert 'executable === "git"' in src
+    assert 'spec.cwdPolicy === "git-root"' in src
+    assert 'args = ["-C", commandRoot, ...args];' in src
+    assert 'cwd = HARNESS_EXT_ROOT;' in src
+    assert "cd " not in src.split("export function runCatalogCommand", 1)[1].split("export function formatCatalogCommandResult", 1)[0]
+
+
 def test_windows_bat_files_are_wrapped_with_cmd_c():
     src = CATALOG.read_text(encoding="utf-8")
     assert 'process.platform === "win32"' in src
@@ -199,6 +208,13 @@ def test_git_push_command_is_push_phase_only_and_has_fixed_args():
     push_entry = src.split('id: "git-push"', 1)[1].split('id: "code-quality"', 1)[0]
     assert "allowUserArgs" not in push_entry
     assert 'riskLevel: "medium"' in push_entry
+
+
+def test_git_add_all_description_uses_catalog_not_bash():
+    src = CATALOG.read_text(encoding="utf-8")
+    git_add_entry = src.split('id: "git-add-all"', 1)[1].split('id: "git-push"', 1)[0]
+    assert "via bash" not in git_add_entry
+    assert "workflow_run_command" in git_add_entry
 
 
 def test_git_add_patch_not_in_catalog():

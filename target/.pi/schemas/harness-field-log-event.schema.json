@@ -106,7 +106,7 @@
         },
         "category": {
           "type": "string",
-          "enum": ["dpaa", "code-quality", "push-policy", "workspace", "phase", "init", "update", "doctor", "test", "tool", "prompt", "user-correction", "unknown"]
+          "enum": ["dpaa", "code-quality", "push-policy", "interview-ambiguity", "workspace", "phase", "init", "update", "doctor", "test", "tool", "prompt", "user-correction", "unknown"]
         },
         "severity": {
           "type": "string",

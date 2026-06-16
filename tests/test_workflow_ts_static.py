@@ -504,8 +504,11 @@ class TestCompactionAndArtifactContracts:
         field_log = _src("field-log.ts")
         router = (EXT_DIR / "application" / "workflow-command-router.ts").read_text(encoding="utf-8")
         gates = _src("gates.ts")
+        schema = json.loads((ROOT / "target" / ".pi" / "schemas" / "harness-field-log-event.schema.json").read_text(encoding="utf-8"))
+        category_enum = schema["properties"]["event"]["properties"]["category"]["enum"]
         assert '"interview-ambiguity"' in field_log
         assert '"interview-ambiguity"' in router
+        assert "interview-ambiguity" in category_enum
         assert 'category: "interview-ambiguity"' in gates
         assert "fieldLogCategoryForGate" in router
 

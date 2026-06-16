@@ -367,6 +367,34 @@ export default function (pi: ExtensionAPI) {
     return /(?:^|\s)(?:--dry-run|-n)(?:\s|$)/.test(cmd);
   }
 
+  function completeWorkflowAfterSuccessfulGitPush(command: string, ctx: any): boolean {
+    if (!state.workflow || state.workflow.phase !== "push") return false;
+    if (!state.workflow.history.some((item) => item.from === "commit" && item.to === "push")) return false;
+
+    transitionWorkflow(state.workflow, "done", "git_push_succeeded");
+    saveWorkflow(state.workflow);
+    writeFieldLogEvent({
+      type: "phase.transition",
+      category: "phase",
+      severity: "info",
+      status: "resolved",
+      workflow: state.workflow,
+      summary: "Successful git push completed the workflow.",
+      expected: "A successful push-phase git push advances push → done.",
+      actual: "git push completed without error.",
+      impact: "Active workflow is cleared so stale push-phase context is not injected into later prompts.",
+      primaryMessage: "Workflow 전이: push → done",
+      command,
+      improvementKind: "workflow-rule",
+    });
+    clearActiveWorkflowAfterCompletion();
+    applyPhaseToolPolicy(null);
+    refreshBoard(ctx);
+    refreshStatus(ctx);
+    ctx.ui.notify("Workflow 전이: push → done\nGit push 성공으로 workflow를 완료했습니다.", "info");
+    return true;
+  }
+
   function pushPolicySignature(policyScan: ReturnType<typeof scanPushPolicy>): string {
     return JSON.stringify({
       totalChanged: policyScan.totalChanged,
@@ -658,7 +686,11 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const userArgs = Array.isArray(params.args) ? (params.args as string[]).map(String) : [];
-      return executeWorkflowCatalogCommand(state, params.commandId, ctx, userArgs);
+      const result = await executeWorkflowCatalogCommand(state, params.commandId, ctx, userArgs);
+      if (String(params.commandId) === "git-push" && result.details?.ok) {
+        completeWorkflowAfterSuccessfulGitPush("git push", ctx);
+      }
+      return result;
     },
 
     renderCall(args, theme) {
@@ -1444,30 +1476,7 @@ ${formatWorkflowAction(state.workflow)}` }],
     const cmd = String((event.input as any)?.command ?? "");
     if (!isGitPush(cmd) || isGitPushDryRun(cmd)) return;
     if (event.isError) return;
-    if (!state.workflow || state.workflow.phase !== "push") return;
-    if (!state.workflow.history.some((item) => item.from === "commit" && item.to === "push")) return;
-
-    transitionWorkflow(state.workflow, "done", "git_push_succeeded");
-    saveWorkflow(state.workflow);
-    writeFieldLogEvent({
-      type: "phase.transition",
-      category: "phase",
-      severity: "info",
-      status: "resolved",
-      workflow: state.workflow,
-      summary: "Successful git push completed the workflow.",
-      expected: "A successful push-phase git push advances push → done.",
-      actual: "git push tool_result completed without error.",
-      impact: "Active workflow is cleared so stale push-phase context is not injected into later prompts.",
-      primaryMessage: "Workflow 전이: push → done",
-      command: cmd,
-      improvementKind: "workflow-rule",
-    });
-    clearActiveWorkflowAfterCompletion();
-    applyPhaseToolPolicy(null);
-    refreshBoard(ctx);
-    refreshStatus(ctx);
-    ctx.ui.notify("Workflow 전이: push → done\nGit push 성공으로 workflow를 완료했습니다.", "info");
+    completeWorkflowAfterSuccessfulGitPush(cmd, ctx);
   });
 
   // ── session_start: 상태 초기화 + 세션 컨텍스트 알림 ───────────────────────

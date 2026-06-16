@@ -365,6 +365,58 @@ def test_workflow_extension_runtime_push_approve_does_not_complete_without_git_p
     assert "Current phase: push" in data["prompt"]
 
 
+def test_workflow_extension_runtime_git_push_catalog_command_completes_push_phase(tmp_path):
+    repo = tmp_path / "repo"
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "init", str(repo)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (repo / "README.md").write_text("# Push catalog test\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "commit", "-m", "test: initial"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "branch", "-M", "main"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        process.chdir({json.dumps(str(repo))});
+        process.env.HARNESS_POLICY_MAX_CHANGED_FILES = '500';
+
+        const pi = {{ events: {{}}, commands: {{}}, tools: {{}}, on(name, fn) {{ this.events[name] = fn; }}, registerCommand(name, spec) {{ this.commands[name] = spec; }}, registerTool(spec) {{ this.tools[spec.name] = spec; }} }};
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow.ts"))}).default(pi);
+
+        const notifications = [];
+        const ctx = {{ hasUI: true, ui: {{ notify: (text, level) => notifications.push({{ text, level }}), confirm: async () => true, setWidget() {{}}, setStatus() {{}} }} }};
+
+        (async () => {{
+          await pi.commands.workflow.handler('start Runtime catalog push cleanup', ctx);
+          await pi.commands.workflow.handler('state commit', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          const push = await pi.tools.workflow_run_command.execute('push-1', {{ commandId: 'git-push', reason: 'runtime push catalog completion test' }}, undefined, undefined, ctx);
+          await pi.commands.workflow.handler('status', ctx);
+          const prompt = await pi.events.before_agent_start({{ systemPrompt: 'base' }});
+          console.log(JSON.stringify({{
+            push: push.details,
+            notifications: notifications.map((item) => item.text),
+            prompt: prompt.systemPrompt,
+          }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+    joined = "\n".join(data["notifications"])
+
+    assert data["push"]["ok"] is True
+    assert "Workflow 전이: push → done" in joined
+    assert "No active workflow" in joined
+    assert "No active workflow" in data["prompt"]
+
+
 def test_workflow_extension_runtime_clears_active_workflow_after_successful_git_push(tmp_path):
     project = tmp_path / "clean-project"
     project.mkdir()

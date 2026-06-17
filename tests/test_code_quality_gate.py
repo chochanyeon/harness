@@ -60,6 +60,15 @@ def test_code_quality_gate_retries_environment_failures_once_and_keeps_violation
     assert "stderrTail" in gates
 
 
+def test_gradle_code_quality_gate_runs_compile_preflight_before_static_analysis():
+    gates = GATES.read_text(encoding="utf-8")
+    assert "runGradleCompilePreflight" in gates
+    assert "compileJava" in gates
+    assert "Compilation failed before static analysis" in gates
+    assert "compilation-error" in gates
+    assert '"-q"' not in gates
+
+
 def test_diff_aware_gate_check_function_exists():
     gates = GATES.read_text(encoding="utf-8")
     assert "diffAwareGateCheck" in gates

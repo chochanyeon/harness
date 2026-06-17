@@ -389,7 +389,7 @@ export async function runPreTransitionGate(
 
 const MAX_CODE_QUALITY_ATTEMPTS = 2;
 
-type CodeQualityFailureKind = "code-violation" | "coverage-failure" | "environment-error" | "unknown-quality-failure";
+type CodeQualityFailureKind = "compilation-error" | "code-violation" | "coverage-failure" | "environment-error" | "unknown-quality-failure";
 
 type CodeQualityAttempt = {
   ok: boolean;
@@ -419,6 +419,7 @@ function normalizeCodeQualityError(error: unknown): CodeQualityAttempt {
 
 function classifyCodeQualityFailure(output: string, status: number | null): CodeQualityFailureKind {
   if (status == null) return "environment-error"; // exit code unknown
+  if (/Compilation failed before static analysis|\bcompileJava\b|COMPILATION ERROR|cannot find symbol|\bjavac\b/i.test(output)) return "compilation-error";
   if (/\b(checkstyle|pmd|spotbugs)\b|\bviolations?\b|\bPMD\b|\bCheckstyle\b/i.test(output)) return "code-violation";
   if (/\b(jacoco|coverage|coverageGuard)\b/i.test(output)) return "coverage-failure";
   if (/\b(daemon|lock|timeout|timed out|could not start|unable to start|connection refused|out of memory|java\.io|gradle .*unavailable)\b/i.test(output)) return "environment-error";
@@ -427,6 +428,51 @@ function classifyCodeQualityFailure(output: string, status: number | null): Code
 
 function shouldRetryCodeQualityFailure(kind: CodeQualityFailureKind): boolean {
   return kind === "environment-error" || kind === "unknown-quality-failure";
+}
+
+function normalizeFileCommand(executable: string, args: string[]): { executable: string; args: string[] } {
+  if (process.platform === "win32" && /\.bat$/i.test(executable)) {
+    return { executable: "cmd.exe", args: ["/c", executable, ...args] };
+  }
+  return { executable, args };
+}
+
+function runFileCommandAttempt(executable: string, args: string[], root: string): CodeQualityAttempt {
+  try {
+    const command = normalizeFileCommand(executable, args);
+    const stdout = execFileSync(command.executable, command.args, {
+      cwd: root,
+      encoding: "utf-8",
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+      stdio: "pipe",
+      maxBuffer: 1024 * 1024 * 10,
+    }).trim();
+    return { ok: true, stdout, stderr: "", output: stdout, status: 0 };
+  } catch (error) {
+    return normalizeCodeQualityError(error);
+  }
+}
+
+function gradleCompileArgs(qualityArgs: string[]): string[] {
+  const compileTasks = new Set<string>();
+  for (const arg of qualityArgs) {
+    const match = /^(?::(.+):)?(?:codeQualityGuard|coverageGuard|checkstyleMain|pmdMain)$/.exec(arg);
+    if (match?.[1]) compileTasks.add(`:${match[1]}:compileJava`);
+  }
+  if (compileTasks.size === 0) compileTasks.add("compileJava");
+  return [...compileTasks, "--no-daemon", "--no-build-cache"];
+}
+
+function runGradleCompilePreflight(executable: string, qualityArgs: string[], root: string): CodeQualityAttempt {
+  const result = runFileCommandAttempt(executable, gradleCompileArgs(qualityArgs), root);
+  if (result.ok) return result;
+  const prefix = "Compilation failed before static analysis. Fix compile errors before Checkstyle/PMD can be trusted.";
+  return {
+    ...result,
+    stdout: result.stdout,
+    stderr: result.stderr ? `${prefix}\n${result.stderr}` : prefix,
+    output: [prefix, result.output].filter(Boolean).join("\n"),
+  };
 }
 
 export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; message: string } {
@@ -482,24 +528,16 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
       }
 
       // Build system quality command: use execFileSync (structured argv, no shell interpolation).
-      // Windows: .bat files need cmd /c wrapper.
-      let exe = qc!.executable;
+      // For Gradle, compile first so syntax/compile errors are not misreported as Checkstyle/PMD violations.
+      if (buildSystem.type === "gradle") {
+        const compileResult = runGradleCompilePreflight(qc!.executable, qc!.args, root);
+        if (!compileResult.ok) return compileResult;
+      }
       // Disable the Gradle daemon and build cache so quality checks use a fresh process/result.
       // --no-build-cache is less aggressive than --rerun-tasks: skips the cache
       // without forcing re-compilation of unchanged sources.
-      let eArgs = buildSystem.type === "gradle" ? [...qc!.args, "--no-daemon", "--no-build-cache"] : [...qc!.args];
-      if (process.platform === "win32" && /\.bat$/i.test(exe)) {
-        eArgs = ["/c", exe, ...eArgs];
-        exe = "cmd.exe";
-      }
-      const stdout = execFileSync(exe, eArgs, {
-        cwd: root,
-        encoding: "utf-8",
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
-        stdio: "pipe",
-        maxBuffer: 1024 * 1024 * 10,
-      }).trim();
-      return { ok: true, stdout, stderr: "", output: stdout, status: 0 };
+      const eArgs = buildSystem.type === "gradle" ? [...qc!.args, "--no-daemon", "--no-build-cache"] : [...qc!.args];
+      return runFileCommandAttempt(qc!.executable, eArgs, root);
     } catch (error) {
       return normalizeCodeQualityError(error);
     }
@@ -530,9 +568,11 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
   const tail = outputTail(output);
   const stdoutTail = outputTail(finalAttempt.stdout, 40);
   const stderrTail = outputTail(finalAttempt.stderr, 40);
-  const summary = classification === "environment-error"
-    ? "Quality guard execution failed before violations could be verified."
-    : "Code quality guard failed before review approval.";
+  const summary = classification === "compilation-error"
+    ? "Compilation failed before static analysis could run."
+    : classification === "environment-error"
+      ? "Quality guard execution failed before violations could be verified."
+      : "Code quality guard failed before review approval.";
   writeFieldLogEvent({
     type: "gate.failed",
     category: "code-quality",
@@ -541,9 +581,11 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
     summary,
     expected: "Code quality guard exits successfully before code_review → review_approved.",
     actual: `Command failed: ${command}. Classification: ${classification}. Attempts: ${attempts.length}. Exit: ${finalAttempt.status ?? "unknown"}`,
-    impact: classification === "environment-error"
-      ? "Workflow cannot verify Checkstyle/PMD state until the tooling/environment failure is fixed or explicitly skipped."
-      : "Workflow cannot advance to review_approved until quality failures are fixed or explicitly skipped.",
+    impact: classification === "compilation-error"
+      ? "Workflow cannot trust Checkstyle/PMD output until Java compile errors are fixed."
+      : classification === "environment-error"
+        ? "Workflow cannot verify Checkstyle/PMD state until the tooling/environment failure is fixed or explicitly skipped."
+        : "Workflow cannot advance to review_approved until quality failures are fixed or explicitly skipped.",
     primaryMessage: output || `Command failed: ${command}`,
     exitCode: finalAttempt.status ?? null,
     command,
@@ -557,7 +599,8 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
         gate: "Code Quality",
         why: `${summary} before code_review → review_approved. Classification: ${classification}. codeQualityGuard command: ${command}. Exit: ${finalAttempt.status ?? "unknown"}. Attempts: ${attempts.length}.`,
         next: [
-          "Check which task FAILED in the output: codeQualityGuard (Checkstyle/PMD), coverageGuard (JaCoCo coverage threshold), or environment/tooling startup.",
+          "Check which task FAILED in the output: compileJava (compilation), codeQualityGuard (Checkstyle/PMD), coverageGuard (JaCoCo coverage threshold), or environment/tooling startup.",
+          "compilation-error: fix Java compile/syntax errors first. Do not treat PMD parser failures as style violations until compileJava passes.",
           "code-violation: fix the reported Checkstyle/PMD violations in source code. Do NOT edit checkstyle.xml, suppressions.xml, or add CHECKSTYLE:OFF — fix the code itself.",
           "coverage-failure: add/fix tests to meet the coverage minimum (check gradle.properties for per-module threshold).",
           "environment-error: fix Gradle/JDK/daemon/tooling setup, then rerun the transition. Do not treat this as a pass.",

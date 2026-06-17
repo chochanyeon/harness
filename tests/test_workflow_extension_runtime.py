@@ -1251,6 +1251,126 @@ def test_workflow_extension_runtime_blocks_failed_code_quality_guard(tmp_path):
     assert "code_review → review_approved" in joined
 
 
+def _write_fake_gradle_wrapper(project: Path, mode: str) -> None:
+    bat = project / "gradlew.bat"
+    sh = project / "gradlew"
+    bat.write_text(
+        "@echo off\n"
+        "echo %*>> gradle-args.txt\n"
+        "echo %* | findstr /C:\"compileJava\" >nul\n"
+        "if %errorlevel%==0 (\n"
+        + ("  echo COMPILATION ERROR: cannot find symbol 1>&2\n  exit /b 1\n" if mode == "compile-fail" else "  echo compile ok\n  exit /b 0\n")
+        + ")\n"
+        + ("echo Checkstyle violations found in src/main/java/App.java 1>&2\nexit /b 7\n" if mode == "style-fail" else "echo SHOULD_NOT_RUN_STYLE 1>&2\nexit /b 0\n"),
+        encoding="utf-8",
+    )
+    sh.write_text(
+        "#!/usr/bin/env bash\n"
+        "echo \"$*\" >> gradle-args.txt\n"
+        "if [[ \" $* \" == *\" compileJava \"* ]]; then\n"
+        + ("  echo 'COMPILATION ERROR: cannot find symbol' >&2\n  exit 1\n" if mode == "compile-fail" else "  echo 'compile ok'\n  exit 0\n")
+        + "fi\n"
+        + ("echo 'Checkstyle violations found in src/main/java/App.java' >&2\nexit 7\n" if mode == "style-fail" else "echo 'SHOULD_NOT_RUN_STYLE' >&2\nexit 0\n"),
+        encoding="utf-8",
+    )
+    sh.chmod(0o755)
+
+
+def test_gradle_code_quality_gate_reports_compile_error_before_style_tasks(tmp_path):
+    project = tmp_path / "gradle-project"
+    project.mkdir()
+    subprocess.run(["git", "init"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (project / "build.gradle").write_text("task codeQualityGuard {}\n", encoding="utf-8")
+    _write_fake_gradle_wrapper(project, "compile-fail")
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const fs = require('fs');
+        const {{ createJiti }} = require('jiti');
+        delete process.env.HARNESS_CODE_QUALITY_GUARD_CMD;
+        process.chdir({json.dumps(str(project))});
+
+        const extension = {json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow.ts"))};
+        const pi = {{ events: {{}}, commands: {{}}, tools: {{}}, on(name, fn) {{ this.events[name] = fn; }}, registerCommand(name, spec) {{ this.commands[name] = spec; }}, registerTool(spec) {{ this.tools[spec.name] = spec; }} }};
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        jiti(extension).default(pi);
+        const notifications = [];
+        const ctx = {{ hasUI: true, ui: {{ notify: (text, level) => notifications.push({{ text, level }}), confirm: async () => true }} }};
+
+        (async () => {{
+          await pi.commands.workflow.handler('start Runtime gradle compile preflight', ctx);
+          await pi.commands.workflow.handler('state code_review', ctx);
+          const result = await pi.tools.submit_review_package.execute('review-fail', {{
+            mainReviewSummary: 'Main self-review complete.',
+            reviewerReviewSummary: 'Independent reviewer found no threshold blockers.',
+            qualityGateSummary: 'codeQualityGuard attempted.',
+            critical: 0,
+            major: 0,
+            minor: 0,
+          }}, undefined, undefined, ctx);
+          const args = fs.readFileSync(path.join(process.cwd(), 'gradle-args.txt'), 'utf8');
+          console.log(JSON.stringify({{ notifications: notifications.map((item) => item.text), toolResult: result.content[0].text, args }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+    joined = "\n".join(data["notifications"]) + "\n" + data["toolResult"]
+
+    assert "CODE QUALITY GATE BLOCKED" in joined
+    assert "compilation-error" in joined
+    assert "Compilation failed before static analysis" in joined
+    assert "COMPILATION ERROR" in joined
+    assert "compileJava" in data["args"]
+    assert "codeQualityGuard" not in data["args"]
+
+
+def test_gradle_code_quality_gate_runs_style_after_compile_success(tmp_path):
+    project = tmp_path / "gradle-project"
+    project.mkdir()
+    subprocess.run(["git", "init"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (project / "build.gradle").write_text("task codeQualityGuard {}\n", encoding="utf-8")
+    _write_fake_gradle_wrapper(project, "style-fail")
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const fs = require('fs');
+        const {{ createJiti }} = require('jiti');
+        delete process.env.HARNESS_CODE_QUALITY_GUARD_CMD;
+        process.chdir({json.dumps(str(project))});
+
+        const extension = {json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow.ts"))};
+        const pi = {{ events: {{}}, commands: {{}}, tools: {{}}, on(name, fn) {{ this.events[name] = fn; }}, registerCommand(name, spec) {{ this.commands[name] = spec; }}, registerTool(spec) {{ this.tools[spec.name] = spec; }} }};
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        jiti(extension).default(pi);
+        const notifications = [];
+        const ctx = {{ hasUI: true, ui: {{ notify: (text, level) => notifications.push({{ text, level }}), confirm: async () => true }} }};
+
+        (async () => {{
+          await pi.commands.workflow.handler('start Runtime gradle style after compile', ctx);
+          await pi.commands.workflow.handler('state code_review', ctx);
+          const result = await pi.tools.submit_review_package.execute('review-fail', {{
+            mainReviewSummary: 'Main self-review complete.',
+            reviewerReviewSummary: 'Independent reviewer found no threshold blockers.',
+            qualityGateSummary: 'codeQualityGuard attempted.',
+            critical: 0,
+            major: 0,
+            minor: 0,
+          }}, undefined, undefined, ctx);
+          const args = fs.readFileSync(path.join(process.cwd(), 'gradle-args.txt'), 'utf8');
+          console.log(JSON.stringify({{ notifications: notifications.map((item) => item.text), toolResult: result.content[0].text, args }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+    joined = "\n".join(data["notifications"]) + "\n" + data["toolResult"]
+
+    assert "CODE QUALITY GATE BLOCKED" in joined
+    assert "code-violation" in joined
+    assert "Checkstyle violations" in joined
+    assert "compileJava" in data["args"]
+    assert "codeQualityGuard" in data["args"]
+
+
 def test_workflow_extension_runtime_does_not_retry_checkstyle_violation_failures(tmp_path):
     script = textwrap.dedent(
         r'''

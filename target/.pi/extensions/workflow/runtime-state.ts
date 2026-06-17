@@ -14,6 +14,12 @@ export type WorkflowSteerMessage = {
   issuedAt: number;
 };
 
+export type TddTestEvidence = {
+  workflowId: string;
+  productionKeys: string[];
+  updatedAt: number;
+};
+
 export type WorkflowRuntimeState = {
   codeReviewGuardSatisfiedToken: {
     critical: number;
@@ -42,6 +48,7 @@ export type WorkflowRuntimeState = {
   gateFailures: Map<WorkflowGate, number>;
   lastInputCheckpointSignature: string | null;
   recentVerificationCommands: Array<{ command: string; timestamp: number; phase?: string }>;
+  tddTestEvidence: TddTestEvidence | null;
   reviewPackageToken: null | {
     workflowId: string;
     timestamp: number;
@@ -86,6 +93,7 @@ export function createWorkflowRuntimeState(): WorkflowRuntimeState {
     gateFailures: new Map<WorkflowGate, number>(),
     lastInputCheckpointSignature: null,
     recentVerificationCommands: [],
+    tddTestEvidence: null,
     reviewPackageToken: null,
     workflowContinuationPending: null,
     pendingSteerMessages: new Map<string, WorkflowSteerMessage>(),

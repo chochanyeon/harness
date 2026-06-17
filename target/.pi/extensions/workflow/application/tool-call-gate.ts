@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import type { WorkflowRuntimeState } from "../runtime-state";
 import { ensureExtensionMutationApproved } from "./extension-mutation-approval";
-import { decideProductionClassTddGate, expectedProductionTestPath, hasProductionClassTestCoverage, isProductionClassPath } from "../domain/production-class-policy";
+import { decideProductionClassTddGate, expectedProductionTestPath, hasProductionClassTestCoverage, isProductionClassPath, productionClassKey, productionClassKeyFromTestPath } from "../domain/production-class-policy";
 import { consumeSkipToken, formatGateBlocked, formatPushPolicyScanBlocked, scanPushPolicy, validateWorkflowWorkspace } from "../gates";
 import { getGitRoot, hasGitDashC, isGitPush } from "../git";
 import { formatWorkspaceMismatch } from "../format";
@@ -27,6 +27,12 @@ export type WorkflowToolCallDeps = {
 };
 
 export type WorkflowToolCallDecision = void | { block: true; reason: string };
+
+export type WorkflowToolResultEvent = {
+  toolName: string;
+  input: unknown;
+  isError?: boolean;
+};
 
 export async function handleWorkflowToolCall(
   state: WorkflowRuntimeState,
@@ -65,7 +71,8 @@ function handleWriteToolPolicy(
       const testPath = expectedProductionTestPath(filePath, gitRoot);
       const isNewFile = !fs.existsSync(path.isAbsolute(filePath) ? filePath : path.resolve(gitRoot, filePath));
       const testExists = hasProductionClassTestCoverage(filePath, gitRoot);
-      const tddDecision = decideProductionClassTddGate({ className, testPath, isNewFile, hasTestCoverage: testExists });
+      const phaseTestEvidence = hasTddTestEvidence(state, productionClassKey(filePath, gitRoot));
+      const tddDecision = decideProductionClassTddGate({ className, testPath, isNewFile, hasTestCoverage: testExists || phaseTestEvidence });
       if (tddDecision.action === "block") {
         return { block: true, reason: tddDecision.reasonLines.join("\n") };
       }
@@ -114,6 +121,33 @@ function handleWriteToolPolicy(
       }
     }
   }
+}
+
+export function handleWorkflowToolResult(state: WorkflowRuntimeState, event: WorkflowToolResultEvent): void {
+  if (event.isError) return;
+  if (event.toolName !== "write" && event.toolName !== "edit") return;
+  if (state.workflow?.phase !== "implement") return;
+  const filePath = String((event.input as any).path ?? "");
+  const gitRoot = state.workflow.gitRoot ?? getGitRoot();
+  if (!gitRoot || !filePath) return;
+  recordTddTestEvidence(state, filePath, gitRoot);
+}
+
+function recordTddTestEvidence(state: WorkflowRuntimeState, filePath: string, gitRoot: string): void {
+  if (!state.workflow || state.workflow.phase !== "implement") return;
+  const productionKey = productionClassKeyFromTestPath(filePath, gitRoot);
+  if (!productionKey) return;
+  const current = state.tddTestEvidence?.workflowId === state.workflow.id
+    ? state.tddTestEvidence
+    : { workflowId: state.workflow.id, productionKeys: [], updatedAt: Date.now() };
+  if (!current.productionKeys.includes(productionKey)) current.productionKeys.push(productionKey);
+  current.updatedAt = Date.now();
+  state.tddTestEvidence = current;
+}
+
+function hasTddTestEvidence(state: WorkflowRuntimeState, productionKey: string): boolean {
+  if (!state.workflow || state.tddTestEvidence?.workflowId !== state.workflow.id) return false;
+  return state.tddTestEvidence.productionKeys.includes(productionKey);
 }
 
 function recordVerificationCommand(state: WorkflowRuntimeState, cmd: string): void {

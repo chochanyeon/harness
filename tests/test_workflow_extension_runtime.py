@@ -139,8 +139,64 @@ def test_production_class_policy_handles_relative_and_absolute_paths(tmp_path):
     assert data["relatedIntegrationTestCounts"] is True
     assert data["missingRelatedTest"] is False
     assert data["newClassWithoutTest"] == "block"
-    assert data["existingClassWithoutTest"] == "steer"
+    assert data["existingClassWithoutTest"] == "block"
     assert data["classWithCoverage"] == "allow"
+
+
+def test_tdd_preflight_blocks_production_edit_until_related_test_evidence(tmp_path):
+    project = tmp_path / "project"
+    service = project / "src" / "main" / "java" / "com" / "example" / "FooService.java"
+    service.parent.mkdir(parents=True)
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ createWorkflowRuntimeState }} = jiti(path.resolve('target/.pi/extensions/workflow/runtime-state.ts'));
+        const {{ handleWorkflowToolCall, handleWorkflowToolResult }} = jiti(path.resolve('target/.pi/extensions/workflow/application/tool-call-gate.ts'));
+        const gitRoot = {json.dumps(str(project))};
+        const state = createWorkflowRuntimeState();
+        state.workflow = {{ id: 'wf-tdd', title: 'TDD preflight', phase: 'implement', cwd: gitRoot, gitRoot, branch: 'main', history: [], undone: [], startedAt: Date.now(), updatedAt: Date.now() }};
+        const steers = [];
+        const deps = {{ steerLlm: async (message, deliverAs) => steers.push({{ message, deliverAs }}) }};
+        const ctx = {{ hasUI: false, ui: {{ confirm: async () => false }} }};
+
+        (async () => {{
+          const firstProduction = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'src/main/java/com/example/FooService.java', content: 'class FooService {{}}' }} }}, ctx, deps);
+          const failedTestCall = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'src/test/java/com/example/FooServiceTest.java', content: 'class FooServiceTest {{}}' }} }}, ctx, deps);
+          await handleWorkflowToolResult(state, {{ toolName: 'write', input: {{ path: 'src/test/java/com/example/FooServiceTest.java' }}, isError: true }});
+          const stillBlocked = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'src/main/java/com/example/FooService.java', content: 'class FooService {{}}' }} }}, ctx, deps);
+          const testWrite = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'src/test/java/com/example/FooServiceTest.java', content: 'class FooServiceTest {{}}' }} }}, ctx, deps);
+          await handleWorkflowToolResult(state, {{ toolName: 'write', input: {{ path: 'src/test/java/com/example/FooServiceTest.java' }}, isError: false }});
+          const secondProduction = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'src/main/java/com/example/FooService.java', content: 'class FooService {{}}' }} }}, ctx, deps);
+          const dtoWrite = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'src/main/java/com/example/dto/FooDto.java', content: 'class FooDto {{}}' }} }}, ctx, deps);
+          console.log(JSON.stringify({{
+            firstBlocked: Boolean(firstProduction && firstProduction.block),
+            firstReason: firstProduction ? firstProduction.reason : '',
+            failedTestAllowed: failedTestCall === undefined,
+            stillBlockedAfterFailedTest: Boolean(stillBlocked && stillBlocked.block),
+            testAllowed: testWrite === undefined,
+            secondAllowed: secondProduction === undefined,
+            dtoAllowed: dtoWrite === undefined,
+            evidence: state.tddTestEvidence,
+            steers,
+          }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["firstBlocked"] is True
+    assert "do not ask" in data["firstReason"]
+    assert "pre-approved" in data["firstReason"]
+    assert "not scope expansion" in data["firstReason"]
+    assert "Next action" in data["firstReason"]
+    assert data["failedTestAllowed"] is True
+    assert data["stillBlockedAfterFailedTest"] is True
+    assert data["testAllowed"] is True
+    assert data["secondAllowed"] is True
+    assert data["dtoAllowed"] is True
+    assert data["evidence"]
 
 
 def test_workflow_extension_runtime_registers_and_allows_restored_push(tmp_path):

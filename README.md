@@ -377,7 +377,7 @@ hard guard는 자동 진행 중에도 우회할 수 없습니다.
 | Push policy scan | `commit → push`, `git push` | 위험 변경 확인 |
 | Push phase | `git push` | 현재 workflow phase가 `push`인지 검사 |
 | Review completion | `code_review → review_approved`, `commit → push` | review package/quality gate와 순차 전이 이력으로 검사 |
-| TDD write policy | `implement` 중 Java production class 작성/수정 | 새 production class는 관련 테스트가 먼저 있어야 합니다. `FooTest`, `FooTests`, `FooIT`, `FooIntegrationTest`를 같은 test package 기준으로 인정하며, 기존 class 수정은 hard block 대신 steer reminder로 완화합니다. |
+| TDD write policy | `implement` 중 Java production behavior class 작성/수정 | Java production behavior 파일은 관련 테스트가 이미 있거나 현재 implement phase에서 관련 테스트 파일을 먼저 작성/수정한 evidence가 있어야 수정할 수 있습니다. `FooTest`, `FooTests`, `FooIT`, `FooIntegrationTest`를 같은 test package 기준으로 인정합니다. 필요한 테스트 작성은 승인된 구현 범위에 포함되며 scope expansion이 아니므로 agent는 사용자에게 묻지 말고 RED → GREEN → REFACTOR를 진행해야 합니다. DTO/entity/model/repository/config-style artifact 예외는 유지합니다. |
 | Extension modification approval | `.pi/extensions/**` 수정 | 사용자 승인 없는 extension 수정 차단 |
 | Guarded edit protected paths | `workflow_propose_edit` / `workflow_apply_approved_edit` | `.git/**`, `.env*`, `secrets/**`, `.ssh/**`, `node_modules/**`, runtime `.pi` 코드 경로 차단 |
 

@@ -120,11 +120,17 @@ export async function executeWorkflowApproval(
       const newlyUntested = currentUntested.filter((cls) => !snapshot.includes(cls));
       if (newlyUntested.length > 0) {
         await deps.steerLlm(
-          `🧪 TDD 미준수 필요 — implement 중 테스트 없는 클래스가 생겼습니다. 테스트 작성 후 workflow_approve를 다시 호출하세요.\n\n` +
-          newlyUntested.map((c) => `- ${c}`).join("\n"),
+          [
+            "🧪 TDD 미준수 필요 — implement 중 테스트 없는 클래스가 생겼습니다.",
+            "Do not ask the user for approval to create/update the required tests.",
+            "Writing/updating these tests is pre-approved as part of the implementation scope and is not scope expansion.",
+            "Next action: create/update the failing tests, then retry workflow_approve and continue GREEN → REFACTOR.",
+            "",
+            newlyUntested.map((c) => `- ${c}`).join("\n"),
+          ].join("\n"),
         );
         return {
-          content: [{ type: "text", text: `TDD 미준수 (${newlyUntested.length}개 클래스). 테스트를 먼저 작성하세요.` }],
+          content: [{ type: "text", text: `TDD 미준수 (${newlyUntested.length}개 클래스). Do not ask; tests are pre-approved and not scope expansion. Next action: 테스트를 먼저 작성하세요.` }],
           details: { ok: false, reason: "tdd-violation", classes: newlyUntested },
         };
       }

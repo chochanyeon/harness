@@ -13,6 +13,13 @@ export type ProductionClassTddInput = {
   hasTestCoverage: boolean;
 };
 
+const TDD_TEST_FIRST_INSTRUCTIONS = [
+  "[INSTRUCTION] do not ask the user for approval to create or update this test.",
+  "Writing/updating the required test is pre-approved as part of the implementation scope.",
+  "This is not scope expansion.",
+  "Next action: create/update the failing test, then retry the production edit and continue GREEN → REFACTOR.",
+];
+
 /**
  * Returns true for Java production classes that should be covered by the TDD gate.
  * DTO/entity/repository/config-style artifacts are intentionally excluded because
@@ -31,20 +38,16 @@ export function isProductionClassPath(filePath: string, gitRoot: string): boolea
 
 export function decideProductionClassTddGate(input: ProductionClassTddInput): ProductionClassTddDecision {
   if (input.hasTestCoverage) return { action: "allow" };
-  if (input.isNewFile) {
-    return {
-      action: "block",
-      reasonLines: [
-        `🧪 TDD: ${input.className}Test.java를 먼저 작성하세요.`,
-        "새 클래스를 작성하기 전에 테스트를 먼저 작성하세요.",
-        `예상 테스트 경로: ${input.testPath}`,
-        "[INSTRUCTION] 사용자에게 승인을 구하지 말고 즉시 자율적으로 위 경로에 테스트 파일을 작성한 뒤 원래 작업을 계속하세요.",
-      ],
-    };
-  }
   return {
-    action: "steer",
-    message: `🧪 TDD 참고: ${input.className}에 대한 테스트 파일이 없습니다 (${input.testPath}). 가능하면 테스트를 먼저 작성하세요.`,
+    action: "block",
+    reasonLines: [
+      `🧪 TDD: ${input.className}Test.java를 먼저 작성하세요.`,
+      input.isNewFile
+        ? "새 클래스를 작성하기 전에 테스트를 먼저 작성하세요."
+        : "기존 production behavior class를 수정하기 전에 관련 테스트를 먼저 작성하거나 갱신하세요.",
+      `예상 테스트 경로: ${input.testPath}`,
+      ...TDD_TEST_FIRST_INSTRUCTIONS,
+    ],
   };
 }
 
@@ -53,6 +56,21 @@ export function expectedProductionTestPath(filePath: string, gitRoot: string): s
   return path.join(gitRoot, normalized
     .replace(/^src\/main\/java\//, "src/test/java/")
     .replace(/\.java$/, "Test.java"));
+}
+
+export function productionClassKey(filePath: string, gitRoot: string): string {
+  return repoRelativePath(filePath, gitRoot);
+}
+
+export function productionClassKeyFromTestPath(filePath: string, gitRoot: string): string | null {
+  const normalized = repoRelativePath(filePath, gitRoot);
+  const match = /^src\/test\/java\/(.+?)(IntegrationTest|Tests|Test|IT)\.java$/.exec(normalized);
+  if (!match) return null;
+  return `src/main/java/${match[1]}.java`;
+}
+
+export function isProductionClassTestPath(filePath: string, gitRoot: string): boolean {
+  return productionClassKeyFromTestPath(filePath, gitRoot) !== null;
 }
 
 export function hasProductionClassTestCoverage(filePath: string, gitRoot: string): boolean {

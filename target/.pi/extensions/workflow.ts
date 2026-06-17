@@ -119,7 +119,7 @@ import {
   buildWorkflowSystemPromptInjection,
   formatGuardMemoryStatus as formatGuardMemoryStatusForState,
 } from "./workflow/application/prompt-context";
-import { handleWorkflowToolCall } from "./workflow/application/tool-call-gate";
+import { handleWorkflowToolCall, handleWorkflowToolResult } from "./workflow/application/tool-call-gate";
 import { registerWorkflowCommand } from "./workflow/application/workflow-command-router";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow.ts
@@ -1470,8 +1470,9 @@ ${formatWorkflowAction(state.workflow)}` }],
   // ── Gate: tool_call → workflow policy pipeline ───────────────────────────
   pi.on("tool_call", async (event, ctx) => handleWorkflowToolCall(state, event, ctx, { steerLlm }));
 
-  // ── Post-push completion: successful git push completes the workflow ───────
+  // ── Tool result bookkeeping + post-push completion ─────────────────────────
   pi.on("tool_result", async (event, ctx) => {
+    handleWorkflowToolResult(state, event);
     if (event.toolName !== "bash") return;
     const cmd = String((event.input as any)?.command ?? "");
     if (!isGitPush(cmd) || isGitPushDryRun(cmd)) return;

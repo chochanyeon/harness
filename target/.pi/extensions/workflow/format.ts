@@ -101,7 +101,7 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
         "- Transition mode: automatic after implementation is complete.",
         "- Required now: implement only the approved scope, run the narrowest relevant verification, summarize changed files.",
         "- If the approved scope is already satisfied, record concrete evidence, state that no code changes are needed, run the narrowest relevant verification, then proceed to code_review instead of inventing edits.",
-        "- TDD: if writing new production code, write the failing test first without asking the user. Complete the full cycle (failing test → implement → pass) autonomously.",
+        "- TDD: if writing or editing production behavior code, write/update the failing test first without asking the user. Required test writing is pre-approved, is not scope expansion, and the next action after a TDD block should be creating/updating the test. Complete the full test-first cycle (failing test → implement → pass → refactor) autonomously.",
         "- Static analysis: write code that already follows the project's Checkstyle/PMD conventions (naming rules, line length, method size, import style). If violations occur anyway, fix them silently without reporting to the user. Do not ask; just fix and re-run.",
       );
       break;

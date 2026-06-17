@@ -152,4 +152,20 @@ def test_tdd_gate_checks_write_and_edit_calls_in_implement_phase():
     assert "src/test/java" in src
     assert "Test.java" in src
     assert "testExists" in src
+    assert "tddTestEvidence" in src
     assert "TDD:" in src
+
+
+def test_tdd_messages_make_test_creation_preapproved_not_scope_expansion():
+    src = (
+        TOOL_CALL_GATE.read_text(encoding="utf-8")
+        + PRODUCTION_CLASS_POLICY.read_text(encoding="utf-8")
+    )
+    transitions = (ROOT / "target" / ".pi" / "extensions" / "workflow" / "transitions.ts").read_text(encoding="utf-8")
+    fmt = (ROOT / "target" / ".pi" / "extensions" / "workflow" / "format.ts").read_text(encoding="utf-8")
+    combined = src + transitions + fmt
+    assert "do not ask" in combined
+    assert "pre-approved" in combined
+    assert "not scope expansion" in combined
+    assert "Next action" in combined
+    assert "test-first cycle" in combined

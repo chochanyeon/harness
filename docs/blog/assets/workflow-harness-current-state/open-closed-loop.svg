@@ -1,0 +1,41 @@
+<svg width="980" height="360" viewBox="0 0 980 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Open and closed loop current state">
+  <defs>
+    <marker id="arrow-loop2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#0f172a" />
+    </marker>
+    <style>
+      .open { fill:#eef2ff; stroke:#4f46e5; stroke-width:1.5; rx:16; }
+      .closed { fill:#ecfdf5; stroke:#059669; stroke-width:1.5; rx:16; }
+      .future { fill:#fff7ed; stroke:#ea580c; stroke-width:1.5; rx:16; }
+      .txt { font: 14px sans-serif; fill:#111827; text-anchor:middle; dominant-baseline:middle; }
+      .small { font: 12px sans-serif; fill:#475569; text-anchor:middle; dominant-baseline:middle; }
+      .line { stroke:#0f172a; stroke-width:1.6; fill:none; marker-end:url(#arrow-loop2); }
+      .dash { stroke:#94a3b8; stroke-width:1.5; stroke-dasharray:6 5; fill:none; marker-end:url(#arrow-loop2); }
+    </style>
+  </defs>
+
+  <text x="490" y="25" class="small">현재 harness는 closed loop delivery가 강하고, open loop discovery는 다음 확장 지점이다.</text>
+
+  <rect class="open" x="65" y="80" width="240" height="100" />
+  <text class="txt" x="185" y="110">Open loop discovery</text>
+  <text class="small" x="185" y="136">다음 문제/개선/기능 후보 탐색</text>
+  <text class="small" x="185" y="158">현재: 개념 정리 단계</text>
+
+  <rect class="closed" x="370" y="80" width="240" height="100" />
+  <text class="txt" x="490" y="110">Closed loop delivery</text>
+  <text class="small" x="490" y="136">선택된 목표를 gate까지 수렴</text>
+  <text class="small" x="490" y="158">현재: 구현되어 동작 중</text>
+
+  <rect class="future" x="675" y="80" width="240" height="100" />
+  <text class="txt" x="795" y="110">Future orchestrator</text>
+  <text class="small" x="795" y="136">discover → select → workflow start</text>
+  <text class="small" x="795" y="158">후보: /workflow discover</text>
+
+  <path class="dash" d="M305 130 H365" />
+  <path class="line" d="M610 130 H670" />
+
+  <rect class="closed" x="250" y="240" width="480" height="70" />
+  <text class="txt" x="490" y="264">현재 안정화된 핵심</text>
+  <text class="small" x="490" y="288">interview → plan → gate → implement → review → document → commit → push</text>
+  <path class="line" d="M490 180 V235" />
+</svg>

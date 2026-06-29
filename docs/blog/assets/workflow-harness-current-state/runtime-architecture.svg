@@ -1,0 +1,48 @@
+<svg width="980" height="420" viewBox="0 0 980 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Runtime architecture">
+  <defs>
+    <marker id="arrow-arch" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155" />
+    </marker>
+    <style>
+      .layer { fill:#f8fafc; stroke:#64748b; stroke-width:1.5; rx:18; }
+      .module { fill:white; stroke:#94a3b8; stroke-width:1; rx:10; }
+      .app { fill:#eff6ff; stroke:#2563eb; }
+      .domain { fill:#fefce8; stroke:#ca8a04; }
+      .runtime { fill:#f0fdf4; stroke:#16a34a; }
+      .storage { fill:#fdf2f8; stroke:#db2777; }
+      .txt { font: 13px sans-serif; fill:#0f172a; text-anchor:middle; dominant-baseline:middle; }
+      .title { font: 15px sans-serif; fill:#0f172a; text-anchor:middle; dominant-baseline:middle; font-weight:700; }
+      .line { stroke:#334155; stroke-width:1.4; marker-end:url(#arrow-arch); fill:none; }
+    </style>
+  </defs>
+
+  <rect class="layer runtime" x="40" y="45" width="900" height="70" />
+  <text class="title" x="490" y="68">Pi Runtime Adapter</text>
+  <rect class="module runtime" x="80" y="80" width="170" height="28" /><text class="txt" x="165" y="94">workflow.ts entrypoint</text>
+  <rect class="module runtime" x="280" y="80" width="170" height="28" /><text class="txt" x="365" y="94">runtime-ui.ts</text>
+  <rect class="module runtime" x="480" y="80" width="170" height="28" /><text class="txt" x="565" y="94">runtime-policy.ts</text>
+  <rect class="module runtime" x="680" y="80" width="200" height="28" /><text class="txt" x="780" y="94">runtime-state.ts</text>
+
+  <rect class="layer app" x="40" y="145" width="900" height="95" />
+  <text class="title" x="490" y="168">Application / Use-case Layer</text>
+  <rect class="module app" x="70" y="185" width="180" height="32" /><text class="txt" x="160" y="201">workflow-command-router</text>
+  <rect class="module app" x="270" y="185" width="150" height="32" /><text class="txt" x="345" y="201">tool-call-gate</text>
+  <rect class="module app" x="440" y="185" width="135" height="32" /><text class="txt" x="507" y="201">continuation</text>
+  <rect class="module app" x="595" y="185" width="150" height="32" /><text class="txt" x="670" y="201">prompt-context</text>
+  <rect class="module app" x="765" y="185" width="145" height="32" /><text class="txt" x="837" y="201">mutation approval</text>
+
+  <rect class="layer domain" x="40" y="270" width="430" height="95" />
+  <text class="title" x="255" y="293">Domain Policy</text>
+  <rect class="module domain" x="75" y="315" width="170" height="32" /><text class="txt" x="160" y="331">ambiguity-gate-policy</text>
+  <rect class="module domain" x="265" y="315" width="170" height="32" /><text class="txt" x="350" y="331">production-class-policy</text>
+
+  <rect class="layer storage" x="510" y="270" width="430" height="95" />
+  <text class="title" x="725" y="293">State / Artifacts / Logs</text>
+  <rect class="module storage" x="545" y="315" width="100" height="32" /><text class="txt" x="595" y="331">state</text>
+  <rect class="module storage" x="660" y="315" width="100" height="32" /><text class="txt" x="710" y="331">artifacts</text>
+  <rect class="module storage" x="775" y="315" width="130" height="32" /><text class="txt" x="840" y="331">field-log</text>
+
+  <path class="line" d="M490 115 V142" />
+  <path class="line" d="M490 240 V267" />
+  <path class="line" d="M510 240 C560 255, 640 260, 710 270" />
+</svg>

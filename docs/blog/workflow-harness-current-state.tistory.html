@@ -1,0 +1,335 @@
+<!--
+Tistory HTML fragment. Paste into Tistory HTML mode.
+Upload docs/blog/assets/workflow-harness-current-state/* first, then replace local image src values with uploaded URLs if needed.
+-->
+<!--
+Tistory posting bundle
+1. Upload the files under docs/blog/assets/workflow-harness-current-state/ to Tistory.
+2. Replace local image paths in this file/HTML with the Tistory CDN URLs if the editor does not preserve relative assets.
+3. If SVG rendering is blocked by the skin/editor, convert the SVG files to PNG and replace .svg with .png.
+-->
+
+<h1 id="workflow-harness-현재-상태">Workflow Harness 현재 상태</h1>
+<blockquote>
+<p>작성일: 2026-06-29<br />
+범위: Pi workflow harness의 현재 운영 모델, guard/evidence 구조, 자동
+전이 정책, 최근 정리된 승인 경계 버그 반영 상태<br />
+기준 소스: <code>README.md</code>,
+<code>.harness/workflow-policy.json</code>,
+<code>target/.pi/extensions/workflow/**</code></p>
+</blockquote>
+<hr />
+<h2 id="1-한-문장-요약">1. 한 문장 요약</h2>
+<p>Workflow harness는 AI coding agent를 “자율적으로 움직이는 실행자”로
+두되, phase, guard, evidence, review package, policy scan으로 감싸서
+<strong>검증 가능한 폐쇄 루프 안에서 작업을 끝내게 만드는 runtime
+controller</strong>다.</p>
+<p>핵심은 다음 세 가지다.</p>
+<ol type="1">
+<li><strong>자동 진행은 넓게 허용한다.</strong>
+<ul>
+<li><code>interview → plan → plan_review → implement</code></li>
+<li><code>implement → code_review</code></li>
+<li><code>review_approved → document → commit</code></li>
+</ul></li>
+<li><strong>사용자 승인은 위험 경계 하나에 집중한다.</strong>
+<ul>
+<li>현재 유일한 사용자 승인 경계: <code>commit → push</code></li>
+</ul></li>
+<li><strong>실패는 사용자에게 넘기기 전에 repair loop로
+되돌린다.</strong>
+<ul>
+<li>DPAA/SBADR 실패: <code>plan_review → plan</code></li>
+<li>review/quality 실패: <code>code_review → implement</code></li>
+</ul></li>
+</ol>
+<hr />
+<h2 id="2-현재-phase-모델">2. 현재 phase 모델</h2>
+<p><img src="./assets/workflow-harness-current-state/phase-model.svg"
+alt="Workflow phase model" /></p>
+<p>현재 phase 목록은 <code>.harness/workflow-policy.json</code>의
+<code>phases</code>가 source of truth다.</p>
+<pre class="text"><code>interview → plan → plan_review → implement → code_review → review_approved → document → commit → push → done</code></pre>
+<hr />
+<h2 id="3-자동-전이와-사용자-승인-경계">3. 자동 전이와 사용자 승인
+경계</h2>
+<p><img
+src="./assets/workflow-harness-current-state/approval-boundary.svg"
+alt="Automatic segments and approval boundary" /></p>
+<p>현재 정책상 <code>approvalBoundaries</code>는 다음 하나뿐이다.</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ot">[</span><span class="st">&quot;commit:push&quot;</span><span class="ot">]</span></span></code></pre></div>
+<p>중요한 정리:</p>
+<ul>
+<li><code>plan_review → implement</code>는 사용자 승인 경계가
+아니다.</li>
+<li><code>plan_review → implement</code>는 DPAA/SBADR gate가 통과하면
+자동 전이된다.</li>
+<li><code>commit → push</code>에서만 TUI yes/no 승인과 policy scan이
+결합된다.</li>
+</ul>
+<hr />
+<h2 id="4-closed-loop-실패-시-복구-루프">4. Closed loop: 실패 시 복구
+루프</h2>
+<p><img src="./assets/workflow-harness-current-state/repair-loops.svg"
+alt="Repair loops" /></p>
+<p>현재 하네스는 실패를 “대화로 넘기는 이벤트”가 아니라 “다음 수정
+위치로 되돌리는 상태 전이”로 취급한다.</p>
+<table>
+<thead>
+<tr>
+<th>실패 지점</th>
+<th>자동 복귀</th>
+<th>LLM 기본 행동</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DPAA/SBADR fail</td>
+<td><code>plan_review → plan</code></td>
+<td>계획 문장, metric, 참조, 모호성을 고치고 재시도</td>
+</tr>
+<tr>
+<td>품질 gate fail</td>
+<td><code>code_review → implement</code></td>
+<td>원인 수정 후 테스트/품질 재실행</td>
+</tr>
+<tr>
+<td>Critical/Major review finding</td>
+<td><code>code_review → implement</code></td>
+<td>지적 위치 수정 후 리뷰 루프 재진입</td>
+</tr>
+<tr>
+<td>push policy fail</td>
+<td><code>commit</code> 유지</td>
+<td>위험 요약, 승인/수정, 재시도</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-guard와-evidence-구조">5. Guard와 Evidence 구조</h2>
+<p><img
+src="./assets/workflow-harness-current-state/guard-evidence-matrix.svg"
+alt="Guard evidence matrix" /></p>
+<p>Evidence는 “토큰이 있으니 권한이 있다”가 아니라, 현재 workflow
+phase와 정상 전이 이력, gate 결과를 함께 확인하는 보조 증거다. 정책
+source of truth는 <code>.harness/workflow-policy.json</code>의
+phase/transition policy다.</p>
+<hr />
+<h2 id="6-runtime-구성도">6. Runtime 구성도</h2>
+<p><img
+src="./assets/workflow-harness-current-state/runtime-architecture.svg"
+alt="Runtime architecture" /></p>
+<p>현재 구현은 <code>workflow.ts</code>를 entrypoint와 조립 계층으로
+두고, 세부 책임을 <code>target/.pi/extensions/workflow/</code> 아래로
+분리한다.</p>
+<table>
+<thead>
+<tr>
+<th>영역</th>
+<th>대표 파일</th>
+<th>책임</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Runtime wiring</td>
+<td><code>workflow.ts</code>, <code>runtime-ui.ts</code>,
+<code>runtime-policy.ts</code></td>
+<td>Pi 이벤트, TUI, active tool policy 연결</td>
+</tr>
+<tr>
+<td>Application</td>
+<td><code>application/workflow-command-router.ts</code>,
+<code>application/tool-call-gate.ts</code></td>
+<td>slash command, tool call, continuation, prompt 조립</td>
+</tr>
+<tr>
+<td>Domain policy</td>
+<td><code>domain/ambiguity-gate-policy.ts</code>,
+<code>domain/production-class-policy.ts</code></td>
+<td>순수 정책 판단</td>
+</tr>
+<tr>
+<td>Gate/transition</td>
+<td><code>gates.ts</code>, <code>transitions.ts</code>,
+<code>gate-runner.ts</code></td>
+<td>전이 전 검사, 실패 메시지, repair loop</td>
+</tr>
+<tr>
+<td>Evidence/log</td>
+<td><code>runtime-state.ts</code>, <code>field-log.ts</code>,
+<code>artifacts.ts</code></td>
+<td>guard token, field log, artifact descriptor</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="7-llm-facing-prompt-계약">7. LLM-facing prompt 계약</h2>
+<p><img
+src="./assets/workflow-harness-current-state/prompt-contract.svg"
+alt="Prompt contract" /></p>
+<p>최근 수정으로 prompt 계약에서 중요한 불일치가 제거됐다.</p>
+<table>
+<thead>
+<tr>
+<th>이전 문제</th>
+<th>현재 상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>plan_review → implement</code>를 사용자 승인 경계로 안내</td>
+<td>DPAA/SBADR 자동 gate로 안내</td>
+</tr>
+<tr>
+<td><code>yes/no dialog before implementation</code> 표현</td>
+<td>제거됨</td>
+</tr>
+<tr>
+<td><code>implementation approval dialog</code> 표현</td>
+<td>제거됨</td>
+</tr>
+<tr>
+<td><code>present the plan for approval</code> 표현</td>
+<td>제거됨</td>
+</tr>
+<tr>
+<td>사용자 승인 경계 설명</td>
+<td><code>commit → push</code>만 명시</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-open-loop--closed-loop-관점에서-본-현재-위치">8. Open loop /
+Closed loop 관점에서 본 현재 위치</h2>
+<p><img
+src="./assets/workflow-harness-current-state/open-closed-loop.svg"
+alt="Open and closed loop current state" /></p>
+<p>현재 harness는 closed loop delivery에 집중되어 있다. 즉, 사용자가
+선택한 작업을 완료 조건까지 밀어붙이는 구조는 이미 강하다.</p>
+<p>Open loop discovery는 아직 별도 phase나 명령으로 정식 구현되지는
+않았다. 다만 다음 확장 지점은 명확하다.</p>
+<ul>
+<li><code>/workflow discover</code></li>
+<li>후보 작업 backlog 생성</li>
+<li>가치/위험/크기 평가</li>
+<li>사용자가 선택한 후보를 기존 workflow closed loop로 전달</li>
+</ul>
+<hr />
+<h2 id="9-현재-강점">9. 현재 강점</h2>
+<p><img
+src="./assets/workflow-harness-current-state/current-strengths.svg"
+alt="Current strengths" /></p>
+<ul>
+<li>phase 이동이 명확하다.</li>
+<li>전이별 gate/evidence가 분리되어 있다.</li>
+<li>실패 시 기본 처리 방침이 LLM-facing 메시지에 포함된다.</li>
+<li>code review는 사용자 승인 대신 review package와 quality gate를
+요구한다.</li>
+<li>push는 실제 <code>git push</code> 성공 관측으로만 <code>done</code>
+처리된다.</li>
+</ul>
+<hr />
+<h2 id="10-현재-주의-지점">10. 현재 주의 지점</h2>
+<p><img src="./assets/workflow-harness-current-state/current-risks.svg"
+alt="Current risks" /></p>
+<p>주의할 점은 기능 자체보다 <strong>정책과 prompt 설명의
+동기화</strong>다. 방금 수정한 버그도 실제 정책은
+<code>commit → push</code>만 승인 경계였지만, LLM-facing 문구가 오래된
+모델을 설명해서 발생했다.</p>
+<hr />
+<h2 id="11-최근-반영된-상태-approval-boundary-guidance-fix">11. 최근
+반영된 상태: approval boundary guidance fix</h2>
+<p>최근 반영된 정리 내용은 다음과 같다.</p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>이전</th>
+<th>현재</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>사용자 승인 경계</td>
+<td><code>plan_review → implement</code>, <code>commit → push</code>처럼
+설명되는 곳이 있었음</td>
+<td><code>commit → push</code>만</td>
+</tr>
+<tr>
+<td>plan_review action</td>
+<td>plan approval / implementation approval dialog</td>
+<td>DPAA/SBADR gate 실행</td>
+</tr>
+<tr>
+<td>DPAA fail message</td>
+<td>user approval 전 실패처럼 표현</td>
+<td>automatic implementation transition 전 실패</td>
+</tr>
+<tr>
+<td>테스트 fixture</td>
+<td>구현 승인 표현 포함</td>
+<td>DPAA 전이 표현으로 정리</td>
+</tr>
+<tr>
+<td>회귀 테스트</td>
+<td>일부 LLM action 문구만 확인</td>
+<td>stale approval 표현 금지까지 확인</td>
+</tr>
+</tbody>
+</table>
+<p>검증된 상태:</p>
+<pre class="text"><code>Targeted regression: 139 passed
+Project test:        364 passed, 1 skipped
+Code quality:        364 passed, 1 skipped</code></pre>
+<hr />
+<h2 id="12-다음-단계-후보">12. 다음 단계 후보</h2>
+<p><img
+src="./assets/workflow-harness-current-state/next-steps-roadmap.svg"
+alt="Next steps roadmap" /></p>
+<p>추천 순서:</p>
+<ol type="1">
+<li><strong>문구 source of truth 정리</strong>
+<ul>
+<li>workflow policy, README, prompt action block 간 중복을 줄인다.</li>
+</ul></li>
+<li><strong>prompt contract test 확대</strong>
+<ul>
+<li>LLM 행동을 흔드는 문구는 테스트로 pinning한다.</li>
+</ul></li>
+<li><strong>Loop Engineering README 개편</strong>
+<ul>
+<li>open loop / closed loop / evidence / guard / repair loop 중심으로
+재구성한다.</li>
+</ul></li>
+<li><strong>기술 블로그 연재화</strong>
+<ul>
+<li>“AI에게 맡기는 것이 아니라 루프를 설계한다”는 관점으로 현재 경험을
+정리한다.</li>
+</ul></li>
+<li><strong>Open loop discovery 실험</strong>
+<ul>
+<li><code>/workflow discover</code> 또는 별도 discovery artifact로 다음
+문제/기능 후보를 생성한다.</li>
+</ul></li>
+</ol>
+<hr />
+<h2 id="13-결론">13. 결론</h2>
+<p>현재 workflow harness는 다음 상태다.</p>
+<ul>
+<li><strong>Closed-loop delivery controller는 동작 가능한 수준으로
+정리되어 있다.</strong></li>
+<li><strong>사용자 승인 경계는 <code>commit → push</code> 하나로
+수렴했다.</strong></li>
+<li><strong><code>plan_review → implement</code>는 DPAA/SBADR 자동 gate
+전이다.</strong></li>
+<li><strong>review/quality 실패는 implement repair loop로
+되돌아간다.</strong></li>
+<li><strong>push는 실제 push 성공 관측으로만 done
+처리된다.</strong></li>
+<li><strong>다음 큰 주제는 open loop discovery와 문서/블로그용 개념
+정리다.</strong></li>
+</ul>
+<p>이 문서는 README 전면 개편과 기술 블로그 초안의 중간 산출물로 사용할
+수 있다.</p>

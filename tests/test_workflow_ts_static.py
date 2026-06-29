@@ -645,7 +645,7 @@ class TestGateMessageLanguage:
         assert "Fix the underlying cause within the current phase when possible" in src
         assert "Ask the user only for product/architecture input" in src
 
-    def test_dpaa_precheck_runs_before_user_approval_dialog(self):
+    def test_dpaa_precheck_is_automatic_implementation_transition(self):
         workflow_src = _workflow_src()
         transition_src = _src("transitions.ts")
         gate_runner_src = _src("gate-runner.ts")
@@ -653,7 +653,9 @@ class TestGateMessageLanguage:
         confirm = transition_src.index("ctx.ui.confirm(")
         assert precheck < confirm
         assert "executeWorkflowApproval(state, params.summary, ctx" in workflow_src
-        assert "DPAA precheck failed before user approval" in gate_runner_src
+        assert "automatic implementation transition" in gate_runner_src
+        assert "implementation approval dialog" not in gate_runner_src
+        assert "DPAA precheck failed before user approval" not in gate_runner_src
         assert "transitionWorkflow(state.workflow, \"plan\", \"dpaa_precheck_repair_required\")" not in workflow_src
         assert "deps.transitionWorkflow(state.workflow, \"plan\", \"dpaa_precheck_repair_required\")" in gate_runner_src
 

@@ -38,7 +38,7 @@ export function formatPhaseGuidanceForUser(workflow: WorkflowInstance): string {
   switch (workflow.phase) {
     case "interview":    lines.push("요구사항 정리 중. 완료 후 plan → plan_review 로 자동 진행됩니다."); break;
     case "plan":         lines.push("플랜 작성 중. 완료 후 plan_review 로 자동 진행됩니다."); break;
-    case "plan_review":  lines.push("플랜 검토 대기 중입니다. workflow_approve를 실행하면 DPAA/SBADR 검사를 거쳐 구현 승인 여부를 확인합니다."); break;
+    case "plan_review":  lines.push("플랜 검토 중입니다. workflow_approve를 실행하면 DPAA/SBADR 검사를 거쳐 구현 단계로 자동 전이합니다."); break;
     case "implement":    lines.push("구현 중. 완료 후 code_review 로 자동 진행됩니다."); break;
     case "code_review":  lines.push("코드 리뷰 중. submit_review_package 완료 후 review_approved 로 진행됩니다."); break;
     case "review_approved": lines.push("리뷰 완료. 문서화 → commit 준비로 자동 진행됩니다."); break;
@@ -77,23 +77,23 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
         "- Transition mode: automatic preparation chain.",
         "- Required now: clarify requirements, record interview artifacts, then advance through plan to plan_review when ready.",
         "- After workflow_interview_wizard completes: call workflow_score_interview with per-dimension clarity scores (0-100). This is required before interview → plan.",
-        "- User-visible next stop after the automatic preparation chain: plan_review awaiting plan approval.",
-        "- Do not request user approval before plan_review.",
+        "- User-visible next stop after the automatic preparation chain: plan_review awaiting DPAA/SBADR gate execution.",
+        "- Do not request user approval before plan_review; the only user-approval boundary is commit → push.",
       );
       break;
     case "plan":
       lines.push(
         "- Transition mode: automatic preparation chain.",
         "- Required now: produce/update the plan and DPAA/SBADR-ready artifacts, then advance to plan_review.",
-        "- User-visible state: planning in progress; next stop is plan_review for explicit approval.",
-        "- Do not implement until plan_review approval is received.",
+        "- User-visible state: planning in progress; next stop is plan_review for DPAA/SBADR gate execution.",
+        "- Do not ask for implementation approval; plan_review → implement advances after DPAA/SBADR passes.",
       );
       break;
     case "plan_review":
       lines.push(
-        "- Transition mode: user approval boundary before implement.",
-        "- Required now: present the plan; workflow_approve will show the user an explicit yes/no dialog before implementation.",
-        "- Approval runs DPAA/SBADR ambiguity checks before implementation. If checks fail, autonomously repair vague/ambiguous sentences and retry workflow_approve — only ask the user for genuine business decisions that cannot be inferred from context.",
+        "- Transition mode: automatic DPAA/SBADR gate before implement; not a user-approval boundary.",
+        "- Required now: run workflow_approve so DPAA/SBADR executes and advances to implement when the gate passes.",
+        "- The only user-approval boundary is commit → push. If DPAA/SBADR fails, autonomously repair vague/ambiguous sentences and retry workflow_approve — only ask the user for genuine business decisions that cannot be inferred from context.",
       );
       break;
     case "implement":
@@ -247,7 +247,7 @@ export function phaseGuidance(phase: WorkflowPhase): string {
     case "plan":
       return "• Deliverable: produce/update the implementation plan; keep English DPAA artifacts faithful to the Korean sources.";
     case "plan_review":
-      return "• Deliverable: present the plan for approval. The approval dialog runs DPAA then SBADR; if checks fail, autonomously repair the plan artifacts (vague phrasing, missing metrics, undefined pronouns, syntactic ambiguity) and retry workflow_approve. Ask the user only for genuine business decisions that cannot be inferred from context.";
+      return "• Deliverable: run the automatic DPAA/SBADR gate for the plan; if checks fail, autonomously repair the plan artifacts (vague phrasing, missing metrics, undefined pronouns, syntactic ambiguity) and retry workflow_approve. Ask the user only for genuine business decisions that cannot be inferred from context.";
     case "implement":
       return "• Deliverable: implement the approved plan only. After implementation and narrow verification are complete, advance to code_review automatically; do not ask user approval for this transition.";
     case "code_review":

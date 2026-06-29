@@ -222,7 +222,17 @@ def test_automatic_chain_display_guidance_is_explicit():
     src = FORMAT.read_text(encoding="utf-8")
     assert "User-visible next stop" in src
     assert "planning in progress" in src
-    assert "plan_review awaiting plan approval" in src
+    assert "plan_review awaiting DPAA" in src
+
+
+def test_plan_review_guidance_matches_commit_push_only_approval_boundary():
+    src = FORMAT.read_text(encoding="utf-8")
+    assert "The only user-approval boundary is commit → push" in src
+    assert "automatic DPAA/SBADR gate" in src
+    assert "user approval boundary before implement" not in src
+    assert "yes/no dialog before implementation" not in src
+    assert "present the plan for approval" not in src
+    assert "approval dialog runs DPAA" not in src
 
 
 def test_code_review_guidance_prefers_async_subagent_review():

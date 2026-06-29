@@ -27,12 +27,12 @@ export async function returnToPlanAfterDpaaBlock(
   deps.refreshBoard(ctx);
   deps.refreshStatus(ctx);
   await deps.steerLlm(
-    "DPAA precheck failed before showing the implementation approval dialog. " +
+    "DPAA precheck failed before the automatic implementation transition. " +
     "The workflow has returned to plan so you can repair the plan artifacts, then retry workflow_approve.\n\n" +
     message.slice(0, 1200),
   );
   return [
-    "DPAA precheck failed before user approval. The workflow returned to plan so the LLM can repair the plan and retry.",
+    "DPAA precheck failed before the automatic implementation transition. The workflow returned to plan so the LLM can repair the plan and retry.",
     "",
     message,
     "",

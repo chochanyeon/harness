@@ -69,7 +69,7 @@ DPAA와 SBADR은 상호 보완적입니다.
 
 보조 protocol은 기본 workflow에 항상 추가되는 필수 단계가 아니라 조건부 안전장치입니다. 기본 흐름과 조건부 protocol taxonomy는 [`docs/workflow-protocol-taxonomy.md`](docs/workflow-protocol-taxonomy.md)에 정리되어 있습니다. OMC 원본은 [`yeachan-heo/oh-my-claudecode`](https://github.com/yeachan-heo/oh-my-claudecode)이며, 이미 흡수한 패턴과 중복 방지 규칙은 [`docs/omc-borrowed-patterns.md`](docs/omc-borrowed-patterns.md)에 기록합니다. 대표 protocol은 원인 분석용 `trace`, 완료/회귀 증거용 `evidence-verification`, 실패·pending work 복구용 `continuation-safety`, context 압축용 `compact-handoff`, worktree 작업용 `worktree-safety`, 동작 보존 cleanup용 `cleanup`입니다. `/workflow trace <관찰>`은 trace protocol을 현재 workflow context와 함께 LLM에게 즉시 시작하도록 연결합니다.
 
-고위험 plan은 `plan_review`에서 추가 consensus 절차를 요구합니다. Plan metadata가 `Risk: high`, `Ambiguity gate: strict`, 또는 `Work type: api|security|migration|data|deploy`이면 구현 승인 전에 Architect/Critic 관점으로 feasibility/testability gap을 검토하고 plan을 보수해야 합니다. Critic 절차는 DPAA(언어적 명확성 게이트)와 독립된 레이어로, 핵심 가정 FRAGILE 등급 분류, pre-mortem(3개 실패 시나리오), executor perspective(스텝별 실행 가능성)로 논리적 건전성을 점검합니다. `code_review` 스킬도 동일한 Critic 프로토콜(pre-commitment 예측, gap analysis, self-audit, realist check, ADVERSARIAL 에스컬레이션)을 코드 리뷰에 적용하고, 변경 파일/헝크 coverage 확인과 Critical/Major 위치 검증을 함께 요구합니다. 큰 review/trace/verification/DPAA 출력은 `target/.pi/extensions/workflow/artifact-descriptor.ts`의 descriptor contract(`kind`, `path`, `producer`, `retention`, `sizeBytes`, `sha256`, `summary`)로 파일 참조화할 수 있게 표준 필드를 제공하며, DPAA receipt는 `dpaa-report` descriptor를 함께 기록합니다.
+고위험 plan은 `plan_review`에서 추가 consensus 절차를 요구합니다. Plan metadata가 `Risk: high`, `Ambiguity gate: strict`, 또는 `Work type: api|security|migration|data|deploy`이면 자동 구현 전이를 재시도하기 전에 Architect/Critic 관점으로 feasibility/testability gap을 검토하고 plan을 보수해야 합니다. Critic 절차는 DPAA(언어적 명확성 게이트)와 독립된 레이어로, 핵심 가정 FRAGILE 등급 분류, pre-mortem(3개 실패 시나리오), executor perspective(스텝별 실행 가능성)로 논리적 건전성을 점검합니다. `code_review` 스킬도 동일한 Critic 프로토콜(pre-commitment 예측, gap analysis, self-audit, realist check, ADVERSARIAL 에스컬레이션)을 코드 리뷰에 적용하고, 변경 파일/헝크 coverage 확인과 Critical/Major 위치 검증을 함께 요구합니다. 큰 review/trace/verification/DPAA 출력은 `target/.pi/extensions/workflow/artifact-descriptor.ts`의 descriptor contract(`kind`, `path`, `producer`, `retention`, `sizeBytes`, `sha256`, `summary`)로 파일 참조화할 수 있게 표준 필드를 제공하며, DPAA receipt는 `dpaa-report` descriptor를 함께 기록합니다.
 
 | | DPAA | SBADR |
 |---|---|---|
@@ -251,9 +251,10 @@ review_approved → document → commit
 ### 사용자 승인이 필요한 경계
 
 ```text
-plan_review → implement
 commit → push
 ```
+
+`plan_review → implement`는 사용자 승인 경계가 아니라 DPAA/SBADR gate 전이입니다. Gate가 PASS하면 자동으로 `implement`로 진행하고, FAIL하면 `plan`으로 돌아가 plan을 보수한 뒤 재시도합니다.
 
 추가로 다음은 별도 사용자 확인이 필요합니다.
 
@@ -277,8 +278,8 @@ git push 위험 변경 재확인
 |---|---|---|
 | `interview` | 요구사항/모호성 확인 | 자동으로 `plan`까지 진행 가능 |
 | `plan` | 구현 계획/DPAA artifact 작성 | 자동으로 `plan_review`까지 진행 |
-| `plan_review` | 계획 검토/승인 대기 | 사용자 승인 + DPAA PASS 필요 |
-| `implement` | 승인된 계획만 구현 | 구현과 좁은 검증 완료 후 사용자 승인 없이 `code_review` 자동 진입 가능 |
+| `plan_review` | 계획 검토/DPAA·SBADR gate 실행 | 사용자 승인 없이 DPAA/SBADR PASS 후 `implement` 자동 진입 |
+| `implement` | gate를 통과한 계획만 구현 | 구현과 좁은 검증 완료 후 사용자 승인 없이 `code_review` 자동 진입 가능 |
 | `code_review` | main review + 독립 reviewer/subagent review + quality gate | 사용자 승인 대신 `submit_review_package`와 quality gate 통과 필요 |
 | `review_approved` | 리뷰 패키지와 품질 gate 통과 | 자동으로 `document` 진행 |
 | `document` | 필요한 문서/feature docs 작성 | 사용자 승인 없이 자동으로 `commit` 준비 가능 |
@@ -357,7 +358,7 @@ code_review → review_approved → document → commit
 
 reminder는 기본적으로 차단하지 않습니다. 대신 LLM은 반드시 처리하거나, 해당 항목이 필요 없는 이유를 명시해야 합니다.
 
-추가로 `.harness/workflow-policy.json`의 짧은 `[WORKFLOW HARD RULES]` 블록을 Pi prompt에 주입합니다. 이 블록은 현재 phase 준수, phase skip 금지, implement/push 전 승인, code_review 내부 fix loop, subagent 우선 사용, main context 최소화를 간결하게 상기시킵니다.
+추가로 `.harness/workflow-policy.json`의 짧은 `[WORKFLOW HARD RULES]` 블록을 Pi prompt에 주입합니다. 이 블록은 현재 phase 준수, phase skip 금지, commit → push 전 승인, plan/code_review repair loop, subagent 우선 사용, main context 최소화를 간결하게 상기시킵니다.
 
 `target/.pi/settings.json`은 reviewer subagent의 기본 실행 제한을 300000ms로 늘려 긴 diff/review fixture에서 120초 timeout이 반복되지 않도록 합니다.
 
@@ -371,7 +372,7 @@ hard guard는 자동 진행 중에도 우회할 수 없습니다.
 
 | Guard | 위치 | 의미 |
 |---|---|---|
-| DPAA/SBADR | `plan_review → implement` | 사용자 승인창 표시 전 계획 모호성/검증 가능성 검사. `advisory`/`standard`/`strict` 강도를 정합니다. 계획 상단 metadata의 `Ambiguity gate: advisory\|standard\|strict`, `Risk: low\|normal\|high`, `Work type: docs\|feature\|api\|security\|migration` 값을 우선 적용하고, metadata가 없으면 기존 keyword fallback을 사용합니다. docs/cosmetic/discovery/small 작업은 작업 제목 기준으로 advisory가 될 수 있어 FAIL도 advisory로 낮추고 plan 부재도 허용할 수 있습니다. API/schema/security/migration/data/deploy 계열은 metadata나 제목/plan 내용에서 strict로 유지합니다. acceptance는 숫자 metric뿐 아니라 `command exits 0`, `tests pass`, `README updated`, `no blockers/errors` 같은 binary/observable 조건도 검증 가능 조건으로 인정합니다. `WARN`은 advisory로 표시하되 전이는 허용합니다. |
+| DPAA/SBADR | `plan_review → implement` | 사용자 승인 없이 실행되는 계획 모호성/검증 가능성 검사. `advisory`/`standard`/`strict` 강도를 정합니다. 계획 상단 metadata의 `Ambiguity gate: advisory\|standard\|strict`, `Risk: low\|normal\|high`, `Work type: docs\|feature\|api\|security\|migration` 값을 우선 적용하고, metadata가 없으면 기존 keyword fallback을 사용합니다. docs/cosmetic/discovery/small 작업은 작업 제목 기준으로 advisory가 될 수 있어 FAIL도 advisory로 낮추고 plan 부재도 허용할 수 있습니다. API/schema/security/migration/data/deploy 계열은 metadata나 제목/plan 내용에서 strict로 유지합니다. acceptance는 숫자 metric뿐 아니라 `command exits 0`, `tests pass`, `README updated`, `no blockers/errors` 같은 binary/observable 조건도 검증 가능 조건으로 인정합니다. `WARN`은 advisory로 표시하되 전이는 허용합니다. |
 | Code quality | review package 제출 시 | `codeQualityGuard` 또는 설정된 품질 명령 실행. Gradle 품질 명령은 static analysis 전에 `compileJava` preflight를 먼저 실행해 컴파일/문법 오류를 `compilation-error`로 분리하고 PMD parser 실패가 Checkstyle/PMD 위반으로 오진되지 않게 합니다. Gradle 실행은 `execFileSync` argv 실행에 `--no-daemon --no-build-cache`를 붙이고 `-q`를 사용하지 않으며, violation 없는 환경성 실패는 1회 재시도 후 `environment-error`로 차단하고 stdout/stderr tail을 reason에 포함합니다. `submit_review_package`는 선택적으로 `reviewedFiles`, `skippedFiles`, `positionValidation`을 받아 changed-file/hunk coverage와 Critical/Major 위치 검증 evidence를 함께 저장합니다. |
 | Workspace | `git push` | workflow 시작 workspace/branch와 현재 상태 일치 검사 |
 | Push policy scan | `commit → push`, `git push` | 위험 변경 확인 |

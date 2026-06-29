@@ -15,7 +15,7 @@ interview -> plan -> plan_review -> implement -> code_review -> review_approved 
 Automatic progress windows:
 
 ```text
-interview -> plan -> plan_review
+interview -> plan -> plan_review -> implement
 implement -> code_review
 review_approved -> document -> commit
 ```
@@ -23,9 +23,10 @@ review_approved -> document -> commit
 Approval boundaries:
 
 ```text
-plan_review -> implement
 commit -> push
 ```
+
+`plan_review -> implement` is an automatic DPAA/SBADR-gated transition, not a user approval boundary.
 
 ## Pi workflow commands
 

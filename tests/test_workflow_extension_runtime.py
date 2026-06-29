@@ -610,7 +610,7 @@ def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topolog
             custom: async (factory) => {
               const donePromise = new Promise((resolve) => {
                 const widget = factory({ requestRender() {} }, {}, {}, resolve);
-                captured.questions = widget.questions.map((q) => ({ id: q.id, title: q.title, allowFreeText: q.allowFreeText, allowSkip: q.allowSkip }));
+                captured.questions = widget.questions.map((q) => ({ id: q.id, title: q.title, prompt: q.prompt, helpText: q.helpText, choices: q.choices, allowFreeText: q.allowFreeText, allowSkip: q.allowSkip }));
                 widget.handleInput(' ');
                 widget.handleInput('n');
                 resolve({
@@ -652,6 +652,9 @@ def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topolog
     assert data["ids"][0] == "round_0_topology"
     assert data["ids"][-1] == "clarity_checkpoint"
     assert data["ids"][1:6] == ["scope", "motivation", "acceptance", "modules", "constraints"]
+    assert "Purpose:" in data["first"]["prompt"]
+    assert "What to answer:" in data["first"]["prompt"]
+    assert "choices describe the rough shape only" in data["first"]["helpText"]
     assert data["first"]["allowFreeText"] is True
     assert data["first"]["allowSkip"] is False
     assert data["last"]["allowFreeText"] is True
@@ -660,6 +663,58 @@ def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topolog
     assert data["mode"] == "deep-interview-lite"
     assert "weakest clarity dimension" in data["text"]
     assert data["widgetUpdates"] >= 3
+
+
+def test_workflow_extension_runtime_interview_wizard_followup_does_not_repeat_topology_scaffold(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const captured = { questions: [] };
+        const ctx = {
+          hasUI: true,
+          ui: {
+            notify: () => {},
+            confirm: async () => true,
+            setWidget: () => {},
+            custom: async (factory) => {
+              return await new Promise((resolve) => {
+                const widget = factory({ requestRender() {} }, {}, {}, resolve);
+                captured.questions = widget.questions.map((q) => ({ id: q.id, title: q.title }));
+                resolve({
+                  completed: true,
+                  summaryMarkdown: '## Follow-up Summary\n- captured',
+                  answers: captured.questions.map((q) => ({ questionId: q.id, selectedChoiceIds: [], freeText: 'answer', skipped: false })),
+                });
+              });
+            },
+          },
+        };
+        const followup = [{
+          id: 'acceptance_followup',
+          title: 'Acceptance follow-up',
+          prompt: 'What exact pass/fail evidence should prove this work is done?',
+          helpText: 'Example: named tests pass and the prompt no longer repeats topology.',
+          required: true,
+          choices: [{ id: 'tests', label: '테스트 통과' }, { id: 'manual', label: '수동 확인' }],
+        }];
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime interview followup', ctx);
+          await pi.tools.workflow_interview_wizard.execute('call-1', { questions: followup, round: 'follow_up' }, undefined, undefined, ctx);
+          console.log(JSON.stringify({ ids: captured.questions.map((q) => q.id) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ids"] == ["acceptance_followup"]
 
 
 def test_workflow_extension_runtime_trace_command_sends_runtime_trace_prompt(tmp_path):

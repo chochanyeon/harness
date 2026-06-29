@@ -317,10 +317,14 @@ class TestDeepInterviewLiteWizard:
         assert "round_0_topology" in src
         assert "clarity_checkpoint" in src
         assert "deep-interview-lite" in src
+        assert "round: 'follow_up'" in src
+        assert "Purpose:" in src
+        assert "What to answer:" in src
+        assert "choices describe the rough shape only" in src
 
     def test_workflow_start_prompt_mentions_deep_interview_lite_followups(self):
         src = _src("application/workflow-command-router.ts")
-        assert "Round 0 topology confirmation" in src
+        assert "work-map/topology" in src
         assert "clarity checkpoint" in src
         assert "weakest remaining clarity dimension" in src
         assert "inspect narrow repo evidence" in src

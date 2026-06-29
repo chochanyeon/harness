@@ -1,0 +1,49 @@
+<svg width="980" height="360" viewBox="0 0 980 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Repair loops">
+  <defs>
+    <marker id="arrow-loop" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#7c3aed" />
+    </marker>
+    <style>
+      .node { fill:#f5f3ff; stroke:#7c3aed; stroke-width:1.5; rx:14; }
+      .gate { fill:#fffbeb; stroke:#d97706; stroke-width:1.5; rx:14; }
+      .ok { fill:#ecfdf5; stroke:#059669; stroke-width:1.5; rx:14; }
+      .text { font: 14px sans-serif; fill:#111827; text-anchor:middle; dominant-baseline:middle; }
+      .hint { font: 12px sans-serif; fill:#4b5563; text-anchor:middle; }
+      .line { stroke:#7c3aed; stroke-width:2; fill:none; marker-end:url(#arrow-loop); }
+      .pass { stroke:#059669; stroke-width:2; fill:none; marker-end:url(#arrow-loop); }
+      .fail { stroke:#dc2626; stroke-width:2; fill:none; marker-end:url(#arrow-loop); }
+    </style>
+  </defs>
+
+  <text x="490" y="25" class="hint">Closed loop는 선택된 목표를 완료 조건까지 수렴시키는 루프다.</text>
+
+  <rect class="node" x="70" y="65" width="150" height="55" />
+  <text class="text" x="145" y="92">plan</text>
+  <rect class="gate" x="310" y="65" width="170" height="55" />
+  <text class="text" x="395" y="92">plan_review</text>
+  <rect class="gate" x="570" y="65" width="170" height="55" />
+  <text class="text" x="655" y="92">DPAA/SBADR</text>
+  <rect class="ok" x="815" y="65" width="120" height="55" />
+  <text class="text" x="875" y="92">implement</text>
+
+  <path class="line" d="M220 92 H305" />
+  <path class="line" d="M480 92 H565" />
+  <path class="pass" d="M740 92 H810" />
+  <path class="fail" d="M655 122 C655 190, 145 190, 145 125" />
+  <text class="hint" x="400" y="180">FAIL → plan으로 자동 복귀 → 모호성/검증 가능성 보수 → 재시도</text>
+
+  <rect class="node" x="70" y="250" width="150" height="55" />
+  <text class="text" x="145" y="277">implement</text>
+  <rect class="gate" x="310" y="250" width="170" height="55" />
+  <text class="text" x="395" y="277">code_review</text>
+  <rect class="gate" x="570" y="250" width="170" height="55" />
+  <text class="text" x="655" y="277">review + quality</text>
+  <rect class="ok" x="815" y="250" width="120" height="55" />
+  <text class="text" x="875" y="277">document</text>
+
+  <path class="line" d="M220 277 H305" />
+  <path class="line" d="M480 277 H565" />
+  <path class="pass" d="M740 277 H810" />
+  <path class="fail" d="M655 250 C655 205, 145 205, 145 245" />
+  <text class="hint" x="420" y="225">Critical/Major 또는 품질 실패 → implement로 복귀 → 수정 → 재리뷰</text>
+</svg>

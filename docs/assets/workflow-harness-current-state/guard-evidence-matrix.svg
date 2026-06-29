@@ -1,0 +1,49 @@
+<svg width="980" height="360" viewBox="0 0 980 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Guard evidence matrix">
+  <defs>
+    <style>
+      .header { fill:#0f172a; }
+      .htext { font: 13px sans-serif; fill:white; text-anchor:middle; dominant-baseline:middle; font-weight:700; }
+      .cell { fill:#ffffff; stroke:#cbd5e1; stroke-width:1; }
+      .soft { fill:#f8fafc; stroke:#cbd5e1; stroke-width:1; }
+      .gate { fill:#fff7ed; stroke:#fb923c; stroke-width:1; }
+      .ev { fill:#ecfdf5; stroke:#10b981; stroke-width:1; }
+      .txt { font: 12px sans-serif; fill:#0f172a; text-anchor:middle; dominant-baseline:middle; }
+      .small { font: 11px sans-serif; fill:#475569; text-anchor:middle; dominant-baseline:middle; }
+    </style>
+  </defs>
+  <text x="490" y="25" class="small">Guard는 전이를 막고, Evidence는 전이 권한을 증명한다.</text>
+
+  <rect class="header" x="40" y="50" width="180" height="34" />
+  <text class="htext" x="130" y="67">Transition</text>
+  <rect class="header" x="220" y="50" width="220" height="34" />
+  <text class="htext" x="330" y="67">Guard</text>
+  <rect class="header" x="440" y="50" width="260" height="34" />
+  <text class="htext" x="570" y="67">Evidence</text>
+  <rect class="header" x="700" y="50" width="240" height="34" />
+  <text class="htext" x="820" y="67">Failure handling</text>
+
+  <rect class="soft" x="40" y="84" width="180" height="52" /><text class="txt" x="130" y="110">interview → plan</text>
+  <rect class="gate" x="220" y="84" width="220" height="52" /><text class="txt" x="330" y="103">interview ambiguity</text><text class="small" x="330" y="121">clarity scores ≥ 60</text>
+  <rect class="ev" x="440" y="84" width="260" height="52" /><text class="txt" x="570" y="110">workflow_score_interview token</text>
+  <rect class="cell" x="700" y="84" width="240" height="52" /><text class="txt" x="820" y="110">follow-up interview</text>
+
+  <rect class="soft" x="40" y="136" width="180" height="52" /><text class="txt" x="130" y="162">plan_review → implement</text>
+  <rect class="gate" x="220" y="136" width="220" height="52" /><text class="txt" x="330" y="155">DPAA/SBADR</text><text class="small" x="330" y="173">plan quality + ambiguity</text>
+  <rect class="ev" x="440" y="136" width="260" height="52" /><text class="txt" x="570" y="162">DPAA guard token + receipt</text>
+  <rect class="cell" x="700" y="136" width="240" height="52" /><text class="txt" x="820" y="162">return to plan</text>
+
+  <rect class="soft" x="40" y="188" width="180" height="52" /><text class="txt" x="130" y="214">code_review → approved</text>
+  <rect class="gate" x="220" y="188" width="220" height="52" /><text class="txt" x="330" y="207">review + quality</text><text class="small" x="330" y="225">Critical=0, Major≤2</text>
+  <rect class="ev" x="440" y="188" width="260" height="52" /><text class="txt" x="570" y="214">submit_review_package</text>
+  <rect class="cell" x="700" y="188" width="240" height="52" /><text class="txt" x="820" y="214">return to implement</text>
+
+  <rect class="soft" x="40" y="240" width="180" height="52" /><text class="txt" x="130" y="266">commit → push</text>
+  <rect class="gate" x="220" y="240" width="220" height="52" /><text class="txt" x="330" y="259">policy scan</text><text class="small" x="330" y="277">risk + dirty tracked files</text>
+  <rect class="ev" x="440" y="240" width="260" height="52" /><text class="txt" x="570" y="266">push execution approval</text>
+  <rect class="cell" x="700" y="240" width="240" height="52" /><text class="txt" x="820" y="266">user approval / fix</text>
+
+  <rect class="soft" x="40" y="292" width="180" height="52" /><text class="txt" x="130" y="318">push → done</text>
+  <rect class="gate" x="220" y="292" width="220" height="52" /><text class="txt" x="330" y="311">push phase guard</text><text class="small" x="330" y="329">actual git push only</text>
+  <rect class="ev" x="440" y="292" width="260" height="52" /><text class="txt" x="570" y="318">successful push result</text>
+  <rect class="cell" x="700" y="292" width="240" height="52" /><text class="txt" x="820" y="318">stay in push until success</text>
+</svg>

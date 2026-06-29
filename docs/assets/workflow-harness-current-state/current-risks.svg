@@ -1,0 +1,36 @@
+<svg width="980" height="320" viewBox="0 0 980 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Current risks">
+  <defs>
+    <style>
+      .risk { fill:#fff7ed; stroke:#ea580c; stroke-width:1.4; rx:14; }
+      .warn { fill:#fef2f2; stroke:#dc2626; stroke-width:1.4; rx:14; }
+      .txt { font: 14px sans-serif; fill:#111827; text-anchor:middle; dominant-baseline:middle; font-weight:700; }
+      .small { font: 12px sans-serif; fill:#475569; text-anchor:middle; dominant-baseline:middle; }
+    </style>
+  </defs>
+  <text x="490" y="25" class="small">안정화됐지만, 다음 정리 후보는 남아 있다.</text>
+
+  <rect class="risk" x="70" y="60" width="250" height="85" />
+  <text class="txt" x="195" y="88">문서 중복</text>
+  <text class="small" x="195" y="112">README, target/.harness README, policy</text>
+  <text class="small" x="195" y="130">동일 정책의 반복 설명이 많음</text>
+
+  <rect class="risk" x="365" y="60" width="250" height="85" />
+  <text class="txt" x="490" y="88">Prompt drift</text>
+  <text class="small" x="490" y="112">LLM-facing 문구가 정책과 어긋나면</text>
+  <text class="small" x="490" y="130">agent 행동이 다시 흔들릴 수 있음</text>
+
+  <rect class="risk" x="660" y="60" width="250" height="85" />
+  <text class="txt" x="785" y="88">Subagent reliability</text>
+  <text class="small" x="785" y="112">독립 리뷰 subagent timeout 가능</text>
+  <text class="small" x="785" y="130">inline dual review fallback 필요</text>
+
+  <rect class="warn" x="215" y="190" width="250" height="85" />
+  <text class="txt" x="340" y="218">DPAA runtime health</text>
+  <text class="small" x="340" y="242">venv/package metadata 손상 시</text>
+  <text class="small" x="340" y="260">gate report 생성 실패 가능</text>
+
+  <rect class="warn" x="515" y="190" width="250" height="85" />
+  <text class="txt" x="640" y="218">Open loop 부재</text>
+  <text class="small" x="640" y="242">다음 개선 후보 자동 탐색은</text>
+  <text class="small" x="640" y="260">아직 정식 기능이 아님</text>
+</svg>

@@ -1,0 +1,36 @@
+<svg width="980" height="300" viewBox="0 0 980 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Current strengths">
+  <defs>
+    <style>
+      .card { fill:#ffffff; stroke:#cbd5e1; stroke-width:1.3; rx:16; }
+      .top { fill:#ecfdf5; stroke:#059669; stroke-width:1.3; rx:16; }
+      .txt { font: 14px sans-serif; fill:#0f172a; text-anchor:middle; dominant-baseline:middle; font-weight:700; }
+      .small { font: 12px sans-serif; fill:#475569; text-anchor:middle; dominant-baseline:middle; }
+      .score { font: 22px sans-serif; fill:#059669; text-anchor:middle; dominant-baseline:middle; font-weight:700; }
+    </style>
+  </defs>
+  <text x="490" y="25" class="small">현재 상태 평가: 운영 가능한 closed-loop workflow controller</text>
+
+  <rect class="card" x="55" y="65" width="180" height="170" />
+  <text class="score" x="145" y="95">●</text>
+  <text class="txt" x="145" y="128">Phase discipline</text>
+  <text class="small" x="145" y="156">next phase only</text>
+  <text class="small" x="145" y="178">manual state는 복구 전용</text>
+
+  <rect class="card" x="280" y="65" width="180" height="170" />
+  <text class="score" x="370" y="95">●</text>
+  <text class="txt" x="370" y="128">Guard evidence</text>
+  <text class="small" x="370" y="156">DPAA / review / policy</text>
+  <text class="small" x="370" y="178">token은 audit 보조</text>
+
+  <rect class="card" x="505" y="65" width="180" height="170" />
+  <text class="score" x="595" y="95">●</text>
+  <text class="txt" x="595" y="128">Repair loops</text>
+  <text class="small" x="595" y="156">plan/code fix loop</text>
+  <text class="small" x="595" y="178">skip-first 금지</text>
+
+  <rect class="card" x="730" y="65" width="180" height="170" />
+  <text class="score" x="820" y="95">●</text>
+  <text class="txt" x="820" y="128">Prompt contract</text>
+  <text class="small" x="820" y="156">LLM action block</text>
+  <text class="small" x="820" y="178">stale steer guard</text>
+</svg>

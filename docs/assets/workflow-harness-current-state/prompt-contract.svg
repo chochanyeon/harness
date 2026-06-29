@@ -1,0 +1,42 @@
+<svg width="980" height="300" viewBox="0 0 980 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Prompt contract">
+  <defs>
+    <marker id="arrow-prompt" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#475569" />
+    </marker>
+    <style>
+      .source { fill:#eef2ff; stroke:#4f46e5; stroke-width:1.4; rx:14; }
+      .prompt { fill:#f8fafc; stroke:#64748b; stroke-width:1.4; rx:14; }
+      .agent { fill:#ecfdf5; stroke:#059669; stroke-width:1.4; rx:14; }
+      .txt { font: 13px sans-serif; fill:#111827; text-anchor:middle; dominant-baseline:middle; }
+      .small { font: 11px sans-serif; fill:#475569; text-anchor:middle; dominant-baseline:middle; }
+      .line { stroke:#475569; stroke-width:1.6; fill:none; marker-end:url(#arrow-prompt); }
+    </style>
+  </defs>
+
+  <text x="490" y="26" class="small">LLM은 정책 파일을 직접 해석하기보다, runtime이 생성하는 prompt 계약을 따라 움직인다.</text>
+
+  <rect class="source" x="55" y="70" width="190" height="60" />
+  <text class="txt" x="150" y="92">workflow policy</text>
+  <text class="small" x="150" y="112">phase / approval / hard rules</text>
+
+  <rect class="source" x="55" y="170" width="190" height="60" />
+  <text class="txt" x="150" y="192">runtime state</text>
+  <text class="small" x="150" y="212">phase / tokens / failures</text>
+
+  <rect class="prompt" x="360" y="70" width="260" height="60" />
+  <text class="txt" x="490" y="92">[LLM WORKFLOW ACTION]</text>
+  <text class="small" x="490" y="112">current phase + required action</text>
+
+  <rect class="prompt" x="360" y="170" width="260" height="60" />
+  <text class="txt" x="490" y="192">guard memory/status</text>
+  <text class="small" x="490" y="212">evidence + actionable failure</text>
+
+  <rect class="agent" x="750" y="120" width="170" height="70" />
+  <text class="txt" x="835" y="145">LLM behavior</text>
+  <text class="small" x="835" y="166">advance / fix / review / ask</text>
+
+  <path class="line" d="M245 100 H355" />
+  <path class="line" d="M245 200 H355" />
+  <path class="line" d="M620 100 C680 105, 705 125, 745 145" />
+  <path class="line" d="M620 200 C680 195, 705 175, 745 160" />
+</svg>

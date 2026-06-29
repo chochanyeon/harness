@@ -1,0 +1,44 @@
+<svg width="980" height="300" viewBox="0 0 980 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Next steps roadmap">
+  <defs>
+    <marker id="arrow-road" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155" />
+    </marker>
+    <style>
+      .step { fill:#f8fafc; stroke:#64748b; stroke-width:1.5; rx:14; }
+      .now { fill:#ecfdf5; stroke:#059669; stroke-width:1.5; rx:14; }
+      .next { fill:#eff6ff; stroke:#2563eb; stroke-width:1.5; rx:14; }
+      .future { fill:#f5f3ff; stroke:#7c3aed; stroke-width:1.5; rx:14; }
+      .txt { font: 14px sans-serif; fill:#111827; text-anchor:middle; dominant-baseline:middle; font-weight:700; }
+      .small { font: 12px sans-serif; fill:#475569; text-anchor:middle; dominant-baseline:middle; }
+      .line { stroke:#334155; stroke-width:1.7; marker-end:url(#arrow-road); }
+    </style>
+  </defs>
+
+  <text x="490" y="25" class="small">README/블로그 개편 전, 코드와 운영 모델을 설명 가능한 상태로 더 정리하는 경로</text>
+
+  <rect class="now" x="55" y="100" width="190" height="80" />
+  <text class="txt" x="150" y="126">현재 완료</text>
+  <text class="small" x="150" y="150">approval boundary 정합성</text>
+  <text class="small" x="150" y="168">prompt drift 1차 제거</text>
+
+  <line class="line" x1="248" y1="140" x2="325" y2="140" />
+
+  <rect class="next" x="330" y="100" width="190" height="80" />
+  <text class="txt" x="425" y="126">다음 cleanup</text>
+  <text class="small" x="425" y="150">문서/policy 중복 축소</text>
+  <text class="small" x="425" y="168">prompt contract 테스트 강화</text>
+
+  <line class="line" x1="523" y1="140" x2="600" y2="140" />
+
+  <rect class="future" x="605" y="100" width="190" height="80" />
+  <text class="txt" x="700" y="126">컨셉 문서화</text>
+  <text class="small" x="700" y="150">Loop Engineering README</text>
+  <text class="small" x="700" y="168">기술 블로그 1편</text>
+
+  <line class="line" x1="798" y1="140" x2="875" y2="140" />
+
+  <rect class="step" x="880" y="100" width="85" height="80" />
+  <text class="txt" x="922" y="126">Open</text>
+  <text class="txt" x="922" y="146">Loop</text>
+  <text class="small" x="922" y="168">discover</text>
+</svg>

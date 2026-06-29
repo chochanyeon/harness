@@ -1,0 +1,47 @@
+<svg width="980" height="150" viewBox="0 0 980 150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Workflow phase model">
+  <defs>
+    <marker id="arrow-phase" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155" />
+    </marker>
+    <style>
+      .phase { fill:#eff6ff; stroke:#2563eb; stroke-width:1.5; rx:12; }
+      .phaseText { font: 13px sans-serif; fill:#0f172a; text-anchor:middle; dominant-baseline:middle; }
+      .arrow { stroke:#334155; stroke-width:1.5; marker-end:url(#arrow-phase); }
+      .note { font: 12px sans-serif; fill:#475569; text-anchor:middle; }
+    </style>
+  </defs>
+  <text x="490" y="22" class="note">기본 phase 순서</text>
+  <g transform="translate(20,50)">
+    <rect class="phase" x="0" y="0" width="85" height="44" />
+    <text class="phaseText" x="42.5" y="22">interview</text>
+    <line class="arrow" x1="88" y1="22" x2="113" y2="22" />
+    <rect class="phase" x="116" y="0" width="70" height="44" />
+    <text class="phaseText" x="151" y="22">plan</text>
+    <line class="arrow" x1="189" y1="22" x2="214" y2="22" />
+    <rect class="phase" x="217" y="0" width="95" height="44" />
+    <text class="phaseText" x="264.5" y="22">plan_review</text>
+    <line class="arrow" x1="315" y1="22" x2="340" y2="22" />
+    <rect class="phase" x="343" y="0" width="90" height="44" />
+    <text class="phaseText" x="388" y="22">implement</text>
+    <line class="arrow" x1="436" y1="22" x2="461" y2="22" />
+    <rect class="phase" x="464" y="0" width="95" height="44" />
+    <text class="phaseText" x="511.5" y="22">code_review</text>
+    <line class="arrow" x1="562" y1="22" x2="587" y2="22" />
+    <rect class="phase" x="590" y="0" width="120" height="44" />
+    <text class="phaseText" x="650" y="22">review_approved</text>
+    <line class="arrow" x1="713" y1="22" x2="738" y2="22" />
+    <rect class="phase" x="741" y="0" width="85" height="44" />
+    <text class="phaseText" x="783.5" y="22">document</text>
+    <line class="arrow" x1="829" y1="22" x2="854" y2="22" />
+    <rect class="phase" x="857" y="0" width="70" height="44" />
+    <text class="phaseText" x="892" y="22">commit</text>
+  </g>
+  <g transform="translate(360,112)">
+    <rect class="phase" x="0" y="0" width="70" height="34" />
+    <text class="phaseText" x="35" y="17">push</text>
+    <line class="arrow" x1="73" y1="17" x2="108" y2="17" />
+    <rect class="phase" x="112" y="0" width="70" height="34" />
+    <text class="phaseText" x="147" y="17">done</text>
+    <text class="note" x="91" y="-12">commit → push 승인 후 실제 push 성공 시 완료</text>
+  </g>
+</svg>

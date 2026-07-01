@@ -4,6 +4,7 @@ import { formatWorkflowAction, formatWorkflowPrompt } from "../format";
 import { formatWorkflowReminders, scanWorkflowReminders } from "../reminders";
 import { scanPushPolicy } from "../gates";
 import { formatLatestActionableFailureHint } from "../field-log";
+import { formatWorkflowTaskQueueSummary } from "../task-queue";
 
 function fieldLogCategoryForGate(gate: string): string {
   if (gate === "policy-scan") return "push-policy";
@@ -57,6 +58,7 @@ export function buildWorkflowSystemPromptInjection(state: WorkflowRuntimeState):
     "[Harness Context]",
     `Branch: ${branch}`,
     formatWorkflowPrompt(state.workflow),
+    ...(state.workflow?.taskQueue ? [formatWorkflowTaskQueueSummary(state.workflow.taskQueue)] : []),
     authLines,
     ...(latestActionableFailure ? ["", "[Workflow Failure Hint]", latestActionableFailure, "[/Workflow Failure Hint]"] : []),
     formatWorkflowReminders(scanWorkflowReminders(state.workflow, {

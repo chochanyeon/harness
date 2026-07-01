@@ -55,6 +55,13 @@ import {
   writeFieldLogEvent,
   validateWorkflowWorkspace,
   transitionWorkflow,
+  createWorkflowTaskQueue,
+  addWorkflowTask,
+  activateWorkflowTask,
+  markWorkflowTask,
+  isWorkflowTaskStatus,
+  formatWorkflowTaskQueueSummary,
+  writeWorkflowTaskQueueArtifact,
   isSharedWorkflowPhase,
   sharedWorkflowPhases,
   isSharedApprovalBoundary,
@@ -74,6 +81,7 @@ import {
   type ProposedEdit,
   type WorkflowInstance,
   type WorkflowPhase,
+  type WorkflowTaskInput,
 } from "./workflow/core";
 import { launchInterviewWizard, type InterviewQuestion } from "./workflow/interview-ui";
 import {
@@ -127,6 +135,34 @@ const HARNESS_ROOT = path.resolve(__dirname, "../..");
 
 const TOPOLOGY_QUESTION_ID = "round_0_topology";
 const CLARITY_QUESTION_ID = "clarity_checkpoint";
+
+const WORKFLOW_TASK_INPUT_SCHEMA = Type.Object({
+  id: Type.Optional(Type.String({ description: "Stable task id" })),
+  title: Type.String({ description: "Task title" }),
+  scope: Type.Optional(Type.String({ description: "Task implementation scope" })),
+  acceptanceCriteria: Type.Optional(Type.Array(Type.String({ description: "Objective completion criterion" }))),
+  verification: Type.Optional(Type.Array(Type.String({ description: "Verification step" }))),
+  dependencies: Type.Optional(Type.Array(Type.String({ description: "Prerequisite task id" }))),
+  notes: Type.Optional(Type.String({ description: "Optional task notes" })),
+});
+
+function hasWorkflowTaskTitle(value: unknown): boolean {
+  const input = (value ?? {}) as Record<string, unknown>;
+  return typeof input.title === "string" && input.title.trim().length > 0;
+}
+
+function normalizeWorkflowTaskInput(value: unknown): WorkflowTaskInput {
+  const input = (value ?? {}) as Record<string, unknown>;
+  return {
+    id: typeof input.id === "string" ? input.id : undefined,
+    title: typeof input.title === "string" ? input.title : "Untitled task",
+    scope: typeof input.scope === "string" ? input.scope : undefined,
+    acceptanceCriteria: Array.isArray(input.acceptanceCriteria) ? input.acceptanceCriteria.map(String) : [],
+    verification: Array.isArray(input.verification) ? input.verification.map(String) : [],
+    dependencies: Array.isArray(input.dependencies) ? input.dependencies.map(String) : [],
+    notes: typeof input.notes === "string" ? input.notes : undefined,
+  };
+}
 
 function buildDeepInterviewLiteQuestions(workflowTitle: string, baselineQuestions: InterviewQuestion[], round: "initial" | "follow_up" = "initial"): InterviewQuestion[] {
   const normalizedBaseline = baselineQuestions.map((question) => normalizeInterviewQuestion(question));
@@ -668,6 +704,102 @@ export default function (pi: ExtensionAPI) {
         colorResultLabel(theme, isThresholdRejection ? "warning" : "error", `${isThresholdRejection ? "⚠️" : "❌"} ${first}`),
       );
     },},{
+  });
+
+  // ── Tool: workflow_task_queue — manage Epic PEV Queue state ───────────────
+  pi.registerTool({
+    name: "workflow_task_queue",
+    label: "Workflow Task Queue",
+    description: "Create, inspect, and update an Epic PEV task queue for the active workflow.",
+    promptSnippet: "Manage Epic PEV Queue task state for a large workflow",
+    promptGuidelines: [
+      "Use workflow_task_queue when a large interview yields multiple ordered tasks that should run through the existing workflow one active task at a time.",
+      "Do not use the task queue as unbounded discovery; record out-of-scope findings as deferred or pending tasks instead of implementing them immediately.",
+    ],
+    parameters: Type.Object({
+      operation: Type.String({ description: "One of: create, add, activate, mark, show" }),
+      title: Type.Optional(Type.String({ description: "Queue title for create" })),
+      tasks: Type.Optional(Type.Array(WORKFLOW_TASK_INPUT_SCHEMA, { description: "Initial tasks for create" })),
+      task: Type.Optional(WORKFLOW_TASK_INPUT_SCHEMA),
+      taskId: Type.Optional(Type.String({ description: "Task id for activate or mark" })),
+      status: Type.Optional(Type.String({ description: "Task status for mark: pending, active, done, blocked, deferred" })),
+      notes: Type.Optional(Type.String({ description: "Optional status-change note" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!state.workflow) {
+        return { content: [{ type: "text", text: "No active workflow. Start one with /workflow start." }], details: { ok: false, reason: "no-workflow" } };
+      }
+      const operation = String(params.operation ?? "show");
+      let changed = false;
+      let nextQueue = state.workflow.taskQueue;
+      try {
+        if (operation !== "show") {
+          const workspace = validateWorkflowWorkspace(state.workflow);
+          if (!workspace.ok) {
+            return { content: [{ type: "text", text: formatWorkspaceMismatch(workspace) }], details: { ok: false, reason: "workspace-mismatch" } };
+          }
+        }
+
+        if (operation === "create") {
+          const title = String(params.title ?? state.workflow.title ?? "Epic PEV Queue");
+          const rawTasks = Array.isArray(params.tasks) ? params.tasks : [];
+          const invalidTask = rawTasks.find((task) => !hasWorkflowTaskTitle(task));
+          if (invalidTask) return { content: [{ type: "text", text: "Every task supplied to create must include a non-empty title." }], details: { ok: false, reason: "missing-task-title" } };
+          const tasks = rawTasks.map(normalizeWorkflowTaskInput);
+          nextQueue = createWorkflowTaskQueue({ title, tasks });
+          changed = true;
+        } else if (operation === "add") {
+          if (!nextQueue) return { content: [{ type: "text", text: "Task queue does not exist. Create it first." }], details: { ok: false, reason: "missing-queue" } };
+          if (!hasWorkflowTaskTitle(params.task)) return { content: [{ type: "text", text: "task.title is required for add." }], details: { ok: false, reason: "missing-task-title" } };
+          nextQueue = addWorkflowTask(nextQueue, normalizeWorkflowTaskInput(params.task));
+          changed = true;
+        } else if (operation === "activate") {
+          if (!nextQueue) return { content: [{ type: "text", text: "Task queue does not exist. Create it first." }], details: { ok: false, reason: "missing-queue" } };
+          const taskId = String(params.taskId ?? "").trim();
+          if (!taskId) return { content: [{ type: "text", text: "taskId is required for activate." }], details: { ok: false, reason: "missing-task-id" } };
+          nextQueue = activateWorkflowTask(nextQueue, taskId);
+          changed = true;
+        } else if (operation === "mark") {
+          if (!nextQueue) return { content: [{ type: "text", text: "Task queue does not exist. Create it first." }], details: { ok: false, reason: "missing-queue" } };
+          const taskId = String(params.taskId ?? "").trim();
+          const status = String(params.status ?? "");
+          if (!taskId) return { content: [{ type: "text", text: "taskId is required for mark." }], details: { ok: false, reason: "missing-task-id" } };
+          if (!isWorkflowTaskStatus(status)) return { content: [{ type: "text", text: `Invalid task status: ${status}. Use pending, active, done, blocked, or deferred.` }], details: { ok: false, reason: "invalid-status" } };
+          nextQueue = markWorkflowTask(nextQueue, taskId, status, params.notes ? String(params.notes) : undefined);
+          changed = true;
+        } else if (operation !== "show") {
+          return { content: [{ type: "text", text: `Unknown operation: ${operation}. Use create, add, activate, mark, or show.` }], details: { ok: false, reason: "unknown-operation" } };
+        }
+
+        let artifact: { path: string; writtenAt: string } | undefined;
+        if (changed && nextQueue) {
+          const artifactRoot = state.workflow.gitRoot ?? state.workflow.cwd ?? process.cwd();
+          artifact = writeWorkflowTaskQueueArtifact({ id: state.workflow.id, taskQueue: nextQueue }, artifactRoot);
+          const nextWorkflow: WorkflowInstance = { ...state.workflow, taskQueue: nextQueue, updatedAt: Date.now() };
+          saveWorkflow(nextWorkflow);
+          state.workflow = nextWorkflow;
+          refreshBoard(ctx);
+          refreshStatus(ctx);
+        }
+        const summary = formatWorkflowTaskQueueSummary(state.workflow.taskQueue);
+        const lines = [summary];
+        if (artifact) lines.push(`- Artifact: ${path.relative(process.cwd(), artifact.path)}`);
+        return { content: [{ type: "text", text: lines.join("\n") }], details: { ok: true, operation, changed, artifact, queue: state.workflow.taskQueue } };
+      } catch (error) {
+        return { content: [{ type: "text", text: `Task queue operation failed: ${error instanceof Error ? error.message : String(error)}` }], details: { ok: false, operation } };
+      }
+    },
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("workflow_task_queue ")) + theme.fg("dim", `│ ${args.operation ?? "show"}`),
+        0, 0,
+      );
+    },
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "Updating task queue…"));
+      const d = result.details as Record<string, unknown>;
+      return resultBox(theme, d?.ok ? "success" : "error", theme.fg(d?.ok ? "success" : "error", d?.ok ? "✅ Task queue updated" : "❌ Task queue failed"));
+    },
   });
 
   // ── Tool: workflow_run_command — guarded structured-argv execution ───────────

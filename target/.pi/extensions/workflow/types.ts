@@ -28,6 +28,31 @@ export type PersistedGuardTokens = {
   pushExecution: { workflowId: string; issuedAt: number; reason: string } | null;
 };
 
+export type WorkflowTaskStatus = "pending" | "active" | "done" | "blocked" | "deferred";
+
+export type WorkflowTaskItem = {
+  id: string;
+  title: string;
+  scope: string;
+  acceptanceCriteria: string[];
+  verification: string[];
+  status: WorkflowTaskStatus;
+  dependencies: string[];
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type WorkflowTaskQueue = {
+  id: string;
+  title: string;
+  tasks: WorkflowTaskItem[];
+  activeTaskId: string | null;
+  createdAt: number;
+  updatedAt: number;
+  artifactPath?: string;
+};
+
 export type WorkflowInstance = {
   id: string;
   title: string;
@@ -40,6 +65,7 @@ export type WorkflowInstance = {
   startedAt: number;
   updatedAt: number;
   guardTokens?: PersistedGuardTokens;
+  taskQueue?: WorkflowTaskQueue;
   /** implement 시작 시점의 미테스트 클래스 목록. implement→code_review 전환 시 TDD 첨종 여부 판단에 사용. */
   untestedClassesSnapshot?: string[];
 };

@@ -94,6 +94,52 @@ def test_runtime_policy_requires_approval_only_for_mutating_runtime_extension_pa
     assert data["nestedRuntime"] is True
 
 
+def test_epic_pev_task_queue_allows_one_active_task_and_writes_artifact(tmp_path):
+    script = textwrap.dedent(
+        rf'''
+        const fs = require('fs');
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const mod = jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "task-queue.ts"))});
+
+        const queue = mod.createWorkflowTaskQueue({{
+          title: 'Epic queue',
+          tasks: [
+            {{ id: 'task-1', title: 'First task', scope: 'Implement first slice', acceptanceCriteria: ['first accepted'], verification: ['first verified'] }},
+            {{ id: 'task-2', title: 'Second task', scope: 'Implement second slice', acceptanceCriteria: ['second accepted'], verification: ['second verified'] }},
+          ],
+        }});
+        const firstActive = mod.activateWorkflowTask(queue, 'task-1');
+        const secondActive = mod.activateWorkflowTask(firstActive, 'task-2');
+        const summary = mod.formatWorkflowTaskQueueSummary(secondActive);
+        const done = mod.markWorkflowTask(secondActive, 'task-2', 'done', 'verified');
+        const artifact = mod.writeWorkflowTaskQueueArtifact({{
+          id: 'wf-test',
+          taskQueue: done,
+        }}, {json.dumps(str(tmp_path))});
+
+        console.log(JSON.stringify({{
+          activeCount: secondActive.tasks.filter((task) => task.status === 'active').length,
+          firstStatusAfterSecondActivation: secondActive.tasks.find((task) => task.id === 'task-1').status,
+          doneStatus: done.tasks.find((task) => task.id === 'task-2').status,
+          artifactExists: fs.existsSync(artifact.path),
+          artifactWorkflowId: JSON.parse(fs.readFileSync(artifact.path, 'utf-8')).workflowId,
+          summary,
+        }}));
+        '''
+    )
+    data = _run_node(script, tmp_path)
+
+    assert data["activeCount"] == 1
+    assert data["firstStatusAfterSecondActivation"] == "pending"
+    assert data["doneStatus"] == "done"
+    assert data["artifactExists"] is True
+    assert data["artifactWorkflowId"] == "wf-test"
+    assert "Epic queue" in data["summary"]
+    assert "Second task" in data["summary"]
+
+
 def test_field_log_actionable_hint_ignores_optional_corenlp_noise(tmp_path):
     script = textwrap.dedent(
         rf'''

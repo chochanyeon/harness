@@ -322,7 +322,9 @@ class TestDeepInterviewLiteWizard:
         assert "buildClarityQuestion" not in src
         assert "deep-interview-lite" in src
         assert "round: 'follow_up'" in src
-        assert "adds no automatic scaffold questions" in src
+        assert "adds no automatic scope-map or clarity-check questions" in src
+        assert "topology or clarity questions are useful" not in src
+        assert "work-map" not in src
 
     def test_interview_choice_contract_supports_optional_recommendation_fields(self):
         workflow_src = _workflow_src()
@@ -347,7 +349,9 @@ class TestDeepInterviewLiteWizard:
     def test_workflow_start_prompt_mentions_no_automatic_scaffold(self):
         src = _src("application/workflow-command-router.ts")
         assert "displays exactly those baseline questions" in src
-        assert "no runtime-added topology/work-map or clarity checkpoint questions" in src
+        assert "no runtime-added scope-map or clarity-check questions" in src
+        assert "topology/work-map" not in src
+        assert "clarity checkpoint" not in src
         assert "weakest remaining clarity dimension" in src
         assert "inspect narrow repo evidence" in src
 

@@ -107,11 +107,11 @@ Example:
 아니면 workflow extension의 phase/gate 동작도 바꿔야 하나요?
 ```
 
-### 1.3 Scope Coverage — No Mandatory Topology-First Question
+### 1.3 Scope Coverage — No Mandatory Scope-Map Question
 
-Do not always start the interview with a separate topology/work-map question. The runtime does not add automatic topology/work-map or clarity checkpoint questions. The default wizard asks only the baseline questions supplied by the LLM; use the scope and affected files/modules answers as the first source of coverage.
+Do not always start the interview with a separate scope-map question. The runtime does not add automatic scope-map or clarity-check questions. The default wizard asks only the baseline questions supplied by the LLM; use the scope and affected files/modules answers as the first source of coverage.
 
-Ask a separate topology or clarity confirmation question only when the task needs it. Put that question directly in the LLM-supplied baseline or follow-up list. Use a separate topology question when the baseline answers show multiple independently shippable components, unclear included/excluded/deferred areas, or a high risk of missing a major surface. When needed, keep it targeted:
+Ask a separate scope or clarity confirmation question only when the task needs it. Put that question directly in the LLM-supplied baseline or follow-up list. Use a separate scope-map question when the baseline answers show multiple independently shippable parts, unclear included/excluded/deferred areas, or a high risk of missing a major affected area. When needed, keep it targeted:
 
 ```text
 범위 확인이 하나 필요합니다.
@@ -127,9 +127,9 @@ Ask a separate topology or clarity confirmation question only when the task need
 
 After scope is clear:
 
-- Treat confirmed active components or scope areas as required spec coverage.
-- Treat deferred components or scope areas as explicit Out of Scope items with the user's reason when available.
-- If only one component exists, still record it so acceptance criteria and plan steps can map to it.
+- Treat confirmed active parts or affected areas as required spec coverage.
+- Treat deferred parts or affected areas as explicit excluded/deferred scope with the user's reason when available.
+- If only one affected area exists, still record it so acceptance criteria and plan steps can map to it.
 
 ### 1.4 Recommended Choices
 
@@ -148,7 +148,7 @@ Rules:
 After each user answer, assess clarity qualitatively across these dimensions:
 
 - Goal: can the objective be stated without qualifiers?
-- Scope / Out of Scope: are included, excluded, deferred, and optional parts clear?
+- Scope / Excluded or Deferred Scope: are included, excluded, deferred, and optional parts clear?
 - Acceptance Criteria: can success be judged objectively as pass/fail?
 - Constraints / Risks: are limits, compatibility, performance, security, rollback, and dependencies clear enough?
 - Existing Context: for brownfield work, is the relevant code/system context understood well enough to modify safely?
@@ -250,14 +250,14 @@ workflow_score_interview({
 
 Proceed to Phase 2 only when all are true:
 
-1. The confirmed topology is recorded, including active and deferred components.
+1. The confirmed scope and affected areas are recorded, including active and deferred parts.
 2. You are confident that a spec can be written without the implementer making additional decisions.
 3. Every acceptance criterion can be judged objectively as pass/fail.
 4. No clarity dimension remains "낮음" unless the user explicitly accepts the risk.
 5. Brownfield direction questions cite repo evidence or state what evidence was unavailable.
 6. `workflow_score_interview` has been called and all five dimensions are ≥ 60 (or gate has been skipped with user approval).
 
-If you are not confident, ask another focused round. If the user says "just proceed", explicitly state the remaining ambiguity, affected topology components, and likely rework risk before asking for confirmation. Do not silently choose an interpretation.
+If you are not confident, ask another focused round. If the user says "just proceed", explicitly state the remaining ambiguity, affected areas, and likely rework risk before asking for confirmation. Do not silently choose an interpretation.
 
 ---
 
@@ -280,10 +280,10 @@ Use the same structure for `.ai/interview/spec.ko.md` in Korean and `.ai/intervi
 ## Problem
 <problem and motivation>
 
-## Topology
-| Component | Status | Description | Coverage / Deferral Note |
-|-----------|--------|-------------|--------------------------|
-| <component> | active|deferred | <description> | <covered criteria or deferral reason> |
+## Scope and Affected Areas
+| Area | Status | Description | Coverage / Deferral Note |
+|------|--------|-------------|--------------------------|
+| <area> | active|deferred | <description> | <covered criteria or deferral reason> |
 
 ## Acceptance Criteria
 - [ ] <testable criterion 1>
@@ -295,8 +295,8 @@ Use the same structure for `.ai/interview/spec.ko.md` in Korean and `.ai/intervi
 ## Terminology
 - <term>: <confirmed meaning>
 
-## Out of Scope
-<explicit exclusions, including deferred topology components>
+## Excluded or Deferred Scope
+<explicit exclusions, including deferred affected areas>
 ```
 
 ### `.ai/interview/plan.md` — HOW
@@ -313,7 +313,7 @@ Ambiguity gate: standard
 
 ## Steps
 1. <step> — `path/file`
-   - Component: <topology component>
+   - Affected area: <area>
    - Acceptance Criteria: <AC id/list>
 2. ...
 
@@ -335,13 +335,13 @@ Ambiguity gate: standard
 
 Check the plan in this order:
 
-- [ ] Every active topology component has acceptance-criteria coverage or a clear implementation step.
-- [ ] Every deferred topology component appears in Out of Scope with a deferral note.
+- [ ] Every active affected area has acceptance-criteria coverage or a clear implementation step.
+- [ ] Every deferred affected area appears in Excluded or Deferred Scope with a deferral note.
 - [ ] Every acceptance criterion is testable and unambiguous.
-- [ ] Every plan step maps to at least one acceptance criterion and one topology component.
+- [ ] Every plan step maps to at least one acceptance criterion and one affected area.
 - [ ] There are no hidden assumptions.
 - [ ] Confirmed terminology is recorded when terms could otherwise conflict.
-- [ ] Out of Scope is explicit.
+- [ ] Excluded or Deferred Scope is explicit.
 - [ ] External dependencies, if any, are listed as risks.
 
 If any item fails, update the files before presenting them to the user. Also verify that the `.ko.md` files contain the Korean source of truth and the `.md` files contain faithful English DPAA translations.

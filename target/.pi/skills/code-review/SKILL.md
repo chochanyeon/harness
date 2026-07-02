@@ -198,16 +198,16 @@ User: "Check if this code is ready to commit"
 
 This skill produces the human-readable review report only. It does not unlock workflow guards by itself.
 
-During `code_review`, perform independent review **inline** (in the same agent session):
-1. Main agent self-review → summarize findings
-2. Independent review pass — re-read the diff as a separate reviewer persona, no context carryover from step 1
-3. Run `workflow_run_command code-quality` quality gate check
-4. Call `submit_review_package` with all three summaries, severity counts, and optional structured coverage evidence when available:
+During `code_review`, keep a **main-session-as-controller** posture:
+1. Main agent self-review → keep only a concise summary in the main transcript.
+2. Independent review → prefer a fresh-context reviewer subagent with `outputMode: "file-only"`, or ask the reviewer to return a concise summary plus artifact path. Use inline dual-persona review only for small diffs or unstable subagent environments.
+3. Run `workflow_run_command code-quality` quality gate check. Summary-policy command output should stay artifact-first with a short tail in the main transcript.
+4. Call `submit_review_package` with compact summaries, severity counts, and optional structured coverage evidence when available:
    - `reviewedFiles`: changed files/hunks actually checked
    - `skippedFiles`: changed files/hunks intentionally skipped with reasons
    - `positionValidation`: confirmation that Critical/Major file:line ranges were verified, or that none remained
 
-**Subagent for independent review is optional, not preferred.** Async subagent execution is unreliable in many environments (process exit, 120s timeout). Use inline dual-persona review by default; only delegate to a subagent if the diff is >500 lines and the environment is known-stable.
+**Context budget:** long reviewer notes, logs, and diff analysis should be file-only or artifact-first. Critical/Major findings, failures, and security issues must not be hidden; include their concise summary and artifact path in the main transcript.
 
 Review threshold:
 - ✅ Satisfied: Critical == 0 AND Major <= 2

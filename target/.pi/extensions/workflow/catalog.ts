@@ -583,6 +583,7 @@ export function runCatalogCommand(
     exitCode = typeof e.status === "number" ? e.status : 1;
   }
 
+  const capturedOutput = output;
   if (output.length > spec.maxOutputBytes) {
     output = output.slice(0, spec.maxOutputBytes);
     truncated = true;
@@ -593,6 +594,7 @@ export function runCatalogCommand(
     commandId: spec.id,
     exitCode,
     output,
+    capturedOutput,
     truncated,
     cwd,
     elapsedMs: Date.now() - startMs,

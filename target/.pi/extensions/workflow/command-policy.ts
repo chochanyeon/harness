@@ -1,3 +1,6 @@
+import * as path from "node:path";
+
+import { writeTextArtifact, type ArtifactDescriptor } from "./artifact-descriptor";
 import {
   COMMAND_CATALOG,
   PHASE_ALLOWED_BUILTIN_TOOLS,
@@ -11,7 +14,7 @@ import {
 } from "./core";
 
 export type WorkflowCatalogCommandState = {
-  workflow: { phase: WorkflowPhase } | null;
+  workflow: { id?: string; phase: WorkflowPhase } | null;
   recentVerificationCommands: Array<{ command: string; timestamp: number; phase?: WorkflowPhase }>;
 };
 
@@ -61,8 +64,13 @@ export async function executeWorkflowCatalogCommand(
     }
   }
 
-  const result = runCatalogCommand(spec, getGitRoot(), userArgs);
-  const formatted = formatCatalogCommandResult(result, spec);
+  const gitRoot = getGitRoot();
+  const result = runCatalogCommand(spec, gitRoot, userArgs);
+  const commandArtifact = writeCommandOutputArtifact(state, spec.id, result, gitRoot);
+  const artifactNote = commandArtifact
+    ? `\n\nCommand output artifact: ${path.relative(gitRoot ?? process.cwd(), commandArtifact.path)} (${commandArtifact.sizeBytes} bytes, sha256=${commandArtifact.sha256.slice(0, 12)}…)`
+    : "";
+  const formatted = `${formatCatalogCommandResult(result, spec)}${artifactNote}`;
 
   if (["code-quality", "project-test"].includes(spec.id)) {
     state.recentVerificationCommands.push({ command: spec.id, timestamp: Date.now(), phase: phase ?? undefined });
@@ -71,8 +79,33 @@ export async function executeWorkflowCatalogCommand(
 
   return {
     content: [{ type: "text", text: formatted }],
-    details: { ok: result.ok, commandId: spec.id, exitCode: result.exitCode, elapsedMs: result.elapsedMs, truncated: result.truncated },
+    details: { ok: result.ok, commandId: spec.id, exitCode: result.exitCode, elapsedMs: result.elapsedMs, truncated: result.truncated, commandArtifact },
   };
+}
+
+function writeCommandOutputArtifact(
+  state: WorkflowCatalogCommandState,
+  commandId: string,
+  result: { capturedOutput?: string; output: string },
+  gitRoot: string | null,
+): ArtifactDescriptor | undefined {
+  const capturedOutput = result.capturedOutput ?? result.output;
+  if (capturedOutput.length < 2000) return undefined;
+  const workflowId = state.workflow?.id ?? "no-workflow";
+  const safeCommandId = commandId.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const artifactPath = path.join(gitRoot ?? process.cwd(), ".ai", "workflow-artifacts", workflowId, `command-${safeCommandId}-${Date.now()}.txt`);
+  try {
+    return writeTextArtifact({
+      filePath: artifactPath,
+      content: capturedOutput,
+      kind: "command-output",
+      producer: { system: "harness", component: "workflow_run_command" },
+      retention: "until-completion",
+      summary: `Captured output for workflow_run_command ${commandId}.`,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 export function formatWorkflowToolsListing(phase: WorkflowPhase | null): string {

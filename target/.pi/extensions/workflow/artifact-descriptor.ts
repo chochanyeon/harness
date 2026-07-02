@@ -8,6 +8,7 @@ export type ArtifactKind =
   | "review"
   | "trace"
   | "verification"
+  | "command-output"
   | "dpaa-report"
   | "field-log"
   | "handoff"

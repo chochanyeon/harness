@@ -99,16 +99,13 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
     case "implement":
       lines.push(
         "- Transition mode: automatic after implementation is complete.",
-        "- Required now: implement only the approved scope, run the narrowest relevant verification, summarize changed files.",
-        "- If the approved scope is already satisfied, record concrete evidence, state that no code changes are needed, run the narrowest relevant verification, then proceed to code_review instead of inventing edits.",
-        "- Decide test necessity autonomously. If code or behavior changes need regression proof, write/run the relevant tests without asking; if no code or behavior changes were made, do not ask whether to write or skip tests, state that no new tests are needed, and run only useful narrow existing verification or state that verification is not applicable.",
-        "- Autonomous task execution policy: Goal lock = keep the active EPIC task title, scope, acceptance criteria, and verification cues as the decision anchor; reject scope drift by queuing, deferring, or blocking discoveries instead of implementing adjacent improvements.",
-        "- Next action policy: choose exactly one next action in this order: satisfy unmet acceptance criteria, run the smallest useful verification, repair a clear failure, mark the task done, or block/defer when a genuine decision is required.",
-        "- Failure escape: do not repeat the same failing command or edit loop blindly; after two similar failures, isolate the smallest repro, re-read assumptions, or block with the concrete missing decision.",
-        "- Completion/switch rule: switch tasks only after acceptance is satisfied or explicitly not applicable and verification has passed or been recorded as not applicable; reset context to the next active task before continuing.",
-        "- Test decision matrix: behavior/guard/runtime changes need regression tests; prompt-contract changes need static prompt tests; docs-only changes need no new tests beyond useful formatting/static checks.",
-        "- TDD: if writing or editing production behavior code, write/update the failing test first without asking the user. Required test writing is pre-approved, is not scope expansion, and the next action after a TDD block should be creating/updating the test. Complete the full test-first cycle (failing test → implement → pass → refactor) autonomously.",
-        "- Static analysis: write code that already follows the project's Checkstyle/PMD conventions (naming rules, line length, method size, import style). If violations occur anyway, fix them silently without reporting to the user. Do not ask; just fix and re-run.",
+        "- Required now: implement the approved scope, run the narrowest useful verification, and summarize changed files.",
+        "- If the approved scope is already satisfied, record concrete evidence, state that no new tests are needed when applicable, run useful verification, then proceed to code_review.",
+        "- Decide test necessity autonomously; do not ask whether to write or skip tests. Behavior, guard, and runtime changes need regression tests; prompt changes need static tests; docs-only changes usually do not.",
+        "- Context budget: keep main as controller. Use artifacts, file-only subagent output, and short summaries for large logs, diffs, or delegated analysis.",
+        "- Goal lock: use the active EPIC task title, scope, acceptance criteria, and verification cues; Next action = choose one next action and avoid scope drift.",
+        "- TDD: for behavior changes, write/update the failing test first, then complete the test-first cycle: implement, pass, and refactor.",
+        "- Static analysis: follow project conventions; fix violations silently and rerun the narrow check.",
       );
       break;
     case "code_review":

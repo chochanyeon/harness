@@ -365,6 +365,14 @@ class TestTraceAndConsensusProtocols:
         assert "Architect/Critic consensus review" in src
         assert "Work type: api/security/migration/data/deploy" in src
 
+    def test_workflow_continuation_uses_compact_context_budget_rules(self):
+        src = _src("application/continuation.ts")
+        assert "Context budget" in src
+        assert "artifact paths" in src
+        assert "guard semantics" in src
+        assert "plan_review repair" in src
+        assert "code_review repair" in src
+
     def test_plan_template_documents_high_risk_consensus(self):
         plan_template = (ROOT / "target" / ".pi" / "skills" / "planning-and-task-breakdown" / "references" / "plan-template.md").read_text(encoding="utf-8")
         assert "High-Risk Consensus Review" in plan_template
@@ -547,6 +555,19 @@ class TestCompactionAndArtifactContracts:
             assert f'component: "{component}"' in doc
             assert "artifact-descriptor.ts" in doc
 
+    def test_main_context_budget_guidance_is_documented(self):
+        skill = (ROOT / "target" / ".pi" / "skills" / "code-review" / "SKILL.md").read_text(encoding="utf-8")
+        readme_ko = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_en = (ROOT / "README.en.md").read_text(encoding="utf-8")
+        combined = "\n".join([skill, readme_ko, readme_en])
+        assert "main-session-as-controller" in combined
+        assert "artifact-first" in combined
+        assert "file-only" in combined
+        assert "Critical/Major" in combined
+        assert "must not be hidden" in combined
+        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        assert "/.ai/workflow-artifacts/" in gitignore
+
     def test_review_package_accepts_structured_coverage_evidence(self):
         workflow = _workflow_src()
         runtime_state = _src("runtime-state.ts")
@@ -595,18 +616,18 @@ class TestFormatTs:
         assert "do not ask whether to write or skip tests" in guidance_block
         assert "state that no new tests are needed" in guidance_block
 
-    def test_implement_guidance_includes_autonomous_task_execution_policy(self):
+    def test_implement_guidance_uses_compact_context_budget_policy(self):
         guidance_block = self._implement_action_guidance()
         for token in [
-            "Autonomous task execution policy",
+            "Context budget",
             "Goal lock",
-            "Next action policy",
-            "Failure escape",
-            "Completion/switch rule",
-            "Test decision matrix",
-            "scope drift",
+            "one next action",
+            "avoid scope drift",
+            "write/update the failing test first",
         ]:
             assert token in guidance_block
+        assert "Autonomous task execution policy" not in guidance_block
+        assert guidance_block.count("- ") <= 8
 
     def test_target_agents_testing_policy_requires_autonomous_test_decision(self):
         src = TARGET_AGENTS.read_text(encoding="utf-8")

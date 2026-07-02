@@ -5,6 +5,7 @@
 /.claude/
 /.harness/
 /.ai/interview/
+/.ai/workflow-artifacts/
 
 # Ralph loop artifacts
 .ralph/

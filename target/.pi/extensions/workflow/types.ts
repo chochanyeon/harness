@@ -173,6 +173,7 @@ export type CatalogCommandResult = {
   commandId: string;
   exitCode: number | null;
   output: string;
+  capturedOutput?: string;
   truncated: boolean;
   cwd: string;
   elapsedMs: number;

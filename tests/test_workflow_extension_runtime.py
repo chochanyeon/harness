@@ -385,6 +385,58 @@ def test_workflow_extension_runtime_state_outputs_single_llm_action_block(tmp_pa
     assert "manual recovery only" in data["stateNotification"]
 
 
+def test_workflow_extension_runtime_summary_command_writes_output_artifact(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const fs = require('fs');
+        const path = require('path');
+        const childProcess = require('node:child_process');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        childProcess.execFileSync = () => Array.from({ length: 400 }, (_, index) => `line-${index}`).join('\n');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime summary artifact', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          const result = await pi.tools.workflow_run_command.execute('cmd-artifact', { commandId: 'project-test', reason: 'runtime summary artifact test' }, undefined, undefined, ctx);
+          const artifactPath = result.details.commandArtifact?.path;
+          const relativePath = artifactPath ? path.relative(process.cwd(), artifactPath) : null;
+          const artifactName = artifactPath ? path.basename(artifactPath) : null;
+          console.log(JSON.stringify({
+            ok: result.details.ok,
+            exitCode: result.details.exitCode,
+            text: result.content[0].text,
+            artifactKind: result.details.commandArtifact?.kind,
+            artifactExists: artifactPath ? fs.existsSync(artifactPath) : false,
+            artifactText: artifactPath ? fs.readFileSync(artifactPath, 'utf-8') : '',
+            relativePath,
+            artifactName,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ok"] is True
+    assert data["exitCode"] == 0
+    assert data["artifactKind"] == "command-output"
+    assert data["artifactExists"] is True
+    assert "Command output artifact:" in data["text"]
+    assert ".ai" in data["text"]
+    assert data["artifactName"] in data["text"]
+    assert "line-399" in data["text"]
+    assert "line-0" in data["artifactText"]
+    assert "line-399" in data["artifactText"]
+
+
 def test_workflow_extension_runtime_push_approve_does_not_complete_without_git_push(tmp_path):
     script = textwrap.dedent(
         r'''

@@ -133,6 +133,7 @@ def test_memory_tool_saves_injects_doctor_reports_and_rejects_secrets(tmp_path):
 
         (async () => {
           const saved = await pi.tools.memory_remember.execute('memory-call-1', { text: '결정: memory tool natural save marker zeta-memory-tool' }, undefined, undefined, ctx);
+          const duplicate = await pi.tools.memory_remember.execute('memory-call-duplicate', { text: '결정: memory tool natural save marker zeta-memory-tool' }, undefined, undefined, ctx);
           const prompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-memory-tool 관련 작업' });
           await pi.commands.memory.handler('doctor', ctx);
           const secret = await pi.tools.memory_remember.execute('memory-call-2', { text: 'api_key=SECRET123 should never be persisted' }, undefined, undefined, ctx);
@@ -142,6 +143,7 @@ def test_memory_tool_saves_injects_doctor_reports_and_rejects_secrets(tmp_path):
           console.log(JSON.stringify({
             toolNames: Object.keys(pi.tools),
             saved: saved.content[0].text,
+            duplicate: duplicate.content[0].text,
             secret: secret.content[0].text,
             prompt: prompt.systemPrompt,
             entries,
@@ -160,6 +162,8 @@ def test_memory_tool_saves_injects_doctor_reports_and_rejects_secrets(tmp_path):
     assert "zeta-memory-tool" in entry["content"]["summary"]
     assert entry["memoryId"] in data["saved"]
     assert "status=active" in data["saved"]
+    assert data["entries"][0]["memoryId"] in data["duplicate"]
+    assert "status=active" in data["duplicate"]
     assert "summary=" in data["saved"]
     assert "entries.jsonl" in data["saved"]
     assert "[External Memory Context v1]" in data["prompt"]
@@ -177,3 +181,50 @@ def test_memory_tool_saves_injects_doctor_reports_and_rejects_secrets(tmp_path):
     assert "secret-like" in data["secret"]
     dumped = json.dumps(data, ensure_ascii=False)
     assert "SECRET123" not in dumped
+
+
+def test_memory_auto_extracts_candidates_and_explicit_active_memory(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-auto-extract-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        (async () => {
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: '아니야, 이 repo에서는 target/.pi/extensions/memory.ts를 수정해야 해. workflow gate failure도 다음에 기억해야 해.' });
+          const candidatePrompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'target/.pi/extensions/memory.ts 관련 작업' });
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: '앞으로 항상 zeta-auto-active-marker 정책은 active memory로 기억해.' });
+          const activePrompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-auto-active-marker 관련 작업' });
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: '기억해 api_key=SECRET123 자동 저장하면 안 된다' });
+
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entriesFile = path.join(root, '.project-memory', 'memory', 'entries.jsonl');
+          const entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const metrics = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'metrics.jsonl'), 'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          console.log(JSON.stringify({ entries, metrics, candidatePrompt: candidatePrompt.systemPrompt, activePrompt: activePrompt.systemPrompt }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    candidates = [entry for entry in data["entries"] if entry["status"] == "candidate"]
+    active = [entry for entry in data["entries"] if entry["status"] == "active"]
+
+    assert candidates
+    assert any("target/.pi/extensions/memory.ts" in entry["content"]["summary"] for entry in candidates)
+    assert all(entry["provenance"]["source"].startswith("auto-extract") for entry in candidates)
+    assert "[External Memory Context v1]" not in data["candidatePrompt"]
+
+    assert active
+    assert any("zeta-auto-active-marker" in entry["content"]["summary"] for entry in active)
+    assert "[External Memory Context v1]" in data["activePrompt"]
+    assert "zeta-auto-active-marker" in data["activePrompt"]
+
+    dumped = json.dumps(data, ensure_ascii=False)
+    assert "SECRET123" not in dumped
+    assert any(item.get("rejected") == "secret-like-input" for item in data["metrics"])

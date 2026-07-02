@@ -42,6 +42,8 @@ type MemoryEntry = {
 type MemoryMatch = { entry: MemoryEntry; score: number; matchedReasons: string[]; renderHash: string };
 type SaveMemoryResult = { ok: true; entry: MemoryEntry } | { ok: false; message: string; reason: string };
 type MemoryFileHealth = { label: string; file: string; exists: boolean; ok: boolean; count?: number; error?: string };
+type CreateMemoryOptions = { status?: MemoryStatus; source?: string; createdBy?: string; evidenceSummary?: string; autoInject?: "never" | "when-relevant" | "always"; confidence?: MemoryEntry["confidence"] };
+type ExtractedMemory = { text: string; status: MemoryStatus; source: string; reason: string };
 
 const MEMORY_POLICY = [
   "",
@@ -110,7 +112,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (command === "list") {
-        const entries = readEntries().filter((entry) => ["active", "disabled", "deprecated", "superseded"].includes(entry.status));
+        const entries = readEntries().filter((entry) => ["active", "candidate", "disabled", "deprecated", "superseded"].includes(entry.status));
         return ctx.ui.notify(formatMemoryList(entries.slice(-20)), "info");
       }
 
@@ -187,6 +189,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event) => {
     const request = extractRequestText(event as any);
+    if (request) autoExtractMemory(request);
     const matches = request ? searchMemory(request, { includeDisabled: false, limit: 12 }) : [];
     const selected = selectMemories(request, matches, 3);
     const dynamic = renderMemoryBlock(selected);
@@ -225,6 +228,22 @@ function saveMemoryText(text: string, source: string): SaveMemoryResult {
   if (mayContainSecret(body)) {
     appendMetric({ operation: source, rejected: "secret-like-input", requestHash: sha256(body) });
     return { ok: false, message: "Memory not saved: secret-like text was detected. Redact the secret first, then save memory again.", reason: "secret-like-input" };
+  }
+  const summary = body.slice(0, 500);
+  const duplicate = readEntries().find((entry) => entry.content.summary === summary);
+  if (duplicate) {
+    const promoted = duplicate.status !== "active"
+      ? updateEntry(duplicate.memoryId, (entry) => ({
+          ...entry,
+          status: "active",
+          updatedAt: nowIso(),
+          confidence: "explicit",
+          provenance: { ...entry.provenance, source: "user-explicit", updatedBy: "user", evidence: [...(entry.provenance.evidence ?? []), { kind: "user-message", summary: "Promoted by explicit memory request with duplicate summary." }] },
+          governance: { ...entry.governance, autoInject: "when-relevant" },
+        }))
+      : null;
+    appendMetric({ operation: source, excluded: "duplicate-summary", requestHash: sha256(body), existingMemoryId: duplicate.memoryId, promotedToActive: Boolean(promoted) });
+    return { ok: true, entry: promoted ?? duplicate };
   }
   ensureProjectMemoryIgnored();
   const entry = createMemory(body);
@@ -275,13 +294,74 @@ function updateEntry(id: string, updater: (entry: MemoryEntry) => MemoryEntry): 
   return entries[index];
 }
 
-function createMemory(text: string): MemoryEntry {
+function autoExtractMemory(request: string): void {
+  const extracted = extractMemoriesFromPrompt(request);
+  for (const item of extracted) saveExtractedMemory(item);
+}
+
+function extractMemoriesFromPrompt(request: string): ExtractedMemory[] {
+  const body = normalizeWhitespace(request);
+  if (!body) return [];
+  if (isExplicitRememberPrompt(body)) return [{ text: body, status: "active", source: "auto-extract-explicit", reason: "explicit-remember" }];
+  if (isCandidateMemoryPrompt(body)) return [{ text: body, status: "candidate", source: "auto-extract-candidate", reason: "candidate-signal" }];
+  return [];
+}
+
+function saveExtractedMemory(item: ExtractedMemory): SaveMemoryResult {
+  const body = normalizeWhitespace(item.text);
+  if (!body) return { ok: false, message: "Memory not saved: text is required.", reason: "empty-input" };
+  if (mayContainSecret(body)) {
+    appendMetric({ operation: item.source, rejected: "secret-like-input", requestHash: sha256(body) });
+    return { ok: false, message: "Memory not saved: secret-like text was detected. Redact the secret first, then save memory again.", reason: "secret-like-input" };
+  }
+  const summary = body.slice(0, 500);
+  const duplicate = readEntries().find((entry) => entry.content.summary === summary);
+  if (duplicate) {
+    const promoted = item.status === "active" && duplicate.status !== "active"
+      ? updateEntry(duplicate.memoryId, (entry) => ({
+          ...entry,
+          status: "active",
+          updatedAt: nowIso(),
+          confidence: "explicit",
+          provenance: { ...entry.provenance, source: item.source, updatedBy: "agent", evidence: [...(entry.provenance.evidence ?? []), { kind: "user-message", summary: `Automatically promoted from duplicate prompt (${item.reason}).` }] },
+          governance: { ...entry.governance, autoInject: "when-relevant" },
+        }))
+      : null;
+    appendMetric({ operation: item.source, excluded: "duplicate-summary", requestHash: sha256(body), existingMemoryId: duplicate.memoryId, promotedToActive: Boolean(promoted) });
+    return { ok: true, entry: promoted ?? duplicate };
+  }
+  ensureProjectMemoryIgnored();
+  const entry = createMemory(body, {
+    status: item.status,
+    source: item.source,
+    createdBy: "agent",
+    evidenceSummary: `Automatically extracted from prompt (${item.reason}).`,
+    autoInject: item.status === "active" ? "when-relevant" : "never",
+    confidence: item.status === "active" ? "explicit" : "medium",
+  });
+  appendJsonl(entriesFile(), entry);
+  appendAudit("auto-extract", entry.memoryId, { status: entry.status, source: item.source, reason: item.reason });
+  appendMetric({ operation: item.source, selectedMemoryIds: [entry.memoryId], selectedRenderHashes: [entry.rendering.stableRenderHash], status: entry.status, reason: item.reason });
+  return { ok: true, entry };
+}
+
+function isExplicitRememberPrompt(text: string): boolean {
+  return /(기억해(?:줘|라|자)?(?:$|[\s.!?。])|remember\b|앞으로\s*항상|항상\s*.*기억|이\s*프로젝트에서는|절대\s+.*(?:해|하지|말|금지)|always\s+remember|from\s+now\s+on|never\s+)/i.test(text);
+}
+
+function isCandidateMemoryPrompt(text: string): boolean {
+  return /(아니야|아니라|정정|수정[:：]|correction|not\s+.*but|instead|workflow|gate|failure|failed|blocked|guard|dpaa|sbadr|todo|후속|다음에|나중에|해야\s*해|해야\s*한다|결정|decision|주의|pitfall|실패|깨짐)/i.test(text);
+}
+
+function createMemory(text: string, options: CreateMemoryOptions = {}): MemoryEntry {
   const timestamp = nowIso();
   const memoryId = `mem_${timestamp.replace(/[-:.TZ]/g, "").slice(0, 14)}_${crypto.randomBytes(3).toString("hex")}`;
   const summary = normalizeWhitespace(text).slice(0, 500);
   const type = inferType(summary);
   const useAs = inferUseAs(type, summary);
   const containsSecrets = mayContainSecret(summary);
+  const status = containsSecrets ? "disabled" : options.status ?? "active";
+  const autoInject = containsSecrets ? "never" : options.autoInject ?? (status === "active" ? "when-relevant" : "never");
   const entry: MemoryEntry = {
     schemaVersion: 1,
     memoryId,
@@ -289,13 +369,13 @@ function createMemory(text: string): MemoryEntry {
     updatedAt: timestamp,
     scope: { level: "project", workspaceRoot: "<PROJECT_ROOT>" },
     type,
-    status: containsSecrets ? "disabled" : "active",
-    confidence: "explicit",
+    status,
+    confidence: options.confidence ?? "explicit",
     importance: summary.includes("절대") || /must|never|required/i.test(summary) ? "high" : "normal",
     content: { summary },
     index: { topics: extractTopics(summary), files: extractFiles(summary), symbols: [], appliesToPhases: extractPhases(summary) },
-    provenance: { source: "user-explicit", createdBy: "user", evidence: [{ kind: "user-message", summary: "Created through /memory remember." }] },
-    governance: { userEditable: true, userDeletable: true, autoInject: containsSecrets ? "never" : "when-relevant", requiresApprovalBeforeActive: false },
+    provenance: { source: options.source ?? "user-explicit", createdBy: options.createdBy ?? "user", evidence: [{ kind: "user-message", summary: options.evidenceSummary ?? "Created through /memory remember." }] },
+    governance: { userEditable: true, userDeletable: true, autoInject, requiresApprovalBeforeActive: false },
     privacy: { sensitivity: containsSecrets ? "secret" : "internal", redactionLevel: "paths-only", exportable: false, containsSecrets, notes: containsSecrets ? "Potential secret-like text detected; auto-injection and export disabled." : undefined },
     retrieval: { useCount: 0 },
     lifecycle: { lastVerifiedAt: timestamp, staleness: "fresh", conflictsWith: [] },

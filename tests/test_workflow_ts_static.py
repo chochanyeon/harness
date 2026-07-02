@@ -373,6 +373,12 @@ class TestTraceAndConsensusProtocols:
         assert "plan_review repair" in src
         assert "code_review repair" in src
 
+    def test_pre_code_review_quality_check_uses_async_heartbeat(self):
+        src = _src("transitions.ts")
+        assert "runCatalogCommandAsync" in src
+        assert "Pre-code_review quality check still running" in src
+        assert "ctx.ui.notify" in src
+
     def test_plan_template_documents_high_risk_consensus(self):
         plan_template = (ROOT / "target" / ".pi" / "skills" / "planning-and-task-breakdown" / "references" / "plan-template.md").read_text(encoding="utf-8")
         assert "High-Risk Consensus Review" in plan_template
@@ -567,6 +573,18 @@ class TestCompactionAndArtifactContracts:
         assert "must not be hidden" in combined
         gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
         assert "/.ai/workflow-artifacts/" in gitignore
+
+    def test_long_running_workflow_heartbeat_policy_is_documented(self):
+        readme_ko = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_en = (ROOT / "README.en.md").read_text(encoding="utf-8")
+        combined = "\n".join([readme_ko, readme_en])
+        assert "long-running" in combined
+        assert "heartbeat" in combined
+        assert "workflow_run_command" in combined
+        assert "Pre-code_review" in combined
+        assert "context pollution" in combined
+        assert "code_review → review_approved" in combined
+        assert "deferred" in combined
 
     def test_review_package_accepts_structured_coverage_evidence(self):
         workflow = _workflow_src()

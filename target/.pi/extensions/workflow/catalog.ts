@@ -1,4 +1,4 @@
-import { execSync, execFileSync } from "node:child_process";
+import { execSync, execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { CommandSpec, CatalogCommandResult, WorkflowPhase } from "./types";
@@ -491,17 +491,21 @@ export function isPhaseAllowed(spec: CommandSpec, phase: WorkflowPhase): boolean
   return spec.allowedPhases === "all" || (spec.allowedPhases as WorkflowPhase[]).includes(phase);
 }
 
-/**
- * Execute a catalog command with structured argv (no shell interpolation).
- * Shell injection is impossible: executable and args come exclusively from
- * the CommandSpec, never from user/LLM input.
- */
-export function runCatalogCommand(
+type CatalogInvocation =
+  | { executable: string; args: string[]; cwd: string; startMs: number }
+  | { result: CatalogCommandResult };
+
+type CatalogCommandProgress = {
+  heartbeatMs?: number;
+  onHeartbeat?: (event: { commandId: string; elapsedMs: number }) => void;
+};
+
+function resolveCatalogInvocation(
   spec: CommandSpec,
   gitRoot: string | null,
-  extraArgs: string[] = [],
-): CatalogCommandResult {
-  const startMs = Date.now();
+  extraArgs: string[],
+  startMs: number,
+): CatalogInvocation {
   let cwd =
     spec.cwdPolicy === "git-root" ? (gitRoot ?? HARNESS_EXT_ROOT)
     : spec.cwdPolicy === "harness-root" ? HARNESS_EXT_ROOT
@@ -515,34 +519,23 @@ export function runCatalogCommand(
     cwd = HARNESS_EXT_ROOT;
   }
 
-  // Resolve build-system-aware sentinels (auto-test / auto-build / auto-quality)
   if (executable === "auto-test" || executable === "auto-build" || executable === "auto-quality") {
     const bs = detectBuildSystem(cwd);
     const action = executable.slice(5) as "test" | "build" | "quality";
     const cmd = action === "test" ? bs.testCommand : action === "build" ? bs.buildCommand : bs.qualityCommand;
     if (!cmd) {
-      return {
-        ok: false,
-        commandId: spec.id,
-        exitCode: null,
-        output: `No ${action} command detected for ${bs.type} project. Set HARNESS_CODE_QUALITY_GUARD_CMD or add a recognized build system file.`,
-        truncated: false,
-        cwd,
-        elapsedMs: Date.now() - startMs,
-      };
+      return { result: finalizeCatalogCommandResult(spec, `No ${action} command detected for ${bs.type} project. Set HARNESS_CODE_QUALITY_GUARD_CMD or add a recognized build system file.`, null, cwd, startMs) };
     }
     executable = cmd.executable;
     args = [...cmd.args, ...args];
   }
 
-  // Resolve legacy "auto" executable based on project type (backward compatibility)
   if (executable === "auto") {
     const resolved = resolveAutoExecutable(gitRoot);
     executable = resolved.executable;
     args = [...resolved.args, ...args];
   }
 
-  // Resolve "auto-dpaa" to the harness venv python
   if (executable === "auto-dpaa") {
     const venvPy = process.platform === "win32"
       ? path.join(PI_EXT_ROOT, ".venv", "Scripts", "python.exe")
@@ -551,26 +544,63 @@ export function runCatalogCommand(
     args = ["-m", "dpaa.cli", ...args];
   }
 
-  // Windows: .bat files must be run through cmd.exe (execFileSync cannot execute .bat directly)
   if (process.platform === "win32" && /\.bat$/i.test(executable)) {
     args = ["/c", executable, ...args];
     executable = "cmd.exe";
   }
-  // Windows: shell scripts need explicit sh/bash
   if (process.platform === "win32" && /[/\\]gradlew$/.test(executable)) {
     const sh = process.env.ComSpec ?? "cmd.exe";
     args = ["/c", executable, ...args];
     executable = sh;
   }
 
+  return { executable, args, cwd, startMs };
+}
+
+function finalizeCatalogCommandResult(
+  spec: CommandSpec,
+  output: string,
+  exitCode: number | null,
+  cwd: string,
+  startMs: number,
+): CatalogCommandResult {
+  const capturedOutput = output;
+  let truncated = false;
+  if (output.length > spec.maxOutputBytes) {
+    output = output.slice(0, spec.maxOutputBytes);
+    truncated = true;
+  }
+  return {
+    ok: exitCode === 0,
+    commandId: spec.id,
+    exitCode,
+    output,
+    capturedOutput,
+    truncated,
+    cwd,
+    elapsedMs: Date.now() - startMs,
+  };
+}
+
+/**
+ * Execute a catalog command with structured argv (no shell interpolation).
+ * Shell injection is impossible: executable and args come exclusively from
+ * the CommandSpec, never from user/LLM input.
+ */
+export function runCatalogCommand(
+  spec: CommandSpec,
+  gitRoot: string | null,
+  extraArgs: string[] = [],
+): CatalogCommandResult {
+  const startMs = Date.now();
+  const invocation = resolveCatalogInvocation(spec, gitRoot, extraArgs, startMs);
+  if ("result" in invocation) return invocation.result;
+
   let output = "";
   let exitCode: number | null = 0;
-  let truncated = false;
-
   try {
-    // execFileSync uses argv form — no shell, no injection possible
-    output = execFileSync(executable, args, {
-      cwd,
+    output = execFileSync(invocation.executable, invocation.args, {
+      cwd: invocation.cwd,
       encoding: "utf-8",
       timeout: spec.timeoutMs,
       maxBuffer: spec.maxOutputBytes * 2,
@@ -582,23 +612,63 @@ export function runCatalogCommand(
     output = [e.stdout, e.stderr].filter(Boolean).join("\n").trim() || e.message || String(err);
     exitCode = typeof e.status === "number" ? e.status : 1;
   }
+  return finalizeCatalogCommandResult(spec, output, exitCode, invocation.cwd, startMs);
+}
 
-  const capturedOutput = output;
-  if (output.length > spec.maxOutputBytes) {
-    output = output.slice(0, spec.maxOutputBytes);
-    truncated = true;
-  }
+export async function runCatalogCommandAsync(
+  spec: CommandSpec,
+  gitRoot: string | null,
+  extraArgs: string[] = [],
+  progress: CatalogCommandProgress = {},
+): Promise<CatalogCommandResult> {
+  const startMs = Date.now();
+  const invocation = resolveCatalogInvocation(spec, gitRoot, extraArgs, startMs);
+  if ("result" in invocation) return invocation.result;
 
-  return {
-    ok: exitCode === 0,
-    commandId: spec.id,
-    exitCode,
-    output,
-    capturedOutput,
-    truncated,
-    cwd,
-    elapsedMs: Date.now() - startMs,
-  };
+  return await new Promise<CatalogCommandResult>((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let timeoutMessage: string | undefined;
+    const maxBufferedBytes = spec.maxOutputBytes * 2;
+    const append = (current: string, chunk: unknown): string => (current + String(chunk)).slice(-maxBufferedBytes);
+    const finish = (exitCode: number | null, fallback?: string) => {
+      if (settled) return;
+      settled = true;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      const output = exitCode === 0 ? stdout : [stdout, stderr].filter(Boolean).join("\n").trim() || fallback || "";
+      resolve(finalizeCatalogCommandResult(spec, output, exitCode, invocation.cwd, startMs));
+    };
+    const heartbeatMs = progress.heartbeatMs ?? Number.parseInt(process.env.HARNESS_WORKFLOW_COMMAND_HEARTBEAT_MS ?? "10000", 10);
+    heartbeatTimer = Number.isFinite(heartbeatMs) && heartbeatMs > 0
+      ? setInterval(() => progress.onHeartbeat?.({ commandId: spec.id, elapsedMs: Date.now() - startMs }), heartbeatMs)
+      : undefined;
+    let child;
+    try {
+      child = spawn(invocation.executable, invocation.args, {
+        cwd: invocation.cwd,
+        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      });
+      if (spec.timeoutMs > 0) {
+        timeoutTimer = setTimeout(() => {
+          timeoutMessage = `Command timed out after ${spec.timeoutMs}ms`;
+          child.kill();
+          finish(1, timeoutMessage);
+        }, spec.timeoutMs);
+      }
+      child.stdout?.on("data", (chunk: unknown) => { stdout = append(stdout, chunk); });
+      child.stderr?.on("data", (chunk: unknown) => { stderr = append(stderr, chunk); });
+      child.on("error", (error: Error) => finish(1, error.message));
+      child.on("close", (code: number | null) => finish(typeof code === "number" ? code : 1, timeoutMessage));
+    } catch (error) {
+      finish(1, error instanceof Error ? error.message : String(error));
+    }
+  });
 }
 
 export function formatCatalogCommandResult(result: CatalogCommandResult, spec: CommandSpec): string {

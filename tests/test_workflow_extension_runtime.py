@@ -388,6 +388,7 @@ def test_workflow_extension_runtime_state_outputs_single_llm_action_block(tmp_pa
 def test_workflow_extension_runtime_summary_command_writes_output_artifact(tmp_path):
     script = textwrap.dedent(
         r'''
+        const { EventEmitter } = require('events');
         const fs = require('fs');
         const path = require('path');
         const childProcess = require('node:child_process');
@@ -395,6 +396,15 @@ def test_workflow_extension_runtime_summary_command_writes_output_artifact(tmp_p
         process.chdir('target');
 
         childProcess.execFileSync = () => Array.from({ length: 400 }, (_, index) => `line-${index}`).join('\n');
+        childProcess.spawn = () => {
+          const proc = new EventEmitter();
+          proc.stdout = new EventEmitter();
+          proc.stderr = new EventEmitter();
+          proc.kill = () => {};
+          setTimeout(() => proc.stdout.emit('data', Buffer.from(Array.from({ length: 400 }, (_, index) => `line-${index}`).join('\n'))), 1);
+          setTimeout(() => proc.emit('close', 0), 2);
+          return proc;
+        };
 
         const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
         const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
@@ -435,6 +445,101 @@ def test_workflow_extension_runtime_summary_command_writes_output_artifact(tmp_p
     assert "line-399" in data["text"]
     assert "line-0" in data["artifactText"]
     assert "line-399" in data["artifactText"]
+
+
+def test_workflow_extension_runtime_long_command_emits_heartbeat_notification(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const { EventEmitter } = require('events');
+        const path = require('path');
+        const childProcess = require('node:child_process');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+        process.env.HARNESS_WORKFLOW_COMMAND_HEARTBEAT_MS = '5';
+
+        childProcess.execFileSync = () => Array.from({ length: 120 }, (_, index) => `line-${index}`).join('\n');
+        childProcess.spawn = () => {
+          const proc = new EventEmitter();
+          proc.stdout = new EventEmitter();
+          proc.stderr = new EventEmitter();
+          proc.kill = () => {};
+          setTimeout(() => proc.stdout.emit('data', Buffer.from(Array.from({ length: 120 }, (_, index) => `line-${index}`).join('\n'))), 10);
+          setTimeout(() => proc.emit('close', 0), 30);
+          return proc;
+        };
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime heartbeat', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          const result = await pi.tools.workflow_run_command.execute('cmd-heartbeat', { commandId: 'project-test', reason: 'heartbeat test' }, undefined, undefined, ctx);
+          console.log(JSON.stringify({
+            ok: result.details.ok,
+            exitCode: result.details.exitCode,
+            text: result.content[0].text,
+            heartbeatCount: notifications.filter((item) => item.text.includes('still running')).length,
+            heartbeatText: notifications.map((item) => item.text).join('\n'),
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ok"] is True
+    assert data["exitCode"] == 0
+    assert data["heartbeatCount"] >= 1
+    assert "workflow_run_command project-test still running" in data["heartbeatText"]
+    assert "line-119" in data["text"]
+
+
+def test_workflow_extension_runtime_async_catalog_timeout_is_blocking_exit_code(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const { EventEmitter } = require('events');
+        const path = require('path');
+        const childProcess = require('node:child_process');
+        const { createJiti } = require('jiti');
+
+        childProcess.spawn = () => {
+          const proc = new EventEmitter();
+          proc.stdout = new EventEmitter();
+          proc.stderr = new EventEmitter();
+          proc.kill = () => proc.emit('close', null);
+          return proc;
+        };
+
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        const { runCatalogCommandAsync } = jiti(path.resolve('target/.pi/extensions/workflow/catalog.ts'));
+        const spec = {
+          id: 'timeout-test',
+          description: 'timeout test',
+          executable: 'node',
+          fixedArgs: ['-e', 'setTimeout(() => {}, 10000)'],
+          cwdPolicy: 'process',
+          allowedPhases: 'all',
+          outputPolicy: 'summary',
+          riskLevel: 'safe',
+          timeoutMs: 5,
+          maxOutputBytes: 2000,
+        };
+
+        (async () => {
+          const result = await runCatalogCommandAsync(spec, process.cwd());
+          console.log(JSON.stringify({ ok: result.ok, exitCode: result.exitCode, output: result.output }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ok"] is False
+    assert data["exitCode"] == 1
+    assert "timed out" in data["output"]
 
 
 def test_workflow_extension_runtime_push_approve_does_not_complete_without_git_push(tmp_path):

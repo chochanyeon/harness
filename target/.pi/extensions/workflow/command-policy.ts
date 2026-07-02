@@ -9,7 +9,7 @@ import {
   getCatalogCommandsForPhase,
   getGitRoot,
   isPhaseAllowed,
-  runCatalogCommand,
+  runCatalogCommandAsync,
   type WorkflowPhase,
 } from "./core";
 
@@ -65,7 +65,12 @@ export async function executeWorkflowCatalogCommand(
   }
 
   const gitRoot = getGitRoot();
-  const result = runCatalogCommand(spec, gitRoot, userArgs);
+  const result = await runCatalogCommandAsync(spec, gitRoot, userArgs, {
+    onHeartbeat: ({ commandId, elapsedMs }) => {
+      if (!ctx.hasUI || typeof ctx.ui?.notify !== "function") return;
+      ctx.ui.notify(`workflow_run_command ${commandId} still running (${Math.floor(elapsedMs / 1000)}s elapsed)`, "info");
+    },
+  });
   const commandArtifact = writeCommandOutputArtifact(state, spec.id, result, gitRoot);
   const artifactNote = commandArtifact
     ? `\n\nCommand output artifact: ${path.relative(gitRoot ?? process.cwd(), commandArtifact.path)} (${commandArtifact.sizeBytes} bytes, sha256=${commandArtifact.sha256.slice(0, 12)}…)`

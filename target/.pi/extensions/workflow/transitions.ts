@@ -5,7 +5,7 @@ import {
   getNextPhase,
   getUntestedClasses,
   isSharedApprovalBoundary,
-  runCatalogCommand,
+  runCatalogCommandAsync,
   runPreTransitionGate,
   saveWorkflow,
   type WorkflowInstance,
@@ -141,7 +141,12 @@ export async function executeWorkflowApproval(
     const gitRoot = state.workflow.gitRoot ?? getGitRoot();
     const qualitySpec = getCatalogCommand("code-quality");
     if (qualitySpec && gitRoot) {
-      const qualityResult = runCatalogCommand(qualitySpec, gitRoot);
+      const qualityResult = await runCatalogCommandAsync(qualitySpec, gitRoot, [], {
+        onHeartbeat: ({ elapsedMs }) => {
+          if (!ctx.hasUI || typeof ctx.ui?.notify !== "function") return;
+          ctx.ui.notify(`Pre-code_review quality check still running (${Math.floor(elapsedMs / 1000)}s elapsed)`, "info");
+        },
+      });
       const isToolingError = !qualityResult.ok && (
         qualityResult.output.includes("No quality command detected") ||
         qualityResult.output.includes("No code-quality command") ||

@@ -10,12 +10,18 @@ import {
   getGitRoot,
   isPhaseAllowed,
   runCatalogCommandAsync,
+  validateWorkflowWorkspace,
+  scanPushPolicy,
+  pushPolicySignature,
+  formatPushPolicyScanBlocked,
+  type WorkflowInstance,
   type WorkflowPhase,
 } from "./core";
 
 export type WorkflowCatalogCommandState = {
-  workflow: { id?: string; phase: WorkflowPhase } | null;
+  workflow: WorkflowInstance | null;
   recentVerificationCommands: Array<{ command: string; timestamp: number; phase?: WorkflowPhase }>;
+  policyApprovals?: Array<{ timestamp: number; totalChanged: number; categories: string[]; signature?: string }>;
 };
 
 export async function executeWorkflowCatalogCommand(
@@ -49,6 +55,16 @@ export async function executeWorkflowCatalogCommand(
       ].join("\n") }],
       details: { ok: false, reason: "phase-not-allowed", phase, commandId: spec.id },
     };
+  }
+
+  if (spec.id === "git-push" && state.workflow) {
+    const guard = validateWorkflowGitPushCatalogCommand(state);
+    if (!guard.ok) {
+      return {
+        content: [{ type: "text", text: guard.message }],
+        details: { ok: false, reason: "workflow-push-guard-blocked", commandId: spec.id },
+      };
+    }
   }
 
   if (spec.requiresApproval && ctx.hasUI) {
@@ -86,6 +102,41 @@ export async function executeWorkflowCatalogCommand(
     content: [{ type: "text", text: formatted }],
     details: { ok: result.ok, commandId: spec.id, exitCode: result.exitCode, elapsedMs: result.elapsedMs, truncated: result.truncated, commandArtifact },
   };
+}
+
+function validateWorkflowGitPushCatalogCommand(
+  state: WorkflowCatalogCommandState,
+): { ok: true } | { ok: false; message: string } {
+  const workflow = state.workflow;
+  if (!workflow) return { ok: true };
+
+  const workspace = validateWorkflowWorkspace(workflow);
+  if (!workspace.ok) {
+    return { ok: false, message: workspace.problems.join("\n") };
+  }
+
+  if (workflow.phase !== "push") {
+    return { ok: false, message: `git push blocked: current phase is "${workflow.phase}", required phase is "push".` };
+  }
+
+  if (!workflow.history.some((item) => item.from === "commit" && item.to === "push")) {
+    return {
+      ok: false,
+      message: [
+        "Workflow git push blocked: missing commit → push transition history.",
+        "Use workflow_approve from commit phase so the final user approval and policy scan run before git-push.",
+      ].join("\n"),
+    };
+  }
+
+  const scan = scanPushPolicy(workflow.gitRoot ?? getGitRoot());
+  const signature = pushPolicySignature(scan);
+  const approved = state.policyApprovals?.at(-1)?.signature === signature;
+  if (!scan.ok && !approved) {
+    return { ok: false, message: formatPushPolicyScanBlocked(scan) };
+  }
+
+  return { ok: true };
 }
 
 function writeCommandOutputArtifact(

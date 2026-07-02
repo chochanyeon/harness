@@ -92,6 +92,46 @@ def test_python_initializer_rejects_removed_claude_workflow_component(tmp_path):
     assert not (tmp_path / ".claude").exists()
 
 
+def test_unix_initializer_workflow_component_includes_assistant_markdown_box():
+    sh = (ROOT / "scripts" / "init-target-harness.sh").read_text(encoding="utf-8")
+
+    assert ".pi/extensions/assistant-markdown-box.ts" in sh
+    selected_block = sh.split("component_selected_with()", 1)[1]
+    assert ".pi/extensions/assistant-markdown-box.ts" in selected_block
+
+
+def test_sync_dev_harness_excludes_generated_cache_and_venv_paths(tmp_path):
+    src = tmp_path / "src"
+    dest = tmp_path / "dest"
+    (src / "dpaa" / "__pycache__").mkdir(parents=True)
+    (src / "dpaa" / "__pycache__" / "cli.pyc").write_bytes(b"cache")
+    (src / ".venv" / "bin").mkdir(parents=True)
+    (src / ".venv" / "bin" / "python").write_text("venv", encoding="utf-8")
+    (src / "pkg.egg-info").mkdir(parents=True)
+    (src / "pkg.egg-info" / "PKG-INFO").write_text("metadata", encoding="utf-8")
+    (src / "extensions").mkdir(parents=True)
+    (src / "extensions" / "workflow.ts").write_text("runtime", encoding="utf-8")
+    (dest / "old" / "__pycache__").mkdir(parents=True)
+    (dest / "old" / "__pycache__" / "stale.pyc").write_bytes(b"stale")
+
+    result = subprocess.run(
+        [sys.executable, "scripts/sync-dev-harness.py", str(src), str(dest)],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (dest / "extensions" / "workflow.ts").exists()
+    assert not (dest / "dpaa" / "__pycache__" / "cli.pyc").exists()
+    assert not (dest / ".venv").exists()
+    assert not (dest / "pkg.egg-info").exists()
+    assert not (dest / "old" / "__pycache__" / "stale.pyc").exists()
+
+
 def test_update_scripts_are_component_granular():
     sh = (ROOT / "scripts" / "update-harness.sh").read_text(encoding="utf-8")
     ps1 = (ROOT / "scripts" / "update-harness.ps1").read_text(encoding="utf-8")

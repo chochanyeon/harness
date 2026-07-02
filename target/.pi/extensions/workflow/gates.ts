@@ -266,6 +266,9 @@ export type InterviewAmbiguityScoreEvidence = {
   constraints: number;
   context: number;
   reasoning?: string;
+  source?: "wizard" | "chat-artifact";
+  artifactPath?: string;
+  artifactSha256?: string;
 } | null;
 
 const INTERVIEW_AMBIGUITY_THRESHOLD = 60;
@@ -294,6 +297,33 @@ export function runInterviewAmbiguityGate(
         next: [
           "Call workflow_score_interview with your per-dimension clarity scores (goal, scope, acceptance, constraints, context; each 0–100)",
           "Re-run workflow_approve after recording the scores",
+        ],
+        skip: "/workflow skip interview-ambiguity <reason>",
+      }),
+    };
+  }
+
+  if (!evidence.source || (evidence.source === "chat-artifact" && !evidence.artifactSha256)) {
+    writeFieldLogEvent({
+      type: "gate.failed",
+      category: "interview-ambiguity",
+      severity: "blocker",
+      workflow,
+      summary: "Interview clarity score lacked wizard or chat artifact source evidence.",
+      expected: "workflow_score_interview is backed by completed wizard answers or a hashed chat-interview artifact.",
+      actual: "Score token existed without source evidence.",
+      impact: "Planning could proceed from self-assigned scores without collected requirements evidence.",
+      primaryMessage: "Run workflow_interview_wizard or provide a chat-interview artifact before scoring.",
+    });
+    return {
+      ok: false,
+      message: formatGateBlocked({
+        gate: "Interview Ambiguity",
+        why: "Interview scores were recorded without wizard completion or chat-interview artifact evidence.",
+        next: [
+          "Run workflow_interview_wizard and then call workflow_score_interview again",
+          "Or provide a chat interview artifact path to workflow_score_interview so the evidence can be hashed",
+          "Re-run workflow_approve after source-backed scores are recorded",
         ],
         skip: "/workflow skip interview-ambiguity <reason>",
       }),
@@ -1121,30 +1151,77 @@ function hasHighRiskPushPath(file: string): boolean {
     || segments.some((segment) => HIGH_RISK_PUSH_PATH_SEGMENTS.has(segment));
 }
 
+function runGit(root: string, args: string[]): string {
+  return execFileSync("git", ["-C", root, ...args], {
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+    maxBuffer: 50 * 1024 * 1024,
+  }).trim();
+}
+
+function parseGitNameStatus(output: string): Array<{ status: string; file: string }> {
+  if (!output.trim()) return [];
+  return output.split(/\r?\n/).filter(Boolean).map((line) => {
+    const fields = line.split("\t");
+    const status = fields[0] ?? "";
+    const file = (fields.at(-1) ?? "").trim().replace(/\\/g, "/");
+    return { status, file };
+  }).filter((entry) => entry.file.length > 0);
+}
+
+function scanOutgoingCommitEntries(root: string): Array<{ status: string; file: string }> {
+  try {
+    const upstream = runGit(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]);
+    return parseGitNameStatus(runGit(root, ["diff", "--name-status", "--find-renames", `${upstream}..HEAD`]));
+  } catch {
+    // Repositories without an upstream still need a conservative push policy.
+    // `git push` may be invoked with explicit refspecs through bash, and the
+    // last commit is the closest local representation of what may be pushed.
+    return parseGitNameStatus(runGit(root, ["diff-tree", "--no-commit-id", "--name-status", "--find-renames", "-r", "HEAD"]));
+  }
+}
+
+function scanDirtyWorkingTreeEntries(root: string): Array<{ status: string; file: string }> {
+  const out = runGit(root, ["status", "--porcelain=v1", "--untracked-files=all"]);
+  if (!out) return [];
+  return out.split(/\r?\n/).map((line) => {
+    const status = line.slice(0, 2);
+    const rawPath = line.slice(3).trim();
+    const file = rawPath.includes(" -> ") ? rawPath.split(" -> ").pop()!.trim() : rawPath;
+    return { status, file: file.replace(/\\/g, "/") };
+  }).filter((entry) => entry.file.length > 0);
+}
+
+function pushPolicyUnavailable(limit: number, reason: string): PushPolicyScanResult {
+  return {
+    ok: false,
+    totalChanged: 0,
+    maxChanged: limit,
+    findings: [{ category: "Push policy scan unavailable (git error)", files: [reason] }],
+  };
+}
+
+export function pushPolicySignature(policyScan: PushPolicyScanResult): string {
+  return JSON.stringify({
+    totalChanged: policyScan.totalChanged,
+    findings: policyScan.findings
+      .map((finding) => ({ category: finding.category, files: [...finding.files].sort() }))
+      .sort((a, b) => a.category.localeCompare(b.category)),
+  });
+}
+
 export function scanPushPolicy(root: string | null = getGitRoot()): PushPolicyScanResult {
   const maxChanged = Number.parseInt(process.env.HARNESS_POLICY_MAX_CHANGED_FILES ?? "30", 10);
   const limit = Number.isFinite(maxChanged) && maxChanged > 0 ? maxChanged : 30;
-  if (!root) return { ok: true, totalChanged: 0, maxChanged: limit, findings: [] };
+  if (!root) return pushPolicyUnavailable(limit, "No git root detected");
 
-  let out = "";
+  let entries: Array<{ status: string; file: string }> = [];
   try {
-    out = execSync(`git -C "${root}" status --porcelain=v1 --untracked-files=all`, {
-      encoding: "utf-8",
-      stdio: "pipe",
-      maxBuffer: 50 * 1024 * 1024,
-    }).trim();
-  } catch {
-    return { ok: true, totalChanged: 0, maxChanged: limit, findings: [] };
+    entries = scanOutgoingCommitEntries(root);
+    if (entries.length === 0) entries = scanDirtyWorkingTreeEntries(root);
+  } catch (error) {
+    return pushPolicyUnavailable(limit, error instanceof Error ? error.message : String(error));
   }
-
-  const entries = out
-    ? out.split("\n").map((line) => {
-        const status = line.slice(0, 2);
-        const rawPath = line.slice(3).trim();
-        const file = rawPath.includes(" -> ") ? rawPath.split(" -> ").pop()!.trim() : rawPath;
-        return { status, file: file.replace(/\\/g, "/") };
-      })
-    : [];
 
   const categories: Array<{ category: string; match: (entry: { status: string; file: string }) => boolean }> = [
     { category: "Build descriptor changed (build.gradle / pom.xml)", match: ({ file }) => /(^|\/)(build\.gradle(\.kts)?|pom\.xml)$/.test(file) },

@@ -620,6 +620,194 @@ def test_workflow_extension_runtime_blocks_cd_and_git_shell_chains_during_workfl
     assert data["shellChainEvent"]["event"]["severity"] == "major"
 
 
+def test_task_queue_done_auto_activates_next_pending_without_approval(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const confirms = [];
+        const ctx = { hasUI: true, ui: { notify() {}, confirm: async (title, text) => { confirms.push({ title, text }); return true; }, setWidget() {}, setStatus() {} } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start queue auto activation', ctx);
+          await pi.tools.workflow_task_queue.execute('queue-create', {
+            operation: 'create',
+            title: 'Queue auto activation test',
+            tasks: [{ id: 'T1', title: 'First' }, { id: 'T2', title: 'Second' }]
+          }, undefined, undefined, ctx);
+          await pi.tools.workflow_task_queue.execute('queue-activate', { operation: 'activate', taskId: 'T1' }, undefined, undefined, ctx);
+          const done = await pi.tools.workflow_task_queue.execute('queue-done', { operation: 'mark', taskId: 'T1', status: 'done', notes: 'verified' }, undefined, undefined, ctx);
+          console.log(JSON.stringify({ details: done.details, text: done.content[0].text, confirmCount: confirms.length }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    queue = data["details"]["queue"]
+    assert data["confirmCount"] == 0
+    assert queue["activeTaskId"] == "T2"
+    assert [task["status"] for task in queue["tasks"]] == ["done", "active"]
+    assert "Completion evidence" in data["text"]
+
+
+def test_implement_to_code_review_blocks_incomplete_task_queue(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", str(repo)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir(__REPO__);
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(__WORKFLOW__).default(pi);
+
+        const sentMessages = [];
+        pi.sendUserMessage = async (text) => sentMessages.push(text);
+        const ctx = { hasUI: true, ui: { notify() {}, confirm: async () => true, setWidget() {}, setStatus() {} } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start queue incomplete guard', ctx);
+          await pi.commands.workflow.handler('state implement', ctx);
+          await pi.tools.workflow_task_queue.execute('queue-create', {
+            operation: 'create',
+            title: 'Queue incomplete guard test',
+            tasks: [{ id: 'T1', title: 'First' }, { id: 'T2', title: 'Second' }]
+          }, undefined, undefined, ctx);
+          await pi.tools.workflow_task_queue.execute('queue-activate', { operation: 'activate', taskId: 'T1' }, undefined, undefined, ctx);
+          const approval = await pi.tools.workflow_approve.execute('approve-incomplete-queue', { summary: 'try code_review too early' }, undefined, undefined, ctx);
+          console.log(JSON.stringify({ details: approval.details, text: approval.content[0].text, sentMessages }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    ).replace("__REPO__", json.dumps(str(repo))).replace("__WORKFLOW__", json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow.ts")))
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["details"]["ok"] is False
+    assert data["details"]["reason"] == "task-queue-incomplete"
+    assert "Epic Queue" in data["text"]
+
+
+def test_workflow_score_interview_requires_wizard_or_artifact_source(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true, setWidget() {}, setStatus() {} } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start score source guard', ctx);
+          const score = await pi.tools.workflow_score_interview.execute('score-no-source', {
+            goal: 90, scope: 90, acceptance: 90, constraints: 90, context: 90,
+            reasoning: 'scores without wizard or artifact must not be enough'
+          }, undefined, undefined, ctx);
+          console.log(JSON.stringify({ details: score.details, text: score.content[0].text }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["details"]["ok"] is False
+    assert data["details"]["reason"] == "interview-source-required"
+    assert "workflow_interview_wizard" in data["text"]
+
+
+def test_push_policy_scan_detects_committed_outgoing_risky_file(tmp_path):
+    repo = tmp_path / "repo"
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "init", str(repo)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (repo / "README.md").write_text("# Push policy test\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "commit", "-m", "test: initial"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "branch", "-M", "main"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    (repo / "build.gradle").write_text("plugins { id 'java' }\n", encoding="utf-8")
+    subprocess.run(["git", "add", "build.gradle"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "commit", "-m", "build: change descriptor"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ scanPushPolicy }} = jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "gates.ts"))});
+        const result = scanPushPolicy({json.dumps(str(repo))});
+        console.log(JSON.stringify(result));
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ok"] is False
+    assert data["totalChanged"] == 1
+    assert any(finding["category"].startswith("Build descriptor changed") for finding in data["findings"])
+    assert data["findings"][0]["files"] == ["build.gradle"]
+
+
+def test_workflow_run_command_git_push_requires_transition_history(tmp_path):
+    repo = tmp_path / "repo"
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "init", str(repo)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (repo / "README.md").write_text("# Push catalog guard test\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "commit", "-m", "test: initial"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "branch", "-M", "main"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (repo / "safe.txt").write_text("safe\n", encoding="utf-8")
+    subprocess.run(["git", "add", "safe.txt"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "commit", "-m", "test: safe outgoing"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        process.chdir({json.dumps(str(repo))});
+        process.env.HARNESS_POLICY_MAX_CHANGED_FILES = '500';
+
+        const pi = {{ events: {{}}, commands: {{}}, tools: {{}}, on(name, fn) {{ this.events[name] = fn; }}, registerCommand(name, spec) {{ this.commands[name] = spec; }}, registerTool(spec) {{ this.tools[spec.name] = spec; }} }};
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow.ts"))}).default(pi);
+
+        const notifications = [];
+        const ctx = {{ hasUI: true, ui: {{ notify: (text, level) => notifications.push({{ text, level }}), confirm: async () => true, setWidget() {{}}, setStatus() {{}} }} }};
+
+        (async () => {{
+          await pi.commands.workflow.handler('start Runtime catalog push guard', ctx);
+          await pi.commands.workflow.handler('state push', ctx);
+          const push = await pi.tools.workflow_run_command.execute('push-guard', {{ commandId: 'git-push', reason: 'must require transition history' }}, undefined, undefined, ctx);
+          console.log(JSON.stringify({{ push: push.details, text: push.content[0].text }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["push"]["ok"] is False
+    assert data["push"]["reason"] == "workflow-push-guard-blocked"
+    assert "commit → push" in data["text"]
+
+
 def test_workflow_extension_runtime_git_push_catalog_command_completes_push_phase(tmp_path):
     repo = tmp_path / "repo"
     remote = tmp_path / "remote.git"
@@ -1976,6 +2164,34 @@ def test_plan_review_to_implement_requires_no_user_approval(tmp_path):
     plan_review_confirms = [c for c in data["confirms"] if "plan_review" in c or "implement" in c]
     assert plan_review_confirms == [], \
         f"Unexpected confirm dialogs for plan_review→implement: {plan_review_confirms}"
+
+
+def test_workflow_state_next_is_not_normal_progression_path(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true, setWidget() {}, setStatus() {} } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start workflow_state next guard', ctx);
+          const result = await pi.tools.workflow_state.execute('ws-next', { direction: 'next', reason: 'attempt normal progression' }, undefined, undefined, ctx);
+          console.log(JSON.stringify({ details: result.details, text: result.content[0].text }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["details"]["ok"] is False
+    assert data["details"]["reason"] == "forward-not-allowed"
+    assert "workflow_approve" in data["text"]
 
 
 def test_workflow_state_autoback_does_not_send_followup_steer_message(tmp_path):

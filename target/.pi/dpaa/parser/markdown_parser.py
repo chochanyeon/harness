@@ -26,26 +26,47 @@ class MarkdownParser:
         tokens = self._md.parse(text)
         lines = text.splitlines()
 
+        if not any(token.type == "heading_open" for token in tokens):
+            if text.strip():
+                doc.sections["Document"] = Section(
+                    title="Document",
+                    level=0,
+                    content=text.strip(),
+                    line_start=0,
+                )
+            return doc
+
+        title_counts: dict[str, int] = {}
+
+        def add_section(title: str, level: int, content: list[str], line_start: int) -> None:
+            count = title_counts.get(title, 0) + 1
+            title_counts[title] = count
+            key = title if count == 1 else f"{title}#{count}"
+            doc.sections[key] = Section(
+                title=title,
+                level=level,
+                content="\n".join(content).strip(),
+                line_start=line_start,
+            )
+
         current_title: str | None = None
         current_level: int = 0
         current_start: int = 0
         content_lines: list[str] = []
+        awaiting_heading_text = False
 
         for token in tokens:
             if token.type == "heading_open":
                 if current_title:
-                    doc.sections[current_title] = Section(
-                        title=current_title,
-                        level=current_level,
-                        content="\n".join(content_lines).strip(),
-                        line_start=current_start,
-                    )
+                    add_section(current_title, current_level, content_lines, current_start)
                 current_level = int(token.tag[1])
                 current_start = token.map[0] if token.map else 0
                 content_lines = []
                 current_title = None
-            elif token.type == "inline" and current_title is None and token.content:
-                current_title = token.content.strip()
+                awaiting_heading_text = True
+            elif token.type == "inline" and awaiting_heading_text:
+                current_title = token.content.strip() or "Untitled"
+                awaiting_heading_text = False
             elif token.type not in ("heading_open", "heading_close", "inline") and current_title:
                 if token.map:
                     for i in range(token.map[0], token.map[1]):
@@ -53,11 +74,6 @@ class MarkdownParser:
                             content_lines.append(lines[i])
 
         if current_title:
-            doc.sections[current_title] = Section(
-                title=current_title,
-                level=current_level,
-                content="\n".join(content_lines).strip(),
-                line_start=current_start,
-            )
+            add_section(current_title, current_level, content_lines, current_start)
 
         return doc

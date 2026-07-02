@@ -41,6 +41,9 @@ export type WorkflowRuntimeState = {
     constraints: number;
     context: number;
     reasoning?: string;
+    source: "wizard" | "chat-artifact";
+    artifactPath?: string;
+    artifactSha256?: string;
   } | null;
   policyApprovals: Array<{ timestamp: number; totalChanged: number; categories: string[]; signature: string }>;
   extensionMutationApprovedForWorkflowId: string | null;

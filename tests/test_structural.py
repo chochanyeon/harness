@@ -18,3 +18,10 @@ def test_good_plan_no_structural_findings():
     doc = MarkdownParser().parse(text)
     result = StructuralLayer().analyze(doc)
     assert result.score == 0
+
+
+def test_headerless_plan_is_still_analyzed_for_placeholders():
+    doc = MarkdownParser().parse("TODO maybe later\n")
+    result = StructuralLayer().analyze(doc)
+
+    assert {f.rule for f in result.findings} == {"placeholder_found"}

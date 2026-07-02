@@ -8,6 +8,7 @@ import {
   runCatalogCommandAsync,
   runPreTransitionGate,
   saveWorkflow,
+  formatWorkflowTaskQueueSummary,
   type WorkflowInstance,
   type WorkflowPhase,
   type WorkflowGate,
@@ -111,6 +112,28 @@ export async function executeWorkflowApproval(
   }
 
   const workflowId = state.workflow.id;
+
+  if (state.workflow.phase === "implement" && state.workflow.taskQueue) {
+    const unfinished = state.workflow.taskQueue.tasks.filter((task) => ["active", "pending", "blocked"].includes(task.status));
+    if (unfinished.length > 0) {
+      await deps.steerLlm(
+        [
+          "🧭 Epic Queue 미완료 — code_review 진입 전 active/pending/blocked task를 완료, deferred, 또는 명시적으로 정리하세요.",
+          "Task 종료마다 사용자 승인은 필요하지 않습니다. workflow_task_queue로 현재 task를 done 처리하면 다음 pending task가 자동 활성화됩니다.",
+          "Silent partial completion을 방지하기 위해 code_review 전이를 차단합니다.",
+          "",
+          formatWorkflowTaskQueueSummary(state.workflow.taskQueue),
+        ].join("\n"),
+      );
+      return {
+        content: [{ type: "text", text: [
+          "Epic Queue incomplete: code_review transition blocked to prevent silent partial completion.",
+          formatWorkflowTaskQueueSummary(state.workflow.taskQueue),
+        ].join("\n") }],
+        details: { ok: false, reason: "task-queue-incomplete", unfinished: unfinished.map((task) => task.id) },
+      };
+    }
+  }
 
   if (state.workflow.phase === "implement") {
     const tddRoot = state.workflow.gitRoot ?? getGitRoot();

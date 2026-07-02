@@ -15,6 +15,12 @@ import shutil
 from pathlib import Path
 
 PRESERVE_NAMES = {"config", "local", "LOCAL.md"}
+EXCLUDE_NAMES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", ".cache"}
+EXCLUDE_FILES = {".DS_Store"}
+
+
+def is_excluded(rel: Path) -> bool:
+    return any(part in EXCLUDE_NAMES or part.endswith(".egg-info") for part in rel.parts) or rel.name in EXCLUDE_FILES
 
 
 def sync(src: Path, dest: Path) -> None:
@@ -26,6 +32,8 @@ def sync(src: Path, dest: Path) -> None:
         parts = rel.parts
         if parts and parts[0] in PRESERVE_NAMES:
             continue  # preserve project-owned paths
+        if is_excluded(rel):
+            continue
         target = dest / rel
         if item.is_dir():
             target.mkdir(parents=True, exist_ok=True)
@@ -40,7 +48,7 @@ def sync(src: Path, dest: Path) -> None:
         if parts and parts[0] in PRESERVE_NAMES:
             continue
         src_counterpart = src / rel
-        if not src_counterpart.exists():
+        if is_excluded(rel) or not src_counterpart.exists():
             if item.is_dir() and not any(item.iterdir()):
                 item.rmdir()
             elif item.is_file():

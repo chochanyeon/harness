@@ -124,7 +124,7 @@ component_selected_with() {
   case "$component" in
     workflow)
       case "$rel" in
-        AGENTS.md|.pi/.gitignore|.pi/LOCAL.md|.pi/WORKFLOW.md|.pi/GOVERNANCE.md|.pi/extensions/workflow.ts|.pi/extensions/workflow/*|.harness/workflow-policy.json|.ai/interview/*|.pi/dpaa/*|.pi/workflows/*|.pi/skills/*|.pi/personas/*|.pi/themes/*|.pi/pyproject.toml|.pi/schemas/harness-field-log-event.schema.json|.pi/sbadr/*|.pi/corenlp/*|.pi/setup_corenlp.sh|.pi/setup_corenlp.ps1) return 0 ;;
+        AGENTS.md|.pi/.gitignore|.pi/LOCAL.md|.pi/WORKFLOW.md|.pi/GOVERNANCE.md|.pi/extensions/workflow.ts|.pi/extensions/assistant-markdown-box.ts|.pi/extensions/workflow/*|.harness/workflow-policy.json|.ai/interview/*|.pi/dpaa/*|.pi/workflows/*|.pi/skills/*|.pi/personas/*|.pi/themes/*|.pi/pyproject.toml|.pi/schemas/harness-field-log-event.schema.json|.pi/sbadr/*|.pi/corenlp/*|.pi/setup_corenlp.sh|.pi/setup_corenlp.ps1) return 0 ;;
       esac ;;
     memory)
       case "$rel" in

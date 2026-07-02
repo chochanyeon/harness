@@ -49,6 +49,7 @@ import {
   loadPersistedWorkflow,
   saveWorkflow,
   scanPushPolicy,
+  pushPolicySignature,
   scanWorkflowPrerequisites,
   shouldOfferInputCheckpoint,
   shortInputReason,
@@ -375,15 +376,6 @@ export default function (pi: ExtensionAPI) {
     return true;
   }
 
-  function pushPolicySignature(policyScan: ReturnType<typeof scanPushPolicy>): string {
-    return JSON.stringify({
-      totalChanged: policyScan.totalChanged,
-      findings: policyScan.findings
-        .map((finding) => ({ category: finding.category, files: [...finding.files].sort() }))
-        .sort((a, b) => a.category.localeCompare(b.category)),
-    });
-  }
-
   async function confirmPushPolicyForPushPhase(ctx: any): Promise<boolean> {
     // Guard: block push if there are uncommitted changes.
     // This prevents the LLM from being confused by stale steers into skipping the commit step.
@@ -670,6 +662,8 @@ export default function (pi: ExtensionAPI) {
       }
       const operation = String(params.operation ?? "show");
       let changed = false;
+      let autoActivatedTaskId: string | null = null;
+      let completionEvidence: string | null = null;
       let nextQueue = state.workflow.taskQueue;
       try {
         if (operation !== "show") {
@@ -704,7 +698,18 @@ export default function (pi: ExtensionAPI) {
           const status = String(params.status ?? "");
           if (!taskId) return { content: [{ type: "text", text: "taskId is required for mark." }], details: { ok: false, reason: "missing-task-id" } };
           if (!isWorkflowTaskStatus(status)) return { content: [{ type: "text", text: `Invalid task status: ${status}. Use pending, active, done, blocked, or deferred.` }], details: { ok: false, reason: "invalid-status" } };
+          const wasActive = nextQueue.activeTaskId === taskId;
           nextQueue = markWorkflowTask(nextQueue, taskId, status, params.notes ? String(params.notes) : undefined);
+          if (status === "done") {
+            completionEvidence = `Completion evidence: task ${taskId} marked done${params.notes ? ` — ${String(params.notes)}` : ""}.`;
+          }
+          if (status === "done" && wasActive) {
+            const nextPending = nextQueue.tasks.find((task) => task.status === "pending") ?? null;
+            if (nextPending) {
+              nextQueue = activateWorkflowTask(nextQueue, nextPending.id);
+              autoActivatedTaskId = nextPending.id;
+            }
+          }
           changed = true;
         } else if (operation !== "show") {
           return { content: [{ type: "text", text: `Unknown operation: ${operation}. Use create, add, activate, mark, or show.` }], details: { ok: false, reason: "unknown-operation" } };
@@ -722,6 +727,8 @@ export default function (pi: ExtensionAPI) {
         }
         const summary = formatWorkflowTaskQueueSummary(state.workflow.taskQueue);
         const lines = [summary];
+        if (completionEvidence) lines.push(`- ${completionEvidence}`);
+        if (autoActivatedTaskId) lines.push(`- Auto-activated next task without user approval: ${autoActivatedTaskId}`);
         if (artifact) lines.push(`- Artifact: ${path.relative(process.cwd(), artifact.path)}`);
         return { content: [{ type: "text", text: lines.join("\n") }], details: { ok: true, operation, changed, artifact, queue: state.workflow.taskQueue } };
       } catch (error) {
@@ -865,9 +872,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "workflow_skip_gate",
     label: "Skip workflow gate once",
-    description: "Record an explicit interactive-user accepted-risk exception for one workflow gate. Use only after explaining the gate failure and receiving user approval.",
-    promptSnippet: "Skip one workflow gate after explicit user approval",
+    description: "Record an explicit interactive-user accepted-risk exception for one workflow gate. This is an exception path, not normal autonomous repair; use only after explaining the gate failure and receiving user approval.",
+    promptSnippet: "Skip one workflow gate only as an accepted-risk exception after explicit user approval",
     promptGuidelines: [
+      "Do not use this tool as a normal long-running autonomous path; repair DPAA, interview, and quality failures first.",
       "Use only when a workflow gate is unnecessary or a false positive for the current task.",
       "Explain the gate failure and risk before calling this tool.",
       "A non-empty reason is required and the extension asks the interactive user for confirmation.",
@@ -914,12 +922,12 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "workflow_state",
     label: "Manual phase recovery",
-    description: "Move the workflow one step forward or backward. Backward transitions from review phases (code_review → implement, plan_review → plan) require no user approval. For normal forward advancement, use workflow_approve.",
-    promptSnippet: "Move workflow phase one step; review-phase backward transitions are automatic",
+    description: "Move the workflow one step backward for manual recovery. Forward advancement is not a normal recovery path; use workflow_approve so transition gates run.",
+    promptSnippet: "Move workflow phase backward for recovery; review-phase backward transitions are automatic",
     promptGuidelines: [
       "Use workflow_state with direction: 'prev' to return to a previous phase when issues are found during review (e.g. code_review → implement, plan_review → plan). No user approval required for these backward transitions.",
-      "For normal forward phase advancement, use workflow_approve instead.",
-      "direction: 'next' moves forward one step, 'prev' moves backward one step.",
+      "Never use workflow_state with direction: 'next' for normal advancement; use workflow_approve so DPAA, review, quality, and push gates run.",
+      "direction: 'next' is rejected by this tool; direction: 'prev' moves backward one step.",
     ],
     parameters: Type.Object({
       direction: Type.Union([Type.Literal("next"), Type.Literal("prev")], { description: "'next' or 'prev' — move one step forward or backward" }),
@@ -928,6 +936,13 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (!state.workflow) {
         return { content: [{ type: "text", text: "No active workflow." }], details: { ok: false } };
+      }
+
+      if (params.direction === "next") {
+        return {
+          content: [{ type: "text", text: "workflow_state direction=next is not allowed. Use workflow_approve for forward progress so transition gates and approval boundaries run." }],
+          details: { ok: false, reason: "forward-not-allowed" },
+        };
       }
 
       const currentPhase = state.workflow.phase;
@@ -1389,6 +1404,7 @@ ${formatWorkflowAction(state.workflow)}` }],
       constraints: Type.Number({ description: "Constraints/risks clarity score 0-100", minimum: 0, maximum: 100 }),
       context: Type.Number({ description: "Existing code/system context clarity score 0-100", minimum: 0, maximum: 100 }),
       reasoning: Type.Optional(Type.String({ description: "Brief reasoning for low scores or notable gaps" })),
+      interviewArtifactPath: Type.Optional(Type.String({ description: "Optional chat-interview artifact path when the TUI wizard was unavailable" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       if (!state.workflow || state.workflow.phase !== "interview") {
@@ -1399,6 +1415,31 @@ ${formatWorkflowAction(state.workflow)}` }],
       }
 
       const { goal, scope, acceptance, constraints, context, reasoning } = params;
+      let source: "wizard" | "chat-artifact" | null = null;
+      let artifactPath: string | undefined;
+      let artifactSha256: string | undefined;
+      if (state.interviewWizardCompletedToken?.workflowId === state.workflow.id) {
+        source = "wizard";
+      } else if (params.interviewArtifactPath) {
+        const gitRoot = getGitRoot() ?? process.cwd();
+        const candidate = path.resolve(gitRoot, String(params.interviewArtifactPath));
+        const rel = path.relative(gitRoot, candidate);
+        if (rel.startsWith("..") || path.isAbsolute(rel) || !fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) {
+          return {
+            content: [{ type: "text", text: `Interview artifact not found or outside git root: ${params.interviewArtifactPath}` }],
+            details: { ok: false, reason: "interview-artifact-invalid" },
+          };
+        }
+        source = "chat-artifact";
+        artifactPath = rel.replace(/\\/g, "/");
+        artifactSha256 = sha256File(candidate);
+      } else {
+        return {
+          content: [{ type: "text", text: "workflow_score_interview requires source evidence: complete workflow_interview_wizard first, or pass interviewArtifactPath for a chat-based interview artifact." }],
+          details: { ok: false, reason: "interview-source-required" },
+        };
+      }
+
       const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
       const scores = {
         goal: clamp(goal),
@@ -1416,6 +1457,9 @@ ${formatWorkflowAction(state.workflow)}` }],
         workflowId: state.workflow.id,
         issuedAt: Date.now(),
         ...scores,
+        source,
+        ...(artifactPath ? { artifactPath } : {}),
+        ...(artifactSha256 ? { artifactSha256 } : {}),
         ...(reasoning ? { reasoning } : {}),
       };
 

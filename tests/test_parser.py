@@ -18,3 +18,20 @@ def test_parse_sections_captures_content():
     parser = MarkdownParser()
     doc = parser.parse(text)
     assert "Improve orchestration reliability" in doc.sections["Goal"].content
+
+
+def test_parse_headerless_plan_keeps_body_as_document_section():
+    doc = MarkdownParser().parse("TODO maybe later\n")
+
+    assert "Document" in doc.sections
+    assert doc.sections["Document"].content == "TODO maybe later"
+
+
+def test_parse_duplicate_headings_preserves_all_sections():
+    text = "# Plan\n\n## Steps\nTODO first\n\n## Steps\nsecond concrete\n"
+    doc = MarkdownParser().parse(text)
+
+    assert "Steps" in doc.sections
+    assert "Steps#2" in doc.sections
+    assert "TODO first" in doc.sections["Steps"].content
+    assert "second concrete" in doc.sections["Steps#2"].content

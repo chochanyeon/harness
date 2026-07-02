@@ -4,7 +4,7 @@ import * as path from "node:path";
 import type { WorkflowRuntimeState } from "../runtime-state";
 import { ensureExtensionMutationApproved } from "./extension-mutation-approval";
 import { decideProductionClassTddGate, expectedProductionTestPath, hasProductionClassTestCoverage, isProductionClassPath, productionClassKey, productionClassKeyFromTestPath } from "../domain/production-class-policy";
-import { consumeSkipToken, formatGateBlocked, formatPushPolicyScanBlocked, scanPushPolicy, validateWorkflowWorkspace } from "../gates";
+import { consumeSkipToken, formatGateBlocked, formatPushPolicyScanBlocked, pushPolicySignature, scanPushPolicy, validateWorkflowWorkspace } from "../gates";
 import { getGitRoot, hasGitDashC, isGitPush } from "../git";
 import { formatWorkspaceMismatch } from "../format";
 import { getPhaseWritePathPolicy, isWritePathBlocked, PHASE_ALLOWED_BUILTIN_TOOLS } from "../policy-core";
@@ -389,13 +389,4 @@ function handleWorkflowBoundPush(
       }),
     };
   }
-}
-
-function pushPolicySignature(policyScan: ReturnType<typeof scanPushPolicy>): string {
-  return JSON.stringify({
-    totalChanged: policyScan.totalChanged,
-    findings: policyScan.findings
-      .map((finding) => ({ category: finding.category, files: [...finding.files].sort() }))
-      .sort((a, b) => a.category.localeCompare(b.category)),
-  });
 }

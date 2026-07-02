@@ -313,20 +313,39 @@ class TestPlanMetadataDocs:
 
 
 class TestDeepInterviewLiteWizard:
-    def test_workflow_tool_adds_topology_and_clarity_questions(self):
+    def test_workflow_tool_appends_clarity_without_topology_prepend(self):
         src = _workflow_src()
         assert "buildDeepInterviewLiteQuestions" in src
-        assert "round_0_topology" in src
+        assert "round_0_topology" not in src
+        assert "buildTopologyQuestion" not in src
         assert "clarity_checkpoint" in src
         assert "deep-interview-lite" in src
         assert "round: 'follow_up'" in src
-        assert "Purpose:" in src
-        assert "What to answer:" in src
-        assert "choices describe the rough shape only" in src
+        assert "does not prepend a work-map/topology question" in src
+
+    def test_interview_choice_contract_supports_optional_recommendation_fields(self):
+        workflow_src = _workflow_src()
+        ui_src = _src("interview-ui.ts")
+        assert "recommended" in ui_src
+        assert "recommendationReason" in ui_src
+        assert "recommended" in workflow_src
+        assert "recommendationReason" in workflow_src
+        assert "Type.Optional(Type.Boolean" in workflow_src
+        assert "Type.Optional(Type.String" in workflow_src
+
+    def test_recommended_choice_policy_is_documented_as_advisory(self):
+        readme_ko = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_en = (ROOT / "README.en.md").read_text(encoding="utf-8")
+        interview_skill = (ROOT / "target" / ".pi" / "skills" / "interview" / "SKILL.md").read_text(encoding="utf-8")
+        combined = "\n".join([readme_ko, readme_en, interview_skill])
+        assert "recommended" in combined
+        assert "recommendationReason" in combined
+        assert "advisory" in combined
+        assert "source of truth" in combined
 
     def test_workflow_start_prompt_mentions_deep_interview_lite_followups(self):
         src = _src("application/workflow-command-router.ts")
-        assert "work-map/topology" in src
+        assert "does not prepend a work-map/topology question" in src
         assert "clarity checkpoint" in src
         assert "weakest remaining clarity dimension" in src
         assert "inspect narrow repo evidence" in src
@@ -455,7 +474,7 @@ class TestCompactionAndArtifactContracts:
         assert "Deferred / Not Adopted Yet" in doc
         assert "Anti-Duplication Rules for Future Sessions" in doc
         assert "Check this ledger before borrowing more from OMC" in doc
-        assert "Deep interview / topology-first discovery" in doc
+        assert "Deep interview / clarity-guided discovery" in doc
         assert "Artifact descriptor integration" in doc
         assert "reviewer subagent timeout is raised" in doc
         assert "Full self-improve autonomous loop" in doc

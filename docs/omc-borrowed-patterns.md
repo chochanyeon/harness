@@ -21,7 +21,7 @@ https://github.com/yeachan-heo/oh-my-claudecode
 
 | OMC pattern | Harness adaptation | Primary files |
 |-------------|--------------------|---------------|
-| Deep interview / topology-first discovery | `deep-interview-lite` in interview skill and workflow wizard; topology, evidence-first brownfield questions, clarity checkpoint, terminology stabilization | `target/.pi/skills/interview/SKILL.md`, `target/.pi/extensions/workflow.ts`, `target/.pi/extensions/workflow/application/workflow-command-router.ts` |
+| Deep interview / clarity-guided discovery | `deep-interview-lite` in interview skill and workflow wizard; baseline scope/affected-file coverage, evidence-first brownfield questions, clarity checkpoint, terminology stabilization. Topology/work-map confirmation is conditional, not forced as the first wizard question. | `target/.pi/skills/interview/SKILL.md`, `target/.pi/extensions/workflow.ts`, `target/.pi/extensions/workflow/application/workflow-command-router.ts` |
 | Trace reasoning protocol | `trace` skill plus `/workflow trace <observation>` command | `target/.pi/skills/trace/SKILL.md`, `target/.pi/extensions/workflow/application/workflow-command-router.ts` |
 | Verify before claim | Merged into `evidence-verification` so completion claims and workflow regressions share one evidence protocol | `target/.pi/skills/evidence-verification/SKILL.md` |
 | AI slop cleanup | `cleanup` skill for behavior-preserving cleanup passes | `target/.pi/skills/cleanup/SKILL.md` |

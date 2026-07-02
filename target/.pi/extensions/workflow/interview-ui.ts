@@ -1,12 +1,19 @@
 import { Box, Text, truncateToWidth, matchesKey, Key, decodeKittyPrintable } from "@earendil-works/pi-tui";
 
+export type InterviewChoice = {
+  id: string;
+  label: string;
+  recommended?: boolean;
+  recommendationReason?: string;
+};
+
 export type InterviewQuestion = {
   id: string;
   title: string;
   prompt: string;
   helpText: string;
   required: boolean;
-  choices: Array<{ id: string; label: string }>;
+  choices: InterviewChoice[];
   allowFreeText: boolean;
   allowSkip: boolean;
 };
@@ -220,7 +227,11 @@ class InterviewWizard {
     question.choices.forEach((choice, index) => {
       const cursor = index === this.choiceCursor ? ">" : " ";
       const checked = answer.selectedChoiceIds.includes(choice.id) ? "[x]" : "[ ]";
-      lines.push(`${cursor} ${checked} ${choice.label}`);
+      const badge = choice.recommended ? " [추천]" : "";
+      lines.push(`${cursor} ${checked} ${choice.label}${badge}`);
+      if (choice.recommended && choice.recommendationReason) {
+        lines.push(this.color("dim", `    이유: ${choice.recommendationReason}`));
+      }
     });
 
     lines.push("", `${this.focus === "text" ? ">" : " "} 자유입력 (Tab으로 선택지/입력 전환):`, answer.freeText.length > 0 ? `${answer.freeText}█` : this.color("dim", "내용을 입력하세요…"));

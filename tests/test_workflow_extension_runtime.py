@@ -588,7 +588,7 @@ def test_workflow_extension_runtime_auto_advances_low_risk_phase_boundaries(tmp_
     assert "Workflow 전이: review_approved → document → commit" in joined
 
 
-def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topology_and_clarity(tmp_path):
+def test_workflow_extension_runtime_interview_wizard_appends_clarity_without_prepending_topology(tmp_path):
     script = textwrap.dedent(
         r'''
         const path = require('path');
@@ -649,12 +649,9 @@ def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topolog
     )
     data = _run_node_runtime(script, tmp_path)
 
-    assert data["ids"][0] == "round_0_topology"
-    assert data["ids"][-1] == "clarity_checkpoint"
-    assert data["ids"][1:6] == ["scope", "motivation", "acceptance", "modules", "constraints"]
-    assert "Purpose:" in data["first"]["prompt"]
-    assert "What to answer:" in data["first"]["prompt"]
-    assert "choices describe the rough shape only" in data["first"]["helpText"]
+    assert data["ids"] == ["scope", "motivation", "acceptance", "modules", "constraints", "clarity_checkpoint"]
+    assert "round_0_topology" not in data["ids"]
+    assert data["first"]["id"] == "scope"
     assert data["first"]["allowFreeText"] is True
     assert data["first"]["allowSkip"] is False
     assert data["last"]["allowFreeText"] is True
@@ -663,6 +660,65 @@ def test_workflow_extension_runtime_interview_wizard_wraps_baseline_with_topolog
     assert data["mode"] == "deep-interview-lite"
     assert "weakest clarity dimension" in data["text"]
     assert data["widgetUpdates"] >= 3
+
+
+def test_workflow_extension_runtime_interview_wizard_renders_recommended_choice_without_auto_select(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const captured = { rendered: '', selectedBeforeInput: [] };
+        const ctx = {
+          hasUI: true,
+          ui: {
+            notify: () => {},
+            confirm: async () => true,
+            setWidget: () => {},
+            custom: async (factory) => {
+              return await new Promise((resolve) => {
+                const theme = { fg: (_kind, text) => text };
+                const widget = factory({ requestRender() {} }, theme, {}, resolve);
+                captured.rendered = widget.render(160).join('\n');
+                captured.selectedBeforeInput = widget.answers[0].selectedChoiceIds;
+                resolve({
+                  completed: true,
+                  summaryMarkdown: '## Interview Summary\n- captured',
+                  answers: widget.answers,
+                });
+              });
+            },
+          },
+        };
+        const baseline = [{
+          id: 'scope',
+          title: 'Scope',
+          prompt: 'Choose a direction',
+          helpText: 'Recommended choices are advisory.',
+          required: true,
+          choices: [
+            { id: 'recommended', label: 'Schema/type/UI support', recommended: true, recommendationReason: 'Backward compatible contract.' },
+            { id: 'plain', label: 'Plain label-only choice' },
+          ],
+        }];
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime recommended choice', ctx);
+          await pi.tools.workflow_interview_wizard.execute('call-1', { questions: baseline }, undefined, undefined, ctx);
+          console.log(JSON.stringify(captured));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert "[추천]" in data["rendered"]
+    assert "Backward compatible contract." in data["rendered"]
+    assert data["selectedBeforeInput"] == []
 
 
 def test_workflow_extension_runtime_interview_wizard_followup_does_not_repeat_topology_scaffold(tmp_path):

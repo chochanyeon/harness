@@ -107,31 +107,43 @@ Example:
 아니면 workflow extension의 phase/gate 동작도 바꿔야 하나요?
 ```
 
-### 1.3 Round 0 — Topology Confirmation
+### 1.3 Scope Coverage — No Mandatory Topology-First Question
 
-Before drilling into details, confirm the top-level scope shape. Extract 1-6 top-level components, outcomes, workstreams, surfaces, integrations, or deliverables that can succeed or fail independently. Do not treat low-level implementation tasks as topology components unless the user framed them as independent outcomes.
+Do not always start the interview with a separate topology/work-map question. The default wizard already asks baseline questions for scope and affected files/modules; use those answers as the first source of scope coverage.
 
-Ask a topology confirmation question:
+Ask a separate topology confirmation question only when the baseline answers show multiple independently shippable components, unclear included/excluded/deferred areas, or a high risk of missing a major surface. When needed, keep it targeted:
 
 ```text
-먼저 범위의 지형도를 확인하겠습니다.
+범위 확인이 하나 필요합니다.
 
-제가 이해한 상위 컴포넌트는 다음과 같습니다:
+제가 이해한 상위 범위는 다음과 같습니다:
 
-1. <컴포넌트 A>: <한 문장 설명>
-2. <컴포넌트 B>: <한 문장 설명>
+1. <범위 A>: <한 문장 설명>
+2. <범위 B>: <한 문장 설명>
 ...
 
 추가, 제거, 병합, 분리, 또는 명시적으로 보류할 항목이 있나요?
 ```
 
-After the answer:
+After scope is clear:
 
-- Treat confirmed active components as required spec coverage.
-- Treat deferred components as explicit Out of Scope items with the user's reason when available.
+- Treat confirmed active components or scope areas as required spec coverage.
+- Treat deferred components or scope areas as explicit Out of Scope items with the user's reason when available.
 - If only one component exists, still record it so acceptance criteria and plan steps can map to it.
 
-### 1.4 Clarity Dimensions → Weakest-Dimension Follow-up
+### 1.4 Recommended Choices
+
+Interview questions may mark a choice with optional `recommended: true` and `recommendationReason: "..."` fields. Use these fields only when one option is safer, simpler, or more compatible with the stated goal.
+
+Rules:
+
+- Treat recommendations as advisory guidance only.
+- Do not auto-select a recommended choice.
+- The user's selected answer is the source of truth.
+- Keep the reason short and concrete.
+- Do not mark every choice as recommended.
+
+### 1.5 Clarity Dimensions → Weakest-Dimension Follow-up
 
 After each user answer, assess clarity qualitatively across these dimensions:
 

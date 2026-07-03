@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import * as path from "node:path";
+
 import {
   advanceWorkflow,
   getCatalogCommand,
@@ -30,6 +33,27 @@ export type WorkflowApprovalState = {
   recentVerificationCommands: Array<{ command: string; timestamp: number; phase?: WorkflowPhase }>;
   gateFailures: Map<WorkflowGate, number>;
 };
+
+function hasRelevantProductionJavaChanges(root: string): boolean {
+  try {
+    const status = execFileSync("git", ["-C", root, "status", "--porcelain=v1", "-z"], {
+      encoding: "utf-8",
+      stdio: "pipe",
+      maxBuffer: 1024 * 1024,
+    });
+    if (!status) return false;
+    return status
+      .split("\0")
+      .filter(Boolean)
+      .some((entry) => {
+        const filePath = entry.slice(3).split(" -> ").pop() ?? "";
+        const normalized = filePath.split(path.sep).join("/");
+        return normalized.includes("src/main/java/") && normalized.endsWith(".java");
+      });
+  } catch {
+    return true;
+  }
+}
 
 export type WorkflowApprovalDeps = {
   precheckPlanReviewBeforeApproval: (ctx: any) => Promise<{ ok: true } | { ok: false; text: string }>;
@@ -138,7 +162,7 @@ export async function executeWorkflowApproval(
   if (state.workflow.phase === "implement") {
     const tddRoot = state.workflow.gitRoot ?? getGitRoot();
     const snapshot = state.workflow.untestedClassesSnapshot;
-    if (tddRoot && snapshot) {
+    if (tddRoot && snapshot && hasRelevantProductionJavaChanges(tddRoot)) {
       const currentUntested = getUntestedClasses(tddRoot);
       const newlyUntested = currentUntested.filter((cls) => !snapshot.includes(cls));
       if (newlyUntested.length > 0) {

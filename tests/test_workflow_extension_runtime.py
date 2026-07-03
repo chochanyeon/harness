@@ -143,6 +143,109 @@ def test_production_class_policy_handles_relative_and_absolute_paths(tmp_path):
     assert data["classWithCoverage"] == "allow"
 
 
+def test_tdd_transition_skips_stale_snapshot_when_no_production_java_changes(tmp_path):
+    project = tmp_path / "clean-java-project"
+    service = project / "src" / "main" / "java" / "com" / "example" / "FooService.java"
+    service.parent.mkdir(parents=True)
+    service.write_text("package com.example; class FooService {}\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=project, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=project, check=True)
+    subprocess.run(["git", "add", "."], cwd=project, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ createWorkflowRuntimeState }} = jiti(path.resolve('target/.pi/extensions/workflow/runtime-state.ts'));
+        const {{ executeWorkflowApproval }} = jiti(path.resolve('target/.pi/extensions/workflow/transitions.ts'));
+        const gitRoot = {json.dumps(str(project))};
+        const state = createWorkflowRuntimeState();
+        state.workflow = {{
+          id: 'wf-stale-tdd', title: 'Stale TDD snapshot', phase: 'implement', cwd: gitRoot, gitRoot,
+          branch: 'main', history: [], undone: [], startedAt: Date.now(), updatedAt: Date.now(),
+          untestedClassesSnapshot: [],
+        }};
+        const steers = [];
+        const deps = {{
+          precheckPlanReviewBeforeApproval: async () => ({{ ok: true }}),
+          confirmPushPolicyForPushPhase: async () => true,
+          steerLlm: async (message) => steers.push(message),
+          refreshBoard: () => {{}},
+          refreshStatus: () => {{}},
+          persistGuardToken: () => {{}},
+          clearPendingWorkflowSteersForPhase: () => {{}},
+          clearPendingWorkflowSteersExceptCurrent: () => {{}},
+          clearActiveWorkflowAfterCompletion: () => {{}},
+          applyPhaseToolPolicy: () => {{}},
+        }};
+        const ctx = {{ hasUI: false, ui: {{ notify: () => {{}}, confirm: async () => false }} }};
+        (async () => {{
+          const result = await executeWorkflowApproval(state, 'no production Java changes', ctx, deps);
+          console.log(JSON.stringify({{ ok: result.details.ok, reason: result.details.reason || null, phase: state.workflow.phase, steers }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["reason"] != "tdd-violation", data
+    assert data["steers"] == []
+
+
+def test_tdd_transition_blocks_when_production_java_changes_add_untested_class(tmp_path):
+    project = tmp_path / "dirty-java-project"
+    service = project / "src" / "main" / "java" / "com" / "example" / "FooService.java"
+    service.parent.mkdir(parents=True)
+    service.write_text("package com.example; class FooService {}\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=project, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=project, check=True)
+    subprocess.run(["git", "add", "."], cwd=project, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    service.write_text("package com.example; class FooService { int changed() { return 1; } }\n", encoding="utf-8")
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ createWorkflowRuntimeState }} = jiti(path.resolve('target/.pi/extensions/workflow/runtime-state.ts'));
+        const {{ executeWorkflowApproval }} = jiti(path.resolve('target/.pi/extensions/workflow/transitions.ts'));
+        const gitRoot = {json.dumps(str(project))};
+        const state = createWorkflowRuntimeState();
+        state.workflow = {{
+          id: 'wf-dirty-tdd', title: 'Dirty TDD snapshot', phase: 'implement', cwd: gitRoot, gitRoot,
+          branch: 'main', history: [], undone: [], startedAt: Date.now(), updatedAt: Date.now(),
+          untestedClassesSnapshot: [],
+        }};
+        const steers = [];
+        const deps = {{
+          precheckPlanReviewBeforeApproval: async () => ({{ ok: true }}),
+          confirmPushPolicyForPushPhase: async () => true,
+          steerLlm: async (message) => steers.push(message),
+          refreshBoard: () => {{}},
+          refreshStatus: () => {{}},
+          persistGuardToken: () => {{}},
+          clearPendingWorkflowSteersForPhase: () => {{}},
+          clearPendingWorkflowSteersExceptCurrent: () => {{}},
+          clearActiveWorkflowAfterCompletion: () => {{}},
+          applyPhaseToolPolicy: () => {{}},
+        }};
+        const ctx = {{ hasUI: false, ui: {{ notify: () => {{}}, confirm: async () => false }} }};
+        (async () => {{
+          const result = await executeWorkflowApproval(state, 'production Java changed', ctx, deps);
+          console.log(JSON.stringify({{ ok: result.details.ok, reason: result.details.reason || null, classes: result.details.classes || [], steers }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ok"] is False
+    assert data["reason"] == "tdd-violation"
+    assert data["classes"] == ["FooService"]
+    assert len(data["steers"]) == 1
+
+
 def test_tdd_preflight_blocks_production_edit_until_related_test_evidence(tmp_path):
     project = tmp_path / "project"
     service = project / "src" / "main" / "java" / "com" / "example" / "FooService.java"

@@ -123,6 +123,7 @@ import {
   executeWorkflowCatalogCommand,
   formatWorkflowToolsListing,
 } from "./workflow/command-policy";
+import { safeWriteWorkflowLedgerSnapshot } from "./workflow/ledger";
 import { createWorkflowContinuationService } from "./workflow/application/continuation";
 import {
   buildWorkflowSystemPromptInjection,
@@ -573,6 +574,9 @@ export default function (pi: ExtensionAPI) {
         reviewArtifactError,
       };
       persistGuardToken(HARNESS_TOKEN_TYPES.REVIEW_PACKAGE, state.reviewPackageToken as unknown as Record<string, unknown>);
+      safeWriteWorkflowLedgerSnapshot(state.workflow, state.workflow.gitRoot ?? undefined, {
+        review: { critical, major, minor, reviewedFiles },
+      });
 
       const result = await advanceWorkflow(state.workflow, "automated_review_package");
       const notices: string[] = [

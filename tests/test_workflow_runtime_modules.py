@@ -159,6 +159,88 @@ def test_epic_pev_task_queue_allows_one_active_task_and_writes_artifact(tmp_path
     assert "…" in data["longSummary"]
 
 
+def test_workflow_ledger_writes_compact_run_state_without_raw_transcript(tmp_path):
+    script = textwrap.dedent(
+        rf'''
+        const fs = require('fs');
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const mod = jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "ledger.ts"))});
+
+        const workflow = {{
+          id: 'wf-ledger-test',
+          title: 'Ledger test workflow',
+          phase: 'implement',
+          cwd: 'I:/company-harness',
+          gitRoot: 'I:/company-harness',
+          branch: 'main',
+          history: [{{ from: 'plan', to: 'plan_review', reason: 'planned', timestamp: 1 }}],
+          undone: [],
+          startedAt: 1,
+          updatedAt: 2,
+          taskQueue: {{
+            id: 'queue-1',
+            title: 'Ledger queue',
+            activeTaskId: 'task-1',
+            createdAt: 1,
+            updatedAt: 2,
+            tasks: [
+              {{ id: 'task-1', title: 'Active task', scope: 'Do work', acceptanceCriteria: ['accepted'], verification: ['verified'], status: 'active', dependencies: [], createdAt: 1, updatedAt: 2 }},
+              {{ id: 'task-2', title: 'Done task', scope: 'Done work', acceptanceCriteria: [], verification: [], status: 'done', dependencies: [], createdAt: 1, updatedAt: 2 }},
+            ],
+          }},
+        }};
+        const root = {json.dumps(str(tmp_path))};
+        fs.mkdirSync(root, {{ recursive: true }});
+        require('child_process').execFileSync('git', ['init'], {{ cwd: root, stdio: 'ignore' }});
+        require('child_process').execFileSync('git', ['config', 'user.email', 'test@example.com'], {{ cwd: root }});
+        require('child_process').execFileSync('git', ['config', 'user.name', 'Test User'], {{ cwd: root }});
+        fs.writeFileSync(path.join(root, 'tracked.txt'), 'before\n', 'utf8');
+        require('child_process').execFileSync('git', ['add', 'tracked.txt'], {{ cwd: root }});
+        require('child_process').execFileSync('git', ['commit', '-m', 'initial'], {{ cwd: root, stdio: 'ignore' }});
+        fs.writeFileSync(path.join(root, 'tracked.txt'), 'after\n', 'utf8');
+        fs.writeFileSync(path.join(root, 'untracked.txt'), 'new\n', 'utf8');
+        fs.mkdirSync(path.join(root, '.ai', 'interview', 'runs', 'previous'), {{ recursive: true }});
+        fs.writeFileSync(path.join(root, '.ai', 'interview', 'runs', 'previous', 'ledger.json'), '{{}}\n', 'utf8');
+        workflow.gitRoot = root;
+        const descriptor = mod.writeWorkflowLedgerSnapshot(workflow, root, {{
+          verification: {{ commandId: 'project-test', ok: true, exitCode: 0, artifactPath: '.ai/workflow-artifacts/test.txt' }},
+          review: {{ critical: 0, major: 0, minor: 1, reviewedFiles: ['target/.pi/extensions/workflow/ledger.ts'] }},
+        }});
+        const ledger = JSON.parse(fs.readFileSync(descriptor.path, 'utf8'));
+        const serialized = JSON.stringify(ledger);
+        console.log(JSON.stringify({{
+          path: descriptor.path.replace(/\\\\/g, '/'),
+          exists: fs.existsSync(descriptor.path),
+          workflowId: ledger.workflowId,
+          phase: ledger.phase.current,
+          nextSafeAction: ledger.nextSafeAction.summary,
+          taskCounts: ledger.planCoverage.taskCounts,
+          changedFileCount: ledger.diffCoverage.changedFileCount,
+          changedFiles: ledger.diffCoverage.changedFiles,
+          verification: ledger.verification.lastCommand,
+          review: ledger.review.summary,
+          hasRawPrompt: serialized.includes('rawPrompt') || serialized.includes('transcript') || serialized.includes('stdout') || serialized.includes('stderr'),
+        }}));
+        '''
+    )
+    data = _run_node(script, tmp_path)
+
+    assert data["exists"] is True
+    assert data["path"].replace("\\", "/").endswith(".ai/interview/runs/wf-ledger-test/ledger.json")
+    assert data["workflowId"] == "wf-ledger-test"
+    assert data["phase"] == "implement"
+    assert "implement" in data["nextSafeAction"]
+    assert data["taskCounts"]["active"] == 1
+    assert data["taskCounts"]["done"] == 1
+    assert data["changedFileCount"] == 2
+    assert ".ai/" not in data["changedFiles"]
+    assert data["verification"]["commandId"] == "project-test"
+    assert data["review"]["critical"] == 0
+    assert data["hasRawPrompt"] is False
+
+
 def test_field_log_actionable_hint_ignores_optional_corenlp_noise(tmp_path):
     script = textwrap.dedent(
         rf'''

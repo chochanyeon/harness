@@ -6,6 +6,7 @@ import { formatWorkspaceMismatch, runPreTransitionGate, validateWorkflowWorkspac
 import { getBranch, getGitRoot } from "./git";
 import { getWorkflowStatePath, getWorkflowStateDir } from "./storage";
 import { isSharedAutoAdvancePhase, isSharedTransitionAllowed, isSharedWorkflowPhase, sharedNextPhase } from "./policy-core";
+import { safeWriteWorkflowLedgerSnapshot } from "./ledger";
 
 export function createWorkflow(title: string): WorkflowInstance {
   const now = Date.now();
@@ -134,6 +135,7 @@ export function saveWorkflow(workflow: WorkflowInstance): void {
   const file = getWorkflowStatePath();
   fs.mkdirSync(getWorkflowStateDir(), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(workflow, null, 2), "utf-8");
+  safeWriteWorkflowLedgerSnapshot(workflow);
 }
 
 export function clearPersistedWorkflow(): void {

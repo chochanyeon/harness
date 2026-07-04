@@ -1,6 +1,7 @@
 import * as path from "node:path";
 
 import { writeTextArtifact, type ArtifactDescriptor } from "./artifact-descriptor";
+import { safeWriteWorkflowLedgerSnapshot } from "./ledger";
 import {
   COMMAND_CATALOG,
   PHASE_ALLOWED_BUILTIN_TOOLS,
@@ -97,6 +98,14 @@ export async function executeWorkflowCatalogCommand(
     state.recentVerificationCommands.push({ command: spec.id, timestamp: Date.now(), phase: phase ?? undefined });
     if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
   }
+  safeWriteWorkflowLedgerSnapshot(state.workflow, gitRoot ?? undefined, {
+    verification: {
+      commandId: spec.id,
+      ok: result.ok,
+      exitCode: result.exitCode,
+      artifactPath: commandArtifact ? path.relative(gitRoot ?? process.cwd(), commandArtifact.path) : undefined,
+    },
+  });
 
   return {
     content: [{ type: "text", text: formatted }],

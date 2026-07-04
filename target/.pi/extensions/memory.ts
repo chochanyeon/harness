@@ -44,6 +44,8 @@ type SaveMemoryResult = { ok: true; entry: MemoryEntry } | { ok: false; message:
 type MemoryFileHealth = { label: string; file: string; exists: boolean; ok: boolean; count?: number; error?: string };
 type CreateMemoryOptions = { status?: MemoryStatus; source?: string; createdBy?: string; evidenceSummary?: string; autoInject?: "never" | "when-relevant" | "always"; confidence?: MemoryEntry["confidence"] };
 type ExtractedMemory = { text: string; status: MemoryStatus; source: string; reason: string };
+type ScoringContext = { currentPhase?: string };
+type SearchOptions = { includeDisabled: boolean; limit: number; currentPhase?: string };
 
 const MEMORY_POLICY = [
   "",
@@ -62,6 +64,7 @@ export default function (pi: ExtensionAPI) {
       requestHash: string;
       selectedMemoryIds: string[];
       selectedRenderHashes: string[];
+      selectedScores?: Record<string, number>;
       dynamicBlockHash: string;
       matchedReasons: Record<string, string[]>;
     },
@@ -158,8 +161,17 @@ export default function (pi: ExtensionAPI) {
           return ctx.ui.notify("Usage: /memory feedback <id> helpful|irrelevant|wrong|stale", "warning");
         }
         appendFeedback(id, kind, body.split(/\s+/).slice(2).join(" "));
-        if (kind === "wrong") updateEntry(id, (entry) => ({ ...entry, status: "disabled", updatedAt: nowIso(), governance: { ...entry.governance, autoInject: "never" } }));
-        if (kind === "stale") updateEntry(id, (entry) => ({ ...entry, updatedAt: nowIso(), lifecycle: { ...entry.lifecycle, staleness: "stale" }, governance: { ...entry.governance, autoInject: "never" } }));
+        if (kind === "helpful") promoteMemory(id, "helpful-feedback", "feedback");
+        if (kind === "wrong") {
+          updateEntry(id, (entry) => ({ ...entry, status: "disabled", updatedAt: nowIso(), governance: { ...entry.governance, autoInject: "never" } }));
+          appendAudit("auto-demote", id, { reason: "wrong-feedback", status: "disabled" });
+          appendMetric({ operation: "auto-demote", selectedMemoryIds: [id], reason: "wrong-feedback" });
+        }
+        if (kind === "stale") {
+          updateEntry(id, (entry) => ({ ...entry, updatedAt: nowIso(), lifecycle: { ...entry.lifecycle, staleness: "stale" }, governance: { ...entry.governance, autoInject: "never" } }));
+          appendAudit("auto-demote", id, { reason: "stale-feedback", autoInject: "never" });
+          appendMetric({ operation: "auto-demote", selectedMemoryIds: [id], reason: "stale-feedback" });
+        }
         appendMetric({ operation: "feedback", selectedMemoryIds: [id], feedback: kind });
         return ctx.ui.notify(`Memory feedback recorded: ${id} ${kind}`, "info");
       }
@@ -189,11 +201,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event) => {
     const request = extractRequestText(event as any);
+    const currentPhase = extractCurrentPhase(event as any, request);
     if (request) autoExtractMemory(request);
-    const matches = request ? searchMemory(request, { includeDisabled: false, limit: 12 }) : [];
+    const matches = request ? searchMemory(request, { includeDisabled: false, limit: 12, currentPhase }) : [];
     const selected = selectMemories(request, matches, 3);
     const dynamic = renderMemoryBlock(selected);
-    const injection = { timestamp: nowIso(), requestHash: sha256(request), selectedMemoryIds: selected.map((m) => m.entry.memoryId), selectedRenderHashes: selected.map((m) => m.renderHash), dynamicBlockHash: sha256(dynamic), matchedReasons: Object.fromEntries(selected.map((m) => [m.entry.memoryId, m.matchedReasons])) };
+    const injection = { timestamp: nowIso(), requestHash: sha256(request), selectedMemoryIds: selected.map((m) => m.entry.memoryId), selectedRenderHashes: selected.map((m) => m.renderHash), selectedScores: Object.fromEntries(selected.map((m) => [m.entry.memoryId, m.score])), dynamicBlockHash: sha256(dynamic), matchedReasons: Object.fromEntries(selected.map((m) => [m.entry.memoryId, m.matchedReasons])) };
     state.lastInjection = injection;
     writeJson(injectionStateFile(), injection);
     appendMetric(metricFromMatches("inject", request, matches, selected, dynamic));
@@ -294,6 +307,36 @@ function updateEntry(id: string, updater: (entry: MemoryEntry) => MemoryEntry): 
   return entries[index];
 }
 
+function promoteMemory(id: string, reason: string, source: string): MemoryEntry | null {
+  const existing = findEntry(id);
+  if (!existing || !canPromoteMemory(existing)) {
+    appendMetric({ operation: "auto-promote", selectedMemoryIds: [id], reason, source, blocked: "not-promotable" });
+    return null;
+  }
+  const promoted = updateEntry(id, (entry) => ({
+    ...entry,
+    status: "active",
+    updatedAt: nowIso(),
+    confidence: entry.confidence === "explicit" ? "explicit" : "high",
+    provenance: { ...entry.provenance, updatedBy: "agent", evidence: [...(entry.provenance.evidence ?? []), { kind: "autopilot", summary: `Promoted by Memory Autopilot (${reason}).` }] },
+    governance: { ...entry.governance, autoInject: "when-relevant" },
+  }));
+  if (promoted) {
+    appendAudit("auto-promote", id, { reason, source, status: "active" });
+    appendMetric({ operation: "auto-promote", selectedMemoryIds: [id], selectedRenderHashes: [promoted.rendering.stableRenderHash], reason, source });
+  }
+  return promoted;
+}
+
+function canPromoteMemory(entry: MemoryEntry): boolean {
+  if (entry.status !== "candidate") return false;
+  if (entry.lifecycle.staleness === "stale") return false;
+  if (entry.lifecycle.conflictsWith.length > 0) return false;
+  if (entry.privacy.containsSecrets || entry.privacy.sensitivity === "secret") return false;
+  if (entry.governance.supersededBy) return false;
+  return true;
+}
+
 function autoExtractMemory(request: string): void {
   const extracted = extractMemoriesFromPrompt(request);
   for (const item of extracted) saveExtractedMemory(item);
@@ -317,16 +360,8 @@ function saveExtractedMemory(item: ExtractedMemory): SaveMemoryResult {
   const summary = body.slice(0, 500);
   const duplicate = readEntries().find((entry) => entry.content.summary === summary);
   if (duplicate) {
-    const promoted = item.status === "active" && duplicate.status !== "active"
-      ? updateEntry(duplicate.memoryId, (entry) => ({
-          ...entry,
-          status: "active",
-          updatedAt: nowIso(),
-          confidence: "explicit",
-          provenance: { ...entry.provenance, source: item.source, updatedBy: "agent", evidence: [...(entry.provenance.evidence ?? []), { kind: "user-message", summary: `Automatically promoted from duplicate prompt (${item.reason}).` }] },
-          governance: { ...entry.governance, autoInject: "when-relevant" },
-        }))
-      : null;
+    const shouldPromote = canPromoteMemory(duplicate) && (item.status === "active" || item.status === "candidate");
+    const promoted = shouldPromote ? promoteMemory(duplicate.memoryId, item.status === "active" ? "explicit-duplicate" : "repeated-observation", item.source) : null;
     appendMetric({ operation: item.source, excluded: "duplicate-summary", requestHash: sha256(body), existingMemoryId: duplicate.memoryId, promotedToActive: Boolean(promoted) });
     return { ok: true, entry: promoted ?? duplicate };
   }
@@ -427,8 +462,9 @@ function enableBlockers(entry: MemoryEntry): string[] {
   return blockers;
 }
 
-function searchMemory(query: string, options: { includeDisabled: boolean; limit: number }): MemoryMatch[] {
+function searchMemory(query: string, options: SearchOptions): MemoryMatch[] {
   const queryTokens = tokenize(query);
+  const context: ScoringContext = { currentPhase: options.currentPhase };
   const entries = readEntries().filter((entry) => {
     if (entry.lifecycle?.staleness === "stale") return false;
     if (["rejected", "deprecated", "superseded"].includes(entry.status)) return false;
@@ -436,21 +472,26 @@ function searchMemory(query: string, options: { includeDisabled: boolean; limit:
     if (!options.includeDisabled && entry.governance.autoInject === "never") return false;
     return true;
   });
-  return entries.map((entry) => scoreEntry(entry, queryTokens, query)).filter((match) => match.score > 0).sort((a, b) => b.score - a.score || a.entry.memoryId.localeCompare(b.entry.memoryId)).slice(0, options.limit);
+  return entries.map((entry) => scoreEntry(entry, queryTokens, query, context)).filter((match) => match.score > 0).sort((a, b) => b.score - a.score || a.entry.memoryId.localeCompare(b.entry.memoryId)).slice(0, options.limit);
 }
 
-function scoreEntry(entry: MemoryEntry, queryTokens: string[], rawQuery: string): MemoryMatch {
+function scoreEntry(entry: MemoryEntry, queryTokens: string[], rawQuery: string, context: ScoringContext = {}): MemoryMatch {
   const reasons: string[] = [];
   let score = 0;
   const haystack = tokenize([entry.content.summary, entry.content.details ?? "", entry.index.topics.join(" "), entry.index.files.join(" "), entry.index.symbols?.join(" ") ?? ""].join(" "));
   const overlap = queryTokens.filter((token) => haystack.includes(token));
-  if (overlap.length) { score += Math.min(6, overlap.length * 2); reasons.push("keyword"); }
+  if (overlap.length) { score += Math.min(8, overlap.length * 2); reasons.push("keyword"); }
   if (entry.index.files.some((file) => rawQuery.includes(file))) { score += 5; reasons.push("file"); }
-  if (entry.index.appliesToPhases.some((phase) => phase !== "any" && rawQuery.toLowerCase().includes(phase))) { score += 2; reasons.push("phase"); }
-  if (["constraint", "decision"].includes(entry.rendering.useAs)) score += 1;
-  if (entry.importance === "critical") score += 2;
-  if (entry.importance === "high") score += 1;
-  if (entry.confidence === "explicit") score += 1;
+  const phaseSignals = entry.index.appliesToPhases.filter((phase) => phase !== "any");
+  if (context.currentPhase && phaseSignals.includes(context.currentPhase)) { score += 5; reasons.push("phase"); }
+  else if (phaseSignals.some((phase) => rawQuery.toLowerCase().includes(phase))) { score += 2; reasons.push("phase-text"); }
+  if (entry.status === "active") { score += 2; reasons.push("active"); }
+  if (["constraint", "decision"].includes(entry.rendering.useAs)) { score += 1; reasons.push(entry.rendering.useAs); }
+  if (entry.importance === "critical") { score += 2; reasons.push("critical"); }
+  if (entry.importance === "high") { score += 1; reasons.push("high"); }
+  if (entry.confidence === "explicit") { score += 2; reasons.push("explicit"); }
+  else if (entry.confidence === "high") { score += 1; reasons.push("high-confidence"); }
+  if (entry.lifecycle.staleness === "aging") { score -= 1; reasons.push("aging"); }
   return { entry, score, matchedReasons: reasons, renderHash: entry.rendering.stableRenderHash };
 }
 
@@ -463,7 +504,7 @@ function selectMemories(request: string, matches: MemoryMatch[], limit: number):
     .filter((match) => match.score >= 3)
     .sort((a, b) => b.score - a.score || stableRender(a.entry).localeCompare(stableRender(b.entry)))
     .slice(0, limit)
-    .sort((a, b) => renderPriority(a.entry) - renderPriority(b.entry) || a.entry.memoryId.localeCompare(b.entry.memoryId));
+    .sort((a, b) => renderPriority(a.entry) - renderPriority(b.entry) || b.score - a.score || a.entry.memoryId.localeCompare(b.entry.memoryId));
 }
 
 function renderPriority(entry: MemoryEntry): number {
@@ -493,7 +534,7 @@ function formatExplain(injection: any): string {
     "🧠 Memory explain",
     `Request hash: ${injection.requestHash}`,
     `Dynamic block hash: ${injection.dynamicBlockHash}`,
-    ...injection.selectedMemoryIds.map((id: string, index: number) => `- ${id} | ${injection.selectedRenderHashes?.[index] ?? "unknown"} | reasons=${(injection.matchedReasons?.[id] ?? []).join(",") || "unknown"}`),
+    ...injection.selectedMemoryIds.map((id: string, index: number) => `- ${id} | ${injection.selectedRenderHashes?.[index] ?? "unknown"} | score=${injection.selectedScores?.[id] ?? "unknown"} | reasons=${(injection.matchedReasons?.[id] ?? []).join(",") || "unknown"}`),
   ].join("\n");
 }
 
@@ -513,6 +554,8 @@ function metricFromMatches(operation: string, request: string, candidates: Memor
     candidateCount: candidates.length,
     selectedMemoryIds: selectedIds,
     selectedRenderHashes: selected.map((m) => m.renderHash),
+    selectedScores: Object.fromEntries(selected.map((m) => [m.entry.memoryId, m.score])),
+    selectedReasons: Object.fromEntries(selected.map((m) => [m.entry.memoryId, m.matchedReasons])),
     stickySetReused: previousIds === JSON.stringify(selectedIds),
     dynamicBlockHash: sha256(dynamic),
     cacheChurn: !previous ? "none" : previousIds === JSON.stringify(selectedIds) ? "none" : "high",
@@ -615,4 +658,15 @@ function extractRequestText(event: any): string {
     if (typeof last?.content === "string") return last.content;
   }
   return "";
+}
+
+function extractCurrentPhase(event: any, request: string): string | undefined {
+  const phases = ["plan_review", "code_review", "review_approved", "interview", "implement", "document", "commit", "push", "plan", "done"];
+  const parts = [event.systemPrompt, event.prompt, event.input, event.request, request]
+    .filter((value) => typeof value === "string")
+    .join("\n")
+    .toLowerCase();
+  const explicit = parts.match(/current phase:\s*([a-z_]+)/i);
+  if (explicit?.[1] && phases.includes(explicit[1])) return explicit[1];
+  return phases.find((phase) => new RegExp(`\\b${phase}\\b`, "i").test(parts));
 }

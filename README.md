@@ -98,8 +98,11 @@ LLM 개발 세션에서 장기 기억을 사용할 수 있게 하는 작은 exte
 - durable project fact/decision 저장
 - 사용자 정정, workflow failure, 결정, follow-up 단서에서 candidate memory 자동 추출
 - 명시적 기억 지시는 active memory로 저장하고 candidate memory는 prompt 주입에서 제외
-- 관련 active memory top-N만 prompt에 주입
-- 어떤 memory가 주입됐는지 explain
+- Memory Autopilot scoring으로 keyword/file/phase/status/useAs/importance/confidence/freshness 신호를 평가
+- 현재 workflow phase와 맞는 관련 active memory top-N만 prompt에 주입
+- repeated observation 또는 helpful feedback으로 candidate memory를 active로 자동 승격
+- wrong/stale feedback으로 active memory를 자동 강등하거나 autoInject를 비활성화
+- 어떤 memory가 어떤 score/reason으로 주입됐는지 explain
 - feedback/metrics 기록
 - secret-like memory 저장 거부
 
@@ -516,10 +519,14 @@ LLM/agent는 명시적 기억 요청이나 재사용 가치가 높은 학습을 
 before_agent_start는 사용자 정정, workflow failure, 결정, follow-up 단서를 candidate memory로 자동 저장
 명시적 기억 지시(예: 기억해, 앞으로 항상, 절대, remember)는 active memory로 자동 저장
 candidate memory는 list/search/doctor/stats에서 보이지만 prompt에는 주입하지 않음
+Memory Autopilot은 keyword, file, phase, status, useAs, importance, confidence, freshness 신호로 score 계산
+현재 workflow phase와 맞는 active memory는 retrieval score가 상승
+repeated observation 또는 helpful feedback은 candidate memory를 active로 자동 승격 가능
+wrong/stale feedback은 active memory를 disabled/stale 또는 autoInject=never 상태로 자동 강등
 저장 성공 시 memoryId/status/summary/path를 반환
 모든 memory를 매번 주입하지 않음
 관련 active memory top-N만 deterministic하게 주입
-metrics에는 raw prompt가 아니라 hash/id/count 중심으로 기록
+metrics/explain에는 raw prompt가 아니라 hash/id/count/score/reason 중심으로 기록
 secret-like memory 원문은 저장 거부
 중복 summary는 새 entry로 저장하지 않고 metrics에 duplicate exclusion만 기록
 ```

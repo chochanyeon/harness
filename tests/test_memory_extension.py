@@ -228,3 +228,81 @@ def test_memory_auto_extracts_candidates_and_explicit_active_memory(tmp_path):
     dumped = json.dumps(data, ensure_ascii=False)
     assert "SECRET123" not in dumped
     assert any(item.get("rejected") == "secret-like-input" for item in data["metrics"])
+
+
+def test_memory_autopilot_scores_phase_promotes_and_demotes(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-autopilot-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          await pi.tools.memory_remember.execute('phase-implement', { text: '결정: implement phase zeta-autopilot-phase uses target/.pi implementation memory' }, undefined, undefined, ctx);
+          await pi.tools.memory_remember.execute('phase-review', { text: '결정: code_review phase zeta-autopilot-phase uses reviewer memory' }, undefined, undefined, ctx);
+          const phasePrompt = await pi.events.before_agent_start({ systemPrompt: '[LLM WORKFLOW ACTION]\n- Current phase: code_review\n[/LLM WORKFLOW ACTION]', userPrompt: 'zeta-autopilot-phase 관련 작업' });
+
+          const candidateText = '아니야, zeta-autopilot-repeat memory는 반복 관찰되면 active로 승격해야 해.';
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: candidateText });
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: candidateText });
+          const promotedPrompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-autopilot-repeat 관련 작업' });
+
+          const demoteSaved = await pi.tools.memory_remember.execute('demote', { text: '결정: zeta-autopilot-demote active memory should disappear after stale feedback' }, undefined, undefined, ctx);
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          let entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const demoteEntry = entries.find((entry) => entry.content.summary.includes('zeta-autopilot-demote'));
+          await pi.commands.memory.handler(`feedback ${demoteEntry.memoryId} stale`, ctx);
+          const demotedPrompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-autopilot-demote 관련 작업' });
+
+          const wrongText = '아니야, zeta-autopilot-wrong memory는 잘못된 기억이면 다시 승격되면 안 돼.';
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: wrongText });
+          entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const wrongEntry = entries.find((entry) => entry.content.summary.includes('zeta-autopilot-wrong'));
+          await pi.commands.memory.handler(`feedback ${wrongEntry.memoryId} wrong`, ctx);
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: wrongText });
+          const wrongPrompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-autopilot-wrong 관련 작업' });
+          await pi.commands.memory.handler('explain', ctx);
+
+          entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const metrics = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'metrics.jsonl'), 'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const audit = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'audit.jsonl'), 'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const injectionState = JSON.parse(fs.readFileSync(path.join(root, '.project-memory', 'memory', 'injection-state.json'), 'utf8'));
+          console.log(JSON.stringify({ phasePrompt: phasePrompt.systemPrompt, promotedPrompt: promotedPrompt.systemPrompt, demotedPrompt: demotedPrompt.systemPrompt, wrongPrompt: wrongPrompt.systemPrompt, entries, metrics, audit, injectionState, notifications: notifications.map((item) => item.text) }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    phase_prompt = data["phasePrompt"]
+    assert phase_prompt.index("code_review phase zeta-autopilot-phase") < phase_prompt.index("implement phase zeta-autopilot-phase")
+
+    repeat_entries = [entry for entry in data["entries"] if "zeta-autopilot-repeat" in entry["content"]["summary"]]
+    assert repeat_entries
+    assert repeat_entries[0]["status"] == "active"
+    assert "zeta-autopilot-repeat" in data["promotedPrompt"]
+
+    demote_entries = [entry for entry in data["entries"] if "zeta-autopilot-demote" in entry["content"]["summary"]]
+    assert demote_entries
+    assert demote_entries[0]["governance"]["autoInject"] == "never"
+    assert "zeta-autopilot-demote" not in data["demotedPrompt"]
+
+    wrong_entries = [entry for entry in data["entries"] if "zeta-autopilot-wrong" in entry["content"]["summary"]]
+    assert wrong_entries
+    assert wrong_entries[0]["status"] == "disabled"
+    assert wrong_entries[0]["governance"]["autoInject"] == "never"
+    assert "zeta-autopilot-wrong" not in data["wrongPrompt"]
+
+    inject_metrics = [item for item in data["metrics"] if item.get("operation") == "inject"]
+    assert inject_metrics
+    assert any("selectedScores" in item for item in inject_metrics)
+    assert any(item.get("operation") == "auto-promote" for item in data["metrics"])
+    assert any(item.get("action") == "auto-promote" for item in data["audit"])
+    assert any("score=" in text for text in data["notifications"] if "Memory explain" in text)

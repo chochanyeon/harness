@@ -210,6 +210,7 @@ def test_workflow_ledger_writes_compact_run_state_without_raw_transcript(tmp_pat
         }});
         const ledger = JSON.parse(fs.readFileSync(descriptor.path, 'utf8'));
         const serialized = JSON.stringify(ledger);
+        const resumeSummary = mod.formatWorkflowLedgerResumeSummary(ledger);
         console.log(JSON.stringify({{
           path: descriptor.path.replace(/\\\\/g, '/'),
           exists: fs.existsSync(descriptor.path),
@@ -221,7 +222,10 @@ def test_workflow_ledger_writes_compact_run_state_without_raw_transcript(tmp_pat
           changedFiles: ledger.diffCoverage.changedFiles,
           verification: ledger.verification.lastCommand,
           review: ledger.review.summary,
-          hasRawPrompt: serialized.includes('rawPrompt') || serialized.includes('transcript') || serialized.includes('stdout') || serialized.includes('stderr'),
+          coverageItems: ledger.verificationCoverage.items,
+          coverageCounts: ledger.verificationCoverage.counts,
+          resumeSummary,
+          hasRawPrompt: serialized.includes('rawPrompt') || serialized.includes('transcript') || serialized.includes('stdout') || serialized.includes('stderr') || resumeSummary.includes('rawPrompt') || resumeSummary.includes('transcript') || resumeSummary.includes('stdout') || resumeSummary.includes('stderr'),
         }}));
         '''
     )
@@ -238,7 +242,70 @@ def test_workflow_ledger_writes_compact_run_state_without_raw_transcript(tmp_pat
     assert ".ai/" not in data["changedFiles"]
     assert data["verification"]["commandId"] == "project-test"
     assert data["review"]["critical"] == 0
+    assert data["coverageItems"][0]["label"] == "accepted"
+    assert data["coverageItems"][0]["status"] == "covered"
+    assert data["coverageCounts"]["covered"] >= 1
+    assert "phase=implement" in data["resumeSummary"]
+    assert "verification=project-test:pass" in data["resumeSummary"]
+    assert "coverage=" in data["resumeSummary"]
+    assert "review=Cr0/Maj0/Min1" in data["resumeSummary"]
+    assert "diff=2" in data["resumeSummary"]
     assert data["hasRawPrompt"] is False
+
+
+def test_workflow_prompt_context_includes_bounded_ledger_resume(tmp_path):
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const ledgerMod = jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "ledger.ts"))});
+        const promptMod = jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "prompt-context.ts"))});
+
+        const workflow = {{
+          id: 'wf-resume-context',
+          title: 'Resume context workflow',
+          phase: 'implement',
+          cwd: {json.dumps(str(tmp_path))},
+          gitRoot: {json.dumps(str(tmp_path))},
+          branch: 'main',
+          history: [],
+          undone: [],
+          startedAt: 1,
+          updatedAt: 2,
+          taskQueue: null,
+        }};
+        ledgerMod.writeWorkflowLedgerSnapshot(workflow, {json.dumps(str(tmp_path))}, {{
+          verification: {{ commandId: 'project-test', ok: true, exitCode: 0, artifactPath: '.ai/workflow-artifacts/test.txt' }},
+          review: {{ critical: 0, major: 0, minor: 0, reviewedFiles: ['target/.pi/extensions/workflow/ledger.ts'] }},
+        }});
+        const prompt = promptMod.buildWorkflowSystemPromptInjection({{
+          workflow,
+          policyApprovals: [],
+          gateFailures: new Map(),
+          recentVerificationCommands: [],
+          interviewWizardCompletedToken: null,
+          interviewAmbiguityScoreToken: null,
+          dpaaGuardSatisfiedToken: null,
+          codeQualityGuardSatisfiedToken: null,
+          codeReviewGuardSatisfiedToken: null,
+          pushExecutionGuardSatisfiedToken: null,
+          reviewPackageToken: null,
+        }});
+        console.log(JSON.stringify({{
+          hasBlock: prompt.includes('[Run Ledger Resume]'),
+          hasPhase: prompt.includes('phase=implement'),
+          hasVerification: prompt.includes('verification=project-test:pass'),
+          hasRawData: prompt.includes('rawPrompt') || prompt.includes('transcript') || prompt.includes('stdout') || prompt.includes('stderr'),
+        }}));
+        '''
+    )
+    data = _run_node(script, tmp_path)
+
+    assert data["hasBlock"] is True
+    assert data["hasPhase"] is True
+    assert data["hasVerification"] is True
+    assert data["hasRawData"] is False
 
 
 def test_field_log_actionable_hint_ignores_optional_corenlp_noise(tmp_path):

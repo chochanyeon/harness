@@ -3,6 +3,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { WorkflowInstance, WorkflowPhase, WorkflowTaskStatus } from "./types";
 
+export type WorkflowLedgerCoverageStatus = "covered" | "needs_verification" | "unknown";
+
+export type WorkflowLedgerCoverageItem = {
+  id: string;
+  label: string;
+  status: WorkflowLedgerCoverageStatus;
+  evidence: string[];
+};
+
 export type WorkflowLedgerSnapshot = {
   schemaVersion: 1;
   workflowId: string;
@@ -16,15 +25,17 @@ export type WorkflowLedgerSnapshot = {
   planCoverage: { artifactPaths: string[]; taskCounts: Record<WorkflowTaskStatus | "none", number>; activeTask?: { id: string; title: string; acceptanceCount: number; verificationCount: number } };
   diffCoverage: { changedFileCount: number; changedFiles: string[]; truncated: boolean };
   verification: { commandCount: number; lastCommand?: { commandId: string; ok: boolean; exitCode: number | null; artifactPath?: string } };
+  verificationCoverage: { items: WorkflowLedgerCoverageItem[]; counts: { covered: number; needsVerification: number; unknown: number } };
   review: { submitted: boolean; summary?: { critical: number; major: number; minor: number; reviewedFileCount?: number } };
   nextSafeAction: { phase: WorkflowPhase; summary: string };
+  resume: { summary: string; generatedAt: string };
 };
 
 export type WorkflowLedgerUpdate = {
   planArtifactPaths?: string[];
   changedFiles?: string[];
   verification?: { commandId: string; ok: boolean; exitCode: number | null; artifactPath?: string };
-  review?: { critical: number; major: number; minor: number; reviewedFiles?: string[] };
+  review?: { critical: number; major: number; minor: number; reviewedFiles?: string[]; reviewedFileCount?: number };
 };
 
 export type WorkflowLedgerDescriptor = { path: string; workflowId: string; updatedAt: string };
@@ -42,8 +53,16 @@ export function createWorkflowLedgerSnapshot(workflow: WorkflowInstance, update:
     ? workflow.taskQueue.tasks.find((task) => task.id === workflow.taskQueue?.activeTaskId)
     : undefined;
   const changedFiles = Array.from(new Set((update.changedFiles ?? collectChangedFiles(workflow.gitRoot ?? workflow.cwd)).map((file) => file.replace(/\\/g, "/"))));
-  return {
-    schemaVersion: 1,
+  const artifactPaths = (update.planArtifactPaths ?? defaultPlanArtifactPaths()).map((item) => item.replace(/\\/g, "/"));
+  const verificationCoverage = createVerificationCoverage(workflow, artifactPaths, update.verification);
+  const reviewSummary = update.review ? {
+    critical: update.review.critical,
+    major: update.review.major,
+    minor: update.review.minor,
+    reviewedFileCount: update.review.reviewedFiles?.length ?? update.review.reviewedFileCount,
+  } : undefined;
+  const baseSnapshot = {
+    schemaVersion: 1 as const,
     workflowId: workflow.id,
     title: workflow.title,
     branch: workflow.branch,
@@ -62,7 +81,7 @@ export function createWorkflowLedgerSnapshot(workflow: WorkflowInstance, update:
     startedAt: new Date(workflow.startedAt).toISOString(),
     updatedAt: new Date(workflow.updatedAt).toISOString(),
     planCoverage: {
-      artifactPaths: (update.planArtifactPaths ?? defaultPlanArtifactPaths()).map((item) => item.replace(/\\/g, "/")),
+      artifactPaths,
       taskCounts,
       activeTask: activeTask ? {
         id: activeTask.id,
@@ -85,20 +104,22 @@ export function createWorkflowLedgerSnapshot(workflow: WorkflowInstance, update:
         artifactPath: update.verification.artifactPath?.replace(/\\/g, "/"),
       } : undefined,
     },
+    verificationCoverage,
     review: {
       submitted: Boolean(update.review),
-      summary: update.review ? {
-        critical: update.review.critical,
-        major: update.review.major,
-        minor: update.review.minor,
-        reviewedFileCount: update.review.reviewedFiles?.length,
-      } : undefined,
+      summary: reviewSummary,
     },
     nextSafeAction: {
       phase: workflow.phase,
-      summary: summarizeNextSafeAction(workflow.phase),
+      summary: summarizeNextSafeAction(workflow.phase, update),
     },
   };
+  const snapshot = {
+    ...baseSnapshot,
+    resume: { summary: "", generatedAt: new Date(workflow.updatedAt).toISOString() },
+  } satisfies WorkflowLedgerSnapshot;
+  snapshot.resume.summary = formatWorkflowLedgerResumeSummary(snapshot);
+  return snapshot;
 }
 
 export function writeWorkflowLedgerSnapshot(workflow: WorkflowInstance, root = workflow.gitRoot ?? process.cwd(), update: WorkflowLedgerUpdate = {}): WorkflowLedgerDescriptor {
@@ -125,6 +146,34 @@ export function safeWriteWorkflowLedgerSnapshot(workflow: WorkflowInstance | nul
   }
 }
 
+export function readWorkflowLedgerSnapshot(workflow: Pick<WorkflowInstance, "id" | "gitRoot">, root = workflow.gitRoot ?? process.cwd()): WorkflowLedgerSnapshot | null {
+  return readExistingLedger(getWorkflowLedgerPath(workflow, root));
+}
+
+export function formatWorkflowLedgerResumeSummary(snapshot: WorkflowLedgerSnapshot): string {
+  const verification = snapshot.verification.lastCommand
+    ? `${snapshot.verification.lastCommand.commandId}:${snapshot.verification.lastCommand.ok ? "pass" : "fail"}`
+    : "none";
+  const review = snapshot.review.summary
+    ? `Cr${snapshot.review.summary.critical}/Maj${snapshot.review.summary.major}/Min${snapshot.review.summary.minor}`
+    : "none";
+  const counts = snapshot.verificationCoverage?.counts ?? { covered: 0, needsVerification: 0, unknown: 0 };
+  return [
+    `phase=${snapshot.phase.current}`,
+    `verification=${verification}`,
+    `coverage=${counts.covered}/${counts.needsVerification}/${counts.unknown}`,
+    `review=${review}`,
+    `diff=${snapshot.diffCoverage.changedFileCount}`,
+    `next=${truncate(snapshot.nextSafeAction.summary, 180)}`,
+  ].join("; ");
+}
+
+export function formatWorkflowLedgerResumePrompt(workflow: Pick<WorkflowInstance, "id" | "gitRoot">, root = workflow.gitRoot ?? process.cwd()): string | null {
+  const snapshot = readWorkflowLedgerSnapshot(workflow, root);
+  if (!snapshot) return null;
+  return ["[Run Ledger Resume]", formatWorkflowLedgerResumeSummary(snapshot), "[/Run Ledger Resume]"].join("\n");
+}
+
 function summarizeTaskCounts(workflow: WorkflowInstance): Record<WorkflowTaskStatus | "none", number> {
   if (!workflow.taskQueue) return { none: 1, pending: 0, active: 0, done: 0, blocked: 0, deferred: 0 };
   return workflow.taskQueue.tasks.reduce((acc, task) => {
@@ -135,6 +184,44 @@ function summarizeTaskCounts(workflow: WorkflowInstance): Record<WorkflowTaskSta
 
 function defaultPlanArtifactPaths(): string[] {
   return [".ai/interview/spec.ko.md", ".ai/interview/spec.md", ".ai/interview/plan.ko.md", ".ai/interview/plan.md"];
+}
+
+function createVerificationCoverage(workflow: WorkflowInstance, artifactPaths: string[], verification: WorkflowLedgerUpdate["verification"]): WorkflowLedgerSnapshot["verificationCoverage"] {
+  const activeTask = workflow.taskQueue?.activeTaskId
+    ? workflow.taskQueue.tasks.find((task) => task.id === workflow.taskQueue?.activeTaskId)
+    : undefined;
+  const evidence = verification ? [`${verification.commandId}:${verification.ok ? "pass" : "fail"}`] : [];
+  const status: WorkflowLedgerCoverageStatus = verification ? (verification.ok ? "covered" : "needs_verification") : "unknown";
+  const items: WorkflowLedgerCoverageItem[] = activeTask?.acceptanceCriteria.length
+    ? activeTask.acceptanceCriteria.map((label, index) => ({
+      id: `${activeTask.id}:acceptance:${index + 1}`,
+      label: truncate(label, 160),
+      status,
+      evidence,
+    }))
+    : [
+      {
+        id: "plan-artifacts",
+        label: "Plan artifacts available",
+        status: artifactPaths.length > 0 ? "covered" : "unknown",
+        evidence: artifactPaths.length > 0 ? [`planArtifacts:${artifactPaths.length}`] : [],
+      },
+      {
+        id: "latest-verification",
+        label: "Latest verification evidence",
+        status,
+        evidence,
+      },
+    ];
+  return { items, counts: countCoverageItems(items) };
+}
+
+function countCoverageItems(items: WorkflowLedgerCoverageItem[]): WorkflowLedgerSnapshot["verificationCoverage"]["counts"] {
+  return items.reduce((acc, item) => {
+    if (item.status === "needs_verification") acc.needsVerification += 1;
+    else acc[item.status] += 1;
+    return acc;
+  }, { covered: 0, needsVerification: 0, unknown: 0 });
 }
 
 function collectChangedFiles(root: string): string[] {
@@ -155,18 +242,25 @@ function isGeneratedWorkflowArtifactPath(file: string): boolean {
   return normalized === ".ai" || normalized === ".ai/" || normalized.startsWith(".ai/") || normalized === ".project-memory" || normalized === ".project-memory/" || normalized.startsWith(".project-memory/");
 }
 
-function summarizeNextSafeAction(phase: WorkflowPhase): string {
+function summarizeNextSafeAction(phase: WorkflowPhase, update: WorkflowLedgerUpdate): string {
+  const hasVerification = Boolean(update.verification);
+  const hasReview = Boolean(update.review);
+  if (phase === "implement" && !hasVerification) return "implement: run targeted verification for current changes before code_review.";
+  if (phase === "implement") return "implement: verification evidence exists; finish the approved scope and advance to code_review.";
+  if (phase === "code_review" && !hasReview) return "code_review: collect self-review, independent review, and quality gate evidence before submit_review_package.";
+  if (phase === "code_review") return "code_review: review evidence exists; submit the review package when quality evidence is complete.";
+  if (phase === "commit" && !hasVerification) return "commit: check verification evidence before staging and committing.";
   const actions: Record<WorkflowPhase, string> = {
-    interview: "Clarify requirements and record interview score evidence.",
-    plan: "Write DPAA-ready spec and plan artifacts, then advance to plan_review.",
-    plan_review: "Run DPAA/SBADR and repair plan ambiguity before implementation.",
+    interview: "interview: clarify requirements and record interview score evidence.",
+    plan: "plan: write DPAA-ready spec and plan artifacts, then advance to plan_review.",
+    plan_review: "plan_review: run DPAA/SBADR and repair plan ambiguity before implementation.",
     implement: "implement: complete approved scope, collect verification evidence, then advance to code_review.",
-    code_review: "Collect self-review, independent review, and quality gate evidence before submitting review package.",
-    review_approved: "Prepare documentation updates for the approved changes.",
-    document: "Update required docs and prepare commit summary.",
-    commit: "Stage reviewed changes and create the approved commit.",
-    push: "Run the guarded git-push command and observe success.",
-    done: "Workflow is complete.",
+    code_review: "code_review: collect self-review, independent review, and quality gate evidence before submitting review package.",
+    review_approved: "review_approved: prepare documentation updates for the approved changes.",
+    document: "document: update required docs and prepare commit summary.",
+    commit: "commit: stage reviewed changes and create the approved commit.",
+    push: "push: run the guarded git-push command and observe success.",
+    done: "done: workflow is complete.",
   };
   return actions[phase];
 }

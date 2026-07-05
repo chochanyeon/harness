@@ -7,10 +7,8 @@
     <linearGradient id="good" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#22c55e"/></linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.30"/></filter>
     <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L11 6 L1 11 L4 6 Z" fill="#8b949e"/></marker>
-    <marker id="arrowBad" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L11 6 L1 11 L4 6 Z" fill="#ef4444"/></marker>
-    <marker id="arrowGood" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L11 6 L1 11 L4 6 Z" fill="#22d3ee"/></marker>
     <style>
-      .title{fill:#f0f6fc;font:800 34px ui-sans-serif,system-ui,Segoe UI,sans-serif}.label{fill:#f0f6fc;font:800 25px ui-sans-serif,system-ui,Segoe UI,sans-serif}.text{fill:#c9d1d9;font:600 17px ui-sans-serif,system-ui,Segoe UI,sans-serif}.muted{fill:#8b949e;font:600 14px ui-sans-serif,system-ui,Segoe UI,sans-serif}.card{fill:#161b22;stroke:#30363d;stroke-width:1.5;filter:url(#shadow)}.pill{fill:#0d1117;stroke:#30363d;stroke-width:1}.line{stroke:#8b949e;stroke-width:3;fill:none;marker-end:url(#arrow);stroke-linecap:round;stroke-linejoin:round}.bad-arrow{stroke:#ef4444;stroke-width:4;fill:none;stroke-dasharray:10 8;marker-end:url(#arrowBad);stroke-linecap:round;stroke-linejoin:round}.good-arrow{stroke:#22d3ee;stroke-width:4;fill:none;marker-end:url(#arrowGood);stroke-linecap:round;stroke-linejoin:round}.halo{stroke:#22d3ee;stroke-width:9;fill:none;opacity:.10;stroke-linecap:round}
+      .title{fill:#f0f6fc;font:800 34px ui-sans-serif,system-ui,Segoe UI,sans-serif}.label{fill:#f0f6fc;font:800 25px ui-sans-serif,system-ui,Segoe UI,sans-serif}.text{fill:#c9d1d9;font:600 17px ui-sans-serif,system-ui,Segoe UI,sans-serif}.muted{fill:#8b949e;font:600 14px ui-sans-serif,system-ui,Segoe UI,sans-serif}.card{fill:#161b22;stroke:#30363d;stroke-width:1.5;filter:url(#shadow)}.pill{fill:#0d1117;stroke:#30363d;stroke-width:1}.line{stroke:#8b949e;stroke-width:3;fill:none;marker-end:url(#arrow);stroke-linecap:round;stroke-linejoin:round}.halo{stroke:#22d3ee;stroke-width:9;fill:none;opacity:.10;stroke-linecap:round}.badge{fill:#0d1117;stroke:#30363d;stroke-width:1}
     </style>
   </defs>
   <rect width="1200" height="560" rx="32" fill="url(#bg)"/>
@@ -26,8 +24,8 @@
       <rect class="pill" y="116" width="352" height="42" rx="21"/><text x="24" y="143" class="text">Review and tests become optional</text>
       <rect class="pill" y="174" width="318" height="42" rx="21"/><text x="24" y="201" class="text">Risky push can be rushed</text>
     </g>
-    <path class="bad-arrow" d="M84 330 C138 270, 196 360, 250 304 S322 238, 374 276" opacity="0.78"/>
-    <text x="42" y="318" class="muted">hard to audit after the fact</text>
+    <rect x="42" y="305" width="198" height="34" rx="17" class="badge"/>
+    <text x="62" y="327" class="muted">hard to audit afterward</text>
   </g>
 
   <g>
@@ -47,9 +45,7 @@
       <rect class="pill" y="116" width="360" height="42" rx="21"/><text x="24" y="143" class="text">Implementation tied to evidence</text>
       <rect class="pill" y="174" width="342" height="42" rx="21"/><text x="24" y="201" class="text">Review package before completion</text>
     </g>
-    <path class="halo" d="M78 316 C134 376, 250 386, 332 330 C352 316, 365 300, 376 282"/>
-    <path class="good-arrow" d="M78 316 C134 376, 250 386, 332 330 C352 316, 365 300, 376 282" opacity="0.94"/>
-    <circle cx="78" cy="316" r="5" fill="#22d3ee" opacity="0.85"/>
-    <text x="42" y="318" class="muted">evidence feeds the next task</text>
+    <rect x="42" y="305" width="226" height="34" rx="17" class="badge"/>
+    <text x="62" y="327" class="muted">evidence remains reusable</text>
   </g>
 </svg>

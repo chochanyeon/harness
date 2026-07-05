@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
-  <title id="title">Pi Workflow Harness closed-loop overview</title>
-  <desc id="desc">A visual overview of Pi Workflow Harness as a closed-loop AI coding workflow. The loop moves from interview to plan, ambiguity guard, implementation, review, documentation and commit, then feeds evidence and memory back into the next iteration. Supporting components include workflow policy, external memory, failure logs, and TUI helpers.</desc>
+  <title id="title">Pi Workflow Harness angular overview</title>
+  <desc id="desc">A visual overview of Pi Workflow Harness as an angular AI coding workflow. The process moves through interview, plan, ambiguity guard, implementation, review, documentation and commit, with explicit repair and evidence feedback paths. Supporting components include workflow policy, external memory, failure logs, and TUI helpers.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0d1117"/>
@@ -24,32 +24,30 @@
       <stop offset="100%" stop-color="#f97316"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.32"/>
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.30"/>
     </filter>
-    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto">
       <path d="M1 1 L11 6 L1 11 L4 6 Z" fill="#8b949e"/>
     </marker>
-    <marker id="arrowCyan" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+    <marker id="arrowCyan" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto">
       <path d="M1 1 L11 6 L1 11 L4 6 Z" fill="#22d3ee"/>
     </marker>
-    <marker id="arrowAmber" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+    <marker id="arrowAmber" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto">
       <path d="M1 1 L11 6 L1 11 L4 6 Z" fill="#fbbf24"/>
     </marker>
     <style>
       .title { fill: #f0f6fc; font: 800 46px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; letter-spacing: -0.9px; }
       .subtitle { fill: #c9d1d9; font: 500 20px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
-      .center-title { fill: #f0f6fc; font: 800 28px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; text-anchor: middle; }
-      .center-text { fill: #c9d1d9; font: 600 16px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; text-anchor: middle; }
       .card-title { fill: #f0f6fc; font: 800 19px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
       .card-text { fill: #c9d1d9; font: 500 14px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
       .small { fill: #8b949e; font: 700 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; letter-spacing: 0.4px; }
       .node { fill: #161b22; stroke: #30363d; stroke-width: 1.5; filter: url(#shadow); }
-      .center { fill: #0d1117; stroke: #30363d; stroke-width: 1.5; filter: url(#shadow); }
+      .board { fill: #0d1117; stroke: #30363d; stroke-width: 1.3; opacity: 0.82; }
       .chip { fill: #0d1117; stroke: #30363d; stroke-width: 1; }
-      .loop { stroke: #8b949e; stroke-width: 3.2; fill: none; marker-end: url(#arrow); opacity: 0.95; stroke-linecap: round; stroke-linejoin: round; }
-      .loop-halo { stroke: #8b949e; stroke-width: 9; fill: none; opacity: 0.08; stroke-linecap: round; }
-      .feedback { stroke: #22d3ee; stroke-width: 2.6; fill: none; marker-end: url(#arrowCyan); stroke-dasharray: 8 8; opacity: 0.9; stroke-linecap: round; stroke-linejoin: round; }
-      .repair { stroke: #fbbf24; stroke-width: 2.6; fill: none; marker-end: url(#arrowAmber); stroke-dasharray: 8 8; opacity: 0.95; stroke-linecap: round; stroke-linejoin: round; }
+      .lane { fill: #111827; stroke: #30363d; stroke-width: 1; opacity: 0.72; }
+      .flow { stroke: #8b949e; stroke-width: 3; fill: none; marker-end: url(#arrow); stroke-linecap: square; stroke-linejoin: miter; opacity: 0.95; }
+      .feedback { stroke: #22d3ee; stroke-width: 2.6; fill: none; marker-end: url(#arrowCyan); stroke-dasharray: 8 8; stroke-linecap: square; stroke-linejoin: miter; opacity: 0.92; }
+      .repair { stroke: #fbbf24; stroke-width: 2.6; fill: none; marker-end: url(#arrowAmber); stroke-dasharray: 8 8; stroke-linecap: square; stroke-linejoin: miter; opacity: 0.96; }
       .dash { stroke: #4b5563; stroke-width: 1.8; stroke-dasharray: 6 7; fill: none; }
       .accent-cyan { fill: url(#cyan); }
       .accent-pink { fill: url(#pink); }
@@ -61,10 +59,10 @@
   <rect width="1200" height="760" rx="34" fill="url(#bg)"/>
   <circle cx="1056" cy="92" r="175" fill="#1f6feb" opacity="0.10"/>
   <circle cx="118" cy="672" r="180" fill="#d946ef" opacity="0.08"/>
-  <path d="M70 112 C268 38, 392 146, 554 82 S858 32, 1090 168" class="dash" opacity="0.34"/>
+  <path d="M70 112 C268 38, 392 146, 554 82 S858 32, 1090 168" class="dash" opacity="0.24"/>
 
   <text x="62" y="98" class="title">Pi Workflow Harness</text>
-  <text x="62" y="133" class="subtitle">A closed-loop operating system for safer AI coding sessions</text>
+  <text x="62" y="133" class="subtitle">A structured operating layer for safer AI coding sessions</text>
 
   <g transform="translate(858 70)">
     <rect class="chip" width="274" height="42" rx="21"/>
@@ -72,77 +70,83 @@
     <text x="45" y="27" class="card-text">Installs as AGENTS.md + .pi/</text>
   </g>
 
-  <!-- closed-loop workflow -->
-  <g transform="translate(0 0)">
-    <ellipse cx="600" cy="352" rx="366" ry="180" fill="#0d1117" opacity="0.32" stroke="#30363d" stroke-width="1.2"/>
-    <path class="loop-halo" d="M396 236 C440 174, 480 180, 515 179"/>
-    <path class="loop" d="M396 236 C440 174, 480 180, 515 179"/>
-    <path class="loop-halo" d="M685 179 C730 176, 770 198, 804 235"/>
-    <path class="loop" d="M685 179 C730 176, 770 198, 804 235"/>
-    <path class="loop-halo" d="M889 294 C938 336, 938 372, 889 414"/>
-    <path class="loop" d="M889 294 C938 336, 938 372, 889 414"/>
-    <path class="loop-halo" d="M804 461 C765 522, 725 528, 685 529"/>
-    <path class="loop" d="M804 461 C765 522, 725 528, 685 529"/>
-    <path class="loop-halo" d="M515 529 C475 528, 435 522, 396 461"/>
-    <path class="loop" d="M515 529 C475 528, 435 522, 396 461"/>
-    <path class="loop-halo" d="M311 414 C255 374, 255 334, 311 294"/>
-    <path class="loop" d="M311 414 C255 374, 255 334, 311 294"/>
+  <!-- angular workflow board -->
+  <g transform="translate(60 178)">
+    <rect class="board" width="1080" height="388" rx="26"/>
+    <rect class="lane" x="28" y="28" width="1024" height="150" rx="20"/>
+    <rect class="lane" x="28" y="210" width="1024" height="150" rx="20"/>
+    <text x="50" y="58" class="small">DEFINE + PROTECT</text>
+    <text x="50" y="240" class="small">BUILD + PROVE + CARRY FORWARD</text>
 
-    <rect class="center" x="424" y="286" width="352" height="136" rx="30"/>
-    <text x="600" y="332" class="center-title">Governed AI Loop</text>
-    <text x="600" y="363" class="center-text">scope → plan → build → review</text>
-    <text x="600" y="390" class="center-text">evidence feeds the next iteration</text>
-
-    <g transform="translate(226 200)">
-      <rect class="node" width="170" height="94" rx="21"/>
-      <circle cx="31" cy="32" r="15" class="accent-cyan"/>
-      <text x="58" y="37" class="card-title">Interview</text>
-      <text x="22" y="68" class="card-text">goal · scope · risk</text>
+    <g transform="translate(56 78)">
+      <rect class="node" width="172" height="92" rx="18"/>
+      <circle cx="30" cy="31" r="14" class="accent-cyan"/>
+      <text x="56" y="36" class="card-title">Interview</text>
+      <text x="22" y="66" class="card-text">goal · scope · risk</text>
     </g>
 
-    <g transform="translate(515 132)">
-      <rect class="node" width="170" height="94" rx="21"/>
-      <circle cx="31" cy="32" r="15" class="accent-cyan"/>
-      <text x="58" y="37" class="card-title">Plan</text>
-      <text x="22" y="68" class="card-text">spec · tasks · checks</text>
+    <path class="flow" d="M238 124 H318"/>
+
+    <g transform="translate(330 78)">
+      <rect class="node" width="172" height="92" rx="18"/>
+      <circle cx="30" cy="31" r="14" class="accent-cyan"/>
+      <text x="56" y="36" class="card-title">Plan</text>
+      <text x="22" y="66" class="card-text">spec · tasks · checks</text>
     </g>
 
-    <g transform="translate(804 200)">
-      <rect class="node" width="170" height="94" rx="21"/>
-      <circle cx="31" cy="32" r="15" class="accent-amber"/>
-      <text x="58" y="37" class="card-title">Guard</text>
-      <text x="22" y="68" class="card-text">DPAA · SBADR</text>
+    <path class="flow" d="M512 124 H592"/>
+
+    <g transform="translate(604 78)">
+      <rect class="node" width="172" height="92" rx="18"/>
+      <circle cx="30" cy="31" r="14" class="accent-amber"/>
+      <text x="56" y="36" class="card-title">Guard</text>
+      <text x="22" y="66" class="card-text">DPAA · SBADR</text>
     </g>
 
-    <g transform="translate(804 414)">
-      <rect class="node" width="170" height="94" rx="21"/>
-      <circle cx="31" cy="32" r="15" class="accent-green"/>
-      <text x="58" y="37" class="card-title">Implement</text>
-      <text x="22" y="68" class="card-text">TDD · verify</text>
+    <path class="flow" d="M786 124 H866"/>
+
+    <g transform="translate(878 78)">
+      <rect class="node" width="172" height="92" rx="18"/>
+      <circle cx="30" cy="31" r="14" class="accent-green"/>
+      <text x="56" y="36" class="card-title">Implement</text>
+      <text x="22" y="66" class="card-text">TDD · verify</text>
     </g>
 
-    <g transform="translate(515 482)">
-      <rect class="node" width="170" height="94" rx="21"/>
-      <circle cx="31" cy="32" r="15" class="accent-pink"/>
-      <text x="58" y="37" class="card-title">Review</text>
-      <text x="22" y="68" class="card-text">quality package</text>
+    <path class="flow" d="M964 180 V244"/>
+
+    <g transform="translate(878 260)">
+      <rect class="node" width="172" height="92" rx="18"/>
+      <circle cx="30" cy="31" r="14" class="accent-pink"/>
+      <text x="56" y="36" class="card-title">Review</text>
+      <text x="22" y="66" class="card-text">quality package</text>
     </g>
 
-    <g transform="translate(226 414)">
-      <rect class="node" width="170" height="94" rx="21"/>
-      <circle cx="31" cy="32" r="15" class="accent-green"/>
-      <text x="58" y="37" class="card-title">Document</text>
-      <text x="22" y="68" class="card-text">commit · push · done</text>
+    <path class="flow" d="M868 306 H788"/>
+
+    <g transform="translate(604 260)">
+      <rect class="node" width="172" height="92" rx="18"/>
+      <circle cx="30" cy="31" r="14" class="accent-green"/>
+      <text x="56" y="36" class="card-title">Document</text>
+      <text x="22" y="66" class="card-text">commit · push · done</text>
     </g>
 
-    <path class="repair" d="M820 210 C760 128, 632 96, 590 132"/>
-    <text x="694" y="117" class="small">repair ambiguous plan</text>
+    <path class="flow" d="M594 306 H514"/>
 
-    <path class="feedback" d="M526 548 C640 638, 864 596, 890 508"/>
-    <text x="706" y="616" class="small">fix findings before completion</text>
+    <g transform="translate(330 260)">
+      <rect class="node" width="172" height="92" rx="18"/>
+      <circle cx="30" cy="31" r="14" class="accent-cyan"/>
+      <text x="56" y="36" class="card-title">Evidence</text>
+      <text x="22" y="66" class="card-text">ledger · memory · logs</text>
+    </g>
 
-    <path class="feedback" d="M296 414 C166 350, 182 242, 226 228"/>
-    <text x="118" y="332" class="small">next task uses memory + logs</text>
+    <path class="feedback" d="M330 306 H142 V182"/>
+    <text x="92" y="306" class="small">next iteration</text>
+
+    <path class="repair" d="M604 78 V42 H416 V70"/>
+    <text x="456" y="38" class="small">repair ambiguous plan</text>
+
+    <path class="repair" d="M878 306 H830 V218 H964 V248"/>
+    <text x="818" y="218" class="small">fix review findings</text>
   </g>
 
   <!-- support components -->

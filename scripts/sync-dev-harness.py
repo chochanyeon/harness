@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 
 PRESERVE_NAMES = {"config", "local", "LOCAL.md"}
+PRESERVE_EXCLUDED_NAMES = {".venv"}
 EXCLUDE_NAMES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", ".cache"}
 EXCLUDE_FILES = {".DS_Store"}
 
@@ -46,6 +47,8 @@ def sync(src: Path, dest: Path) -> None:
         rel = item.relative_to(dest)
         parts = rel.parts
         if parts and parts[0] in PRESERVE_NAMES:
+            continue
+        if parts and parts[0] in PRESERVE_EXCLUDED_NAMES:
             continue
         src_counterpart = src / rel
         if is_excluded(rel) or not src_counterpart.exists():

@@ -151,7 +151,57 @@ function canImportDpaa(command: string): boolean {
   }
 }
 
+function isUsablePip(command: string): boolean {
+  try {
+    execSync(`${quoteCommand(command)} -m pip --version`, {
+      cwd: HARNESS_ROOT,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ensureUsablePip(venvPython: string): void {
+  if (isUsablePip(venvPython)) return;
+  try {
+    execSync(`${quoteCommand(venvPython)} -m ensurepip --upgrade`, {
+      cwd: HARNESS_ROOT,
+      encoding: "utf-8",
+      stdio: "pipe",
+      maxBuffer: 1024 * 1024 * 20,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`pip repair failed for DPAA venv: ${message}`);
+  }
+  if (!isUsablePip(venvPython)) {
+    throw new Error("pip repair failed for DPAA venv: pip is still unusable after ensurepip --upgrade");
+  }
+}
+
+function createDpaaVenv(basePython: string): string {
+  fs.mkdirSync(PI_ROOT, { recursive: true });
+  execSync(`${quoteCommand(basePython)} -m venv ${quoteCommand(DPAA_VENV_DIR)}`, {
+    cwd: HARNESS_ROOT,
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+
+  const venvPython = venvPythonPath();
+  ensureUsablePip(venvPython);
+  return venvPython;
+}
+
+function recreateDpaaVenv(basePython: string): string {
+  fs.rmSync(DPAA_VENV_DIR, { recursive: true, force: true });
+  return createDpaaVenv(basePython);
+}
+
 function installDpaaIntoVenv(venvPython: string): void {
+  ensureUsablePip(venvPython);
   execSync(`${quoteCommand(venvPython)} -m pip install -e ${quoteCommand(PI_ROOT)}`, {
     cwd: HARNESS_ROOT,
     encoding: "utf-8",
@@ -163,19 +213,20 @@ function installDpaaIntoVenv(venvPython: string): void {
 function ensureDpaaPythonCommand(): string {
   const existingVenvPython = venvPythonPath();
   if (fs.existsSync(existingVenvPython) && isUsablePython(existingVenvPython)) {
-    if (!canImportDpaa(existingVenvPython)) installDpaaIntoVenv(existingVenvPython);
-    return existingVenvPython;
+    try {
+      ensureUsablePip(existingVenvPython);
+      if (!canImportDpaa(existingVenvPython)) installDpaaIntoVenv(existingVenvPython);
+      return existingVenvPython;
+    } catch {
+      const basePython = resolvePythonCommand();
+      const recreatedVenvPython = recreateDpaaVenv(basePython);
+      installDpaaIntoVenv(recreatedVenvPython);
+      return recreatedVenvPython;
+    }
   }
 
   const basePython = resolvePythonCommand();
-  fs.mkdirSync(PI_ROOT, { recursive: true });
-  execSync(`${quoteCommand(basePython)} -m venv ${quoteCommand(DPAA_VENV_DIR)}`, {
-    cwd: HARNESS_ROOT,
-    encoding: "utf-8",
-    stdio: "pipe",
-  });
-
-  const venvPython = venvPythonPath();
+  const venvPython = recreateDpaaVenv(basePython);
   installDpaaIntoVenv(venvPython);
   return venvPython;
 }

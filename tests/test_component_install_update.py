@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -100,25 +101,34 @@ def test_unix_initializer_workflow_component_includes_assistant_markdown_box():
     assert ".pi/extensions/assistant-markdown-box.ts" in selected_block
 
 
-def test_sync_dev_harness_excludes_generated_cache_and_venv_paths(tmp_path):
+def _venv_python(venv: Path) -> Path:
+    return venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def test_sync_dev_harness_excludes_generated_cache_and_preserves_destination_venv(tmp_path):
     src = tmp_path / "src"
     dest = tmp_path / "dest"
     (src / "dpaa" / "__pycache__").mkdir(parents=True)
     (src / "dpaa" / "__pycache__" / "cli.pyc").write_bytes(b"cache")
     (src / ".venv" / "bin").mkdir(parents=True)
-    (src / ".venv" / "bin" / "python").write_text("venv", encoding="utf-8")
+    (src / ".venv" / "bin" / "source-python").write_text("source venv", encoding="utf-8")
     (src / "pkg.egg-info").mkdir(parents=True)
     (src / "pkg.egg-info" / "PKG-INFO").write_text("metadata", encoding="utf-8")
     (src / "extensions").mkdir(parents=True)
     (src / "extensions" / "workflow.ts").write_text("runtime", encoding="utf-8")
+    (dest / ".venv" / "Scripts").mkdir(parents=True)
+    (dest / ".venv" / "Scripts" / "python.exe").write_text("destination venv", encoding="utf-8")
     (dest / "old" / "__pycache__").mkdir(parents=True)
     (dest / "old" / "__pycache__" / "stale.pyc").write_bytes(b"stale")
+    (dest / ".cache").mkdir(parents=True)
+    (dest / ".cache" / "stale.txt").write_text("cache", encoding="utf-8")
 
     result = subprocess.run(
         [sys.executable, "scripts/sync-dev-harness.py", str(src), str(dest)],
         cwd=ROOT,
         text=True,
         encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=30,
@@ -127,9 +137,37 @@ def test_sync_dev_harness_excludes_generated_cache_and_venv_paths(tmp_path):
     assert result.returncode == 0, result.stderr
     assert (dest / "extensions" / "workflow.ts").exists()
     assert not (dest / "dpaa" / "__pycache__" / "cli.pyc").exists()
-    assert not (dest / ".venv").exists()
+    assert (dest / ".venv" / "Scripts" / "python.exe").read_text(encoding="utf-8") == "destination venv"
+    assert not (dest / ".venv" / "bin" / "source-python").exists()
     assert not (dest / "pkg.egg-info").exists()
     assert not (dest / "old" / "__pycache__" / "stale.pyc").exists()
+    assert not (dest / ".cache" / "stale.txt").exists()
+
+
+def test_sync_dev_harness_preserves_real_destination_venv_pip(tmp_path):
+    src = tmp_path / "src"
+    dest = tmp_path / "dest"
+    (src / "extensions").mkdir(parents=True)
+    (src / "extensions" / "workflow.ts").write_text("runtime", encoding="utf-8")
+    venv = dest / ".venv"
+    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True, timeout=60)
+    python = _venv_python(venv)
+    subprocess.run([str(python), "-m", "pip", "--version"], check=True, stdout=subprocess.PIPE, timeout=30)
+
+    result = subprocess.run(
+        [sys.executable, "scripts/sync-dev-harness.py", str(src), str(dest)],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert python.exists()
+    subprocess.run([str(python), "-m", "pip", "--version"], check=True, stdout=subprocess.PIPE, timeout=30)
 
 
 def test_update_scripts_are_component_granular():

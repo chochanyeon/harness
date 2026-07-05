@@ -62,6 +62,16 @@ Fix these without asking:
 | Placeholder text or TODO markers | Expand into full statements |
 | SBADR syntactic ambiguity | Rewrite sentence structure for unambiguous parse |
 
+### SBADR-safe English plan sentences
+
+When you write or repair `.ai/interview/plan.md`, use sentence forms that SBADR can parse deterministically:
+
+- Use explicit subjects and explicit verbs in every requirement sentence.
+- Avoid ambiguous demonstratives such as `this`, `that`, `these`, and `those`; repeat the concrete noun instead.
+- Avoid weak verbs by themselves, such as `update`, `improve`, `support`, or `preserve`; pair each verb with a concrete object and measurable result.
+- Avoid long prepositional attachments; split the sentence when `in`, `with`, `for`, or `by` could attach to more than one phrase.
+- Avoid ambiguous parallel lists; split `A, B, C, or D` into separate bullet items when each item is a separate requirement.
+
 Steps for autonomous repair:
 
 1. Fix the Korean source artifact (`plan.ko.md`) first.

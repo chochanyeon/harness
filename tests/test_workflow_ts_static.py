@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXT_DIR = ROOT / "target" / ".pi" / "extensions" / "workflow"
 WORKFLOW_TS = ROOT / "target" / ".pi" / "extensions" / "workflow.ts"
 CODE_REVIEW_SKILL = ROOT / "target" / ".pi" / "skills" / "code-review" / "SKILL.md"
+DPAA_SKILL = ROOT / "target" / ".pi" / "skills" / "dpaa" / "SKILL.md"
 TDD_SKILL = ROOT / "target" / ".pi" / "skills" / "test-driven-development" / "SKILL.md"
 TARGET_AGENTS = ROOT / "target" / "AGENTS.md"
 
@@ -263,6 +264,37 @@ class TestGatesTsSbadr:
         assert "setup_corenlp.ps1" in src
         assert "setup_corenlp.sh" in src
         assert 'process.platform === "win32"' in src
+
+
+# ---------------------------------------------------------------------------
+# gates.ts — DPAA venv preparation
+# ---------------------------------------------------------------------------
+
+class TestGatesTsDpaaVenvPreparation:
+    def test_dpaa_venv_checks_pip_usability(self):
+        src = _src("gates.ts")
+        assert "function isUsablePip" in src
+        assert "-m pip --version" in src
+
+    def test_dpaa_venv_repairs_pip_before_installing_dpaa(self):
+        src = _src("gates.ts")
+        assert "function ensureUsablePip" in src
+        ensure_idx = src.index("ensureUsablePip(existingVenvPython)")
+        install_idx = src.index("installDpaaIntoVenv(existingVenvPython)")
+        assert ensure_idx < install_idx
+
+    def test_healthy_existing_venv_does_not_require_base_python_resolution_first(self):
+        src = _src("gates.ts")
+        body = src[src.index("function ensureDpaaPythonCommand"):]
+        existing_branch_idx = body.index("if (fs.existsSync(existingVenvPython) && isUsablePython(existingVenvPython))")
+        resolve_idx = body.index("resolvePythonCommand()")
+        assert existing_branch_idx < resolve_idx
+
+    def test_dpaa_venv_uses_ensurepip_and_fresh_recreate_fallback(self):
+        src = _src("gates.ts")
+        assert "-m ensurepip --upgrade" in src
+        assert "recreateDpaaVenv" in src
+        assert "fs.rmSync(DPAA_VENV_DIR" in src
 
 
 # ---------------------------------------------------------------------------
@@ -926,6 +958,23 @@ class TestStorageTs:
     def test_get_workflow_state_path_exported(self):
         src = _src("storage.ts")
         assert "export function getWorkflowStatePath" in src
+
+class TestDpaaSkillSbadrSafePlanGuidance:
+    def test_dpaa_skill_guides_sbadr_safe_english_plan_sentences(self):
+        src = _skill_src(DPAA_SKILL)
+        lowered = src.lower()
+        assert "explicit subjects" in lowered
+        assert "ambiguous demonstratives" in lowered
+        assert "this" in lowered
+        assert "long prepositional attachments" in lowered
+        assert "ambiguous parallel lists" in lowered
+        assert "weak verbs by themselves" in lowered
+
+    def test_dpaa_skill_does_not_request_internal_reasoning_exposure(self):
+        src = _skill_src(DPAA_SKILL).lower()
+        forbidden = ["show your reasoning", "reproduce internal reasoning", "explain your chain of thought"]
+        assert not any(item in src for item in forbidden)
+
 
 class TestWorkflowPromptLighteningContract:
     def test_workflow_action_prompt_has_action_principles_without_reasoning_extraction(self):

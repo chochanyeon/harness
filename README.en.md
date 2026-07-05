@@ -58,7 +58,7 @@ After workflow guard/reminder/catalog changes, run the minimum smoke test for re
 python -m pytest tests/test_workflow_reminders.py tests/test_workflow_run_command.py tests/test_code_quality_gate.py tests/test_workflow_tool_policy.py -q
 ```
 
-DPAA dependencies are installed automatically into `.pi/.venv/` the first time the DPAA gate runs. The generated venv is ignored by `.pi/.gitignore`.
+DPAA dependencies are installed automatically into `.pi/.venv/` the first time the DPAA gate runs. The generated venv is ignored by `.pi/.gitignore`. `scripts/sync-dev-harness.py` preserves an existing `.pi/.venv/` during development-repo sync instead of partially deleting it. The DPAA gate checks pip usability in addition to the venv Python version; when pip is broken, the gate tries `ensurepip --upgrade` and recreates `.pi/.venv/` when a fresh venv is required.
 
 SBADR (Score-Based Ambiguity Detector and Resolver, ICSME 2020) is installed alongside DPAA under `.pi/sbadr/`. It detects syntactic ambiguity in English plan documents using Stanford CoreNLP dependency parsing (PP attachment, coordination scope, analytical, noun-phrase stacking). The workflow gate invokes SBADR through `.pi/.venv` with `python -m sbadr.cli analyze ...`. CoreNLP is installed automatically on the first gate run. To install manually:
 
@@ -215,7 +215,7 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/up
 
 | Dependency | Purpose | Notes |
 |---|---|---|
-| Python 3.10+ | DPAA, SBADR | venv auto-created by harness |
+| Python 3.10+ | DPAA, SBADR | venv auto-created by harness, pip repaired when broken |
 | Java 17+ | SBADR (CoreNLP) | CoreNLP auto-installed on first gate run |
 | git | workflow | required |
 

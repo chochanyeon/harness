@@ -926,3 +926,30 @@ class TestStorageTs:
     def test_get_workflow_state_path_exported(self):
         src = _src("storage.ts")
         assert "export function getWorkflowStatePath" in src
+
+class TestWorkflowPromptLighteningContract:
+    def test_workflow_action_prompt_has_action_principles_without_reasoning_extraction(self):
+        src = _src("format.ts")
+        assert "When you have enough information to act, act" in src
+        assert "Do not re-litigate established decisions" in src
+        assert "commit → push" in src
+        assert "submit_review_package" in src
+        forbidden = ["show your reasoning", "reproduce internal reasoning", "explain your chain of thought"]
+        lowered = src.lower()
+        assert not any(item in lowered for item in forbidden)
+
+    def test_continuation_prompt_has_context_limit_reassurance_without_token_count(self):
+        src = (EXT_DIR / "application" / "continuation.ts").read_text(encoding="utf-8")
+        assert "Do not stop, summarize, or suggest a new session on account of context limits." in src
+        assert "Prefer short summaries and artifact paths for long evidence." in src
+        assert "token count" not in src.lower()
+        assert "remaining tokens" not in src.lower()
+        assert "show your reasoning" not in src.lower()
+
+    def test_prompt_context_keeps_resume_and_guard_blocks_without_transition_calls(self):
+        src = (EXT_DIR / "application" / "prompt-context.ts").read_text(encoding="utf-8")
+        assert "formatWorkflowLedgerResumePrompt" in src
+        assert "[Workflow Guard Evidence]" in src
+        assert "advanceWorkflow" not in src
+        assert "transitionWorkflow" not in src
+        assert "runCodeQualityGate" not in src

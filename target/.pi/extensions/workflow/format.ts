@@ -161,7 +161,12 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
     lines.push("- Normal advancement: workflow_approve shows a yes/no dialog only at this approval boundary; do not ask the user to type /workflow approve.");
   }
 
-  lines.push("- workflow_state tool or /workflow state <phase> is manual recovery only (one step at a time); never use for normal advancement.", "[/LLM WORKFLOW ACTION]");
+  lines.push(
+    "- When you have enough information to act, act. Give a recommendation instead of listing options you will not pursue.",
+    "- Do not re-litigate established decisions; use current artifacts, guard evidence, and Run Ledger state as the source of truth.",
+    "- workflow_state tool or /workflow state <phase> is manual recovery only (one step at a time); never use for normal advancement.",
+    "[/LLM WORKFLOW ACTION]",
+  );
   return lines.join("\n");
 }
 

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Harness installed footprint</title>
+  <desc id="desc">Files and directories installed by Pi Workflow Harness into a target project.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0d1117"/><stop offset="100%" stop-color="#07111f"/></linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#22c55e"/></linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f97316"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.30"/></filter>
+    <style>
+      .title{fill:#f0f6fc;font:800 34px ui-sans-serif,system-ui,Segoe UI,sans-serif}.label{fill:#f0f6fc;font:800 22px ui-sans-serif,system-ui,Segoe UI,sans-serif}.text{fill:#c9d1d9;font:600 16px ui-sans-serif,system-ui,Segoe UI,sans-serif}.small{fill:#8b949e;font:600 13px ui-sans-serif,system-ui,Segoe UI,sans-serif}.card{fill:#161b22;stroke:#30363d;stroke-width:1.5;filter:url(#shadow)}.folder{fill:#0d1117;stroke:#30363d;stroke-width:1.2}.line{stroke:#30363d;stroke-width:2;fill:none}.owned{fill:#11263a;stroke:#1f6feb}.managed{fill:#10291b;stroke:#238636}.generated{fill:#34270a;stroke:#d29922}
+    </style>
+  </defs>
+  <rect width="1200" height="560" rx="32" fill="url(#bg)"/>
+  <text x="60" y="76" class="title">Small visible footprint, larger governed runtime</text>
+
+  <g transform="translate(76 118)">
+    <rect class="card" width="1048" height="360" rx="30"/>
+    <text x="42" y="56" class="label">Target Project Root</text>
+    <text x="42" y="82" class="small">Only a few top-level entries appear in the project.</text>
+
+    <g transform="translate(56 126)">
+      <rect class="folder owned" width="210" height="62" rx="18"/><text x="24" y="38" class="text">AGENTS.md</text>
+      <rect class="folder managed" x="260" width="300" height="62" rx="18"/><text x="284" y="38" class="text">.harness/workflow-policy.json</text>
+      <rect class="folder managed" x="610" width="210" height="62" rx="18"/><text x="634" y="38" class="text">.pi/ runtime</text>
+    </g>
+
+    <path class="line" d="M772 188 V234 M772 234 H238 M772 234 H502 M772 234 H772 M772 234 H920"/>
+
+    <g transform="translate(118 250)">
+      <rect class="folder managed" width="180" height="54" rx="16"/><text x="20" y="34" class="text">extensions/</text>
+      <rect class="folder managed" x="220" width="150" height="54" rx="16"/><text x="242" y="34" class="text">skills/</text>
+      <rect class="folder managed" x="410" width="170" height="54" rx="16"/><text x="432" y="34" class="text">personas/</text>
+      <rect class="folder managed" x="620" width="150" height="54" rx="16"/><text x="642" y="34" class="text">dpaa/</text>
+      <rect class="folder managed" x="810" width="150" height="54" rx="16"/><text x="832" y="34" class="text">schemas/</text>
+    </g>
+  </g>
+
+  <g transform="translate(116 506)">
+    <rect class="folder owned" width="16" height="16" rx="4"/><text x="26" y="13" class="small">project-owned entry</text>
+    <rect class="folder managed" x="210" width="16" height="16" rx="4"/><text x="236" y="13" class="small">harness-managed runtime</text>
+    <rect class="folder generated" x="474" width="16" height="16" rx="4"/><text x="500" y="13" class="small">generated local state: .pi/.venv, .project-memory</text>
+  </g>
+</svg>

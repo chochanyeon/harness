@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Before and after applying Pi Workflow Harness</title>
+  <desc id="desc">Comparison between an unstructured AI coding session and a governed harness session.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0d1117"/><stop offset="100%" stop-color="#101827"/></linearGradient>
+    <linearGradient id="bad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ef4444"/><stop offset="100%" stop-color="#f97316"/></linearGradient>
+    <linearGradient id="good" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#22c55e"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.30"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#8b949e"/></marker>
+    <style>
+      .title{fill:#f0f6fc;font:800 34px ui-sans-serif,system-ui,Segoe UI,sans-serif}.label{fill:#f0f6fc;font:800 25px ui-sans-serif,system-ui,Segoe UI,sans-serif}.text{fill:#c9d1d9;font:600 17px ui-sans-serif,system-ui,Segoe UI,sans-serif}.muted{fill:#8b949e;font:600 14px ui-sans-serif,system-ui,Segoe UI,sans-serif}.card{fill:#161b22;stroke:#30363d;stroke-width:1.5;filter:url(#shadow)}.pill{fill:#0d1117;stroke:#30363d;stroke-width:1}.line{stroke:#8b949e;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="560" rx="32" fill="url(#bg)"/>
+  <text x="60" y="76" class="title">From loose agent actions to governed delivery</text>
+
+  <g transform="translate(70 125)">
+    <rect class="card" width="455" height="360" rx="28"/>
+    <circle cx="48" cy="54" r="18" fill="url(#bad)"/>
+    <text x="82" y="63" class="label">Unstructured session</text>
+    <g transform="translate(42 112)">
+      <rect class="pill" width="330" height="42" rx="21"/><text x="24" y="27" class="text">Immediate edits before scope</text>
+      <rect class="pill" y="58" width="300" height="42" rx="21"/><text x="24" y="85" class="text">Plan ambiguity is invisible</text>
+      <rect class="pill" y="116" width="352" height="42" rx="21"/><text x="24" y="143" class="text">Review and tests become optional</text>
+      <rect class="pill" y="174" width="318" height="42" rx="21"/><text x="24" y="201" class="text">Risky push can be rushed</text>
+    </g>
+    <path d="M85 330 C180 250, 240 350, 350 266" stroke="#ef4444" stroke-width="4" fill="none" stroke-dasharray="10 8" opacity="0.75"/>
+    <text x="42" y="318" class="muted">hard to audit after the fact</text>
+  </g>
+
+  <path class="line" d="M550 305 H640"/>
+
+  <g transform="translate(675 125)">
+    <rect class="card" width="455" height="360" rx="28"/>
+    <circle cx="48" cy="54" r="18" fill="url(#good)"/>
+    <text x="82" y="63" class="label">Harnessed session</text>
+    <g transform="translate(42 112)">
+      <rect class="pill" width="355" height="42" rx="21"/><text x="24" y="27" class="text">Scope captured through interview</text>
+      <rect class="pill" y="58" width="332" height="42" rx="21"/><text x="24" y="85" class="text">Plan checked by ambiguity guard</text>
+      <rect class="pill" y="116" width="360" height="42" rx="21"/><text x="24" y="143" class="text">Implementation tied to evidence</text>
+      <rect class="pill" y="174" width="342" height="42" rx="21"/><text x="24" y="201" class="text">Review package before completion</text>
+    </g>
+    <path d="M78 316 C170 372, 306 370, 374 284" stroke="#22d3ee" stroke-width="4" fill="none" marker-end="url(#arrow)" opacity="0.9"/>
+    <text x="42" y="318" class="muted">evidence feeds the next task</text>
+  </g>
+</svg>

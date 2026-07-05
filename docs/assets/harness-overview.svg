@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
-  <title id="title">Pi Workflow Harness overview</title>
-  <desc id="desc">A visual overview of a Pi coding-agent harness that turns loose AI coding sessions into governed workflows with interview, plan, ambiguity guard, implementation, review, documentation, commit, and approved push stages. Supporting components include external memory, field failure logs, TUI helpers, and installable project template files.</desc>
+  <title id="title">Pi Workflow Harness closed-loop overview</title>
+  <desc id="desc">A visual overview of Pi Workflow Harness as a closed-loop AI coding workflow. The loop moves from interview to plan, ambiguity guard, implementation, review, documentation and commit, then feeds evidence and memory back into the next iteration. Supporting components include workflow policy, external memory, failure logs, and TUI helpers.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0d1117"/>
-      <stop offset="52%" stop-color="#111827"/>
+      <stop offset="55%" stop-color="#111827"/>
       <stop offset="100%" stop-color="#07111f"/>
     </linearGradient>
     <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1">
@@ -29,16 +29,26 @@
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
     </marker>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#fbbf24"/>
+    </marker>
     <style>
-      .bg-text { fill: #8b949e; font: 500 15px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
-      .title { fill: #f0f6fc; font: 800 44px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; letter-spacing: -0.8px; }
+      .title { fill: #f0f6fc; font: 800 46px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; letter-spacing: -0.9px; }
       .subtitle { fill: #c9d1d9; font: 500 20px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
-      .card-title { fill: #f0f6fc; font: 800 20px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
-      .card-text { fill: #c9d1d9; font: 500 15px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
-      .small { fill: #8b949e; font: 600 13px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+      .center-title { fill: #f0f6fc; font: 800 28px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; text-anchor: middle; }
+      .center-text { fill: #c9d1d9; font: 600 16px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; text-anchor: middle; }
+      .card-title { fill: #f0f6fc; font: 800 19px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+      .card-text { fill: #c9d1d9; font: 500 14px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+      .small { fill: #8b949e; font: 700 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; letter-spacing: 0.4px; }
       .node { fill: #161b22; stroke: #30363d; stroke-width: 1.5; filter: url(#shadow); }
+      .center { fill: #0d1117; stroke: #30363d; stroke-width: 1.5; filter: url(#shadow); }
       .chip { fill: #0d1117; stroke: #30363d; stroke-width: 1; }
-      .line { stroke: #8b949e; stroke-width: 2.2; fill: none; marker-end: url(#arrow); opacity: 0.9; }
+      .loop { stroke: #8b949e; stroke-width: 3; fill: none; marker-end: url(#arrow); opacity: 0.95; }
+      .feedback { stroke: #22d3ee; stroke-width: 2.4; fill: none; marker-end: url(#arrowCyan); stroke-dasharray: 8 8; opacity: 0.9; }
+      .repair { stroke: #fbbf24; stroke-width: 2.4; fill: none; marker-end: url(#arrowAmber); stroke-dasharray: 8 8; opacity: 0.95; }
       .dash { stroke: #4b5563; stroke-width: 1.8; stroke-dasharray: 6 7; fill: none; }
       .accent-cyan { fill: url(#cyan); }
       .accent-pink { fill: url(#pink); }
@@ -48,100 +58,110 @@
   </defs>
 
   <rect width="1200" height="760" rx="34" fill="url(#bg)"/>
-  <circle cx="1080" cy="80" r="170" fill="#1f6feb" opacity="0.11"/>
-  <circle cx="155" cy="690" r="180" fill="#d946ef" opacity="0.08"/>
-  <path d="M65 112 C260 28, 362 150, 524 82 S842 31, 1080 164" class="dash" opacity="0.38"/>
+  <circle cx="1056" cy="92" r="175" fill="#1f6feb" opacity="0.10"/>
+  <circle cx="118" cy="672" r="180" fill="#d946ef" opacity="0.08"/>
+  <path d="M70 112 C268 38, 392 146, 554 82 S858 32, 1090 168" class="dash" opacity="0.34"/>
 
-  <text x="62" y="72" class="small">PORTFOLIO SNAPSHOT</text>
-  <text x="62" y="124" class="title">Pi Workflow Harness</text>
-  <text x="62" y="158" class="subtitle">Loose AI coding sessions → governed, reviewable development workflow</text>
+  <text x="62" y="98" class="title">Pi Workflow Harness</text>
+  <text x="62" y="133" class="subtitle">A closed-loop operating system for safer AI coding sessions</text>
 
-  <g transform="translate(850 58)">
-    <rect class="chip" width="270" height="42" rx="21"/>
+  <g transform="translate(858 70)">
+    <rect class="chip" width="274" height="42" rx="21"/>
     <circle cx="25" cy="21" r="8" class="accent-green"/>
-    <text x="45" y="27" class="card-text">Install footprint: AGENTS.md + .pi/</text>
+    <text x="45" y="27" class="card-text">Installs as AGENTS.md + .pi/</text>
   </g>
 
-  <!-- main pipeline -->
-  <g transform="translate(60 230)">
-    <rect class="node" x="0" y="0" width="150" height="92" rx="20"/>
-    <circle cx="30" cy="32" r="15" class="accent-cyan"/>
-    <text x="55" y="36" class="card-title">Interview</text>
-    <text x="22" y="67" class="card-text">scope · risk · done</text>
+  <!-- closed-loop workflow -->
+  <g transform="translate(0 0)">
+    <ellipse cx="600" cy="352" rx="366" ry="180" fill="#0d1117" opacity="0.32" stroke="#30363d" stroke-width="1.2"/>
+    <path class="loop" d="M386 225 C500 146, 702 146, 816 225"/>
+    <path class="loop" d="M894 292 C960 380, 898 486, 770 524"/>
+    <path class="loop" d="M684 555 C538 610, 360 558, 306 432"/>
+    <path class="loop" d="M286 348 C274 298, 306 254, 354 232"/>
 
-    <path class="line" d="M158 46 H218"/>
+    <rect class="center" x="424" y="286" width="352" height="136" rx="30"/>
+    <text x="600" y="332" class="center-title">Governed AI Loop</text>
+    <text x="600" y="363" class="center-text">scope → plan → build → review</text>
+    <text x="600" y="390" class="center-text">evidence feeds the next iteration</text>
 
-    <rect class="node" x="230" y="0" width="150" height="92" rx="20"/>
-    <circle cx="260" cy="32" r="15" class="accent-cyan"/>
-    <text x="285" y="36" class="card-title">Plan</text>
-    <text x="252" y="67" class="card-text">spec + tasks</text>
-
-    <path class="line" d="M388 46 H448"/>
-
-    <rect class="node" x="460" y="0" width="150" height="92" rx="20"/>
-    <circle cx="490" cy="32" r="15" class="accent-amber"/>
-    <text x="515" y="36" class="card-title">Guard</text>
-    <text x="482" y="67" class="card-text">DPAA · SBADR</text>
-
-    <path class="line" d="M618 46 H678"/>
-
-    <rect class="node" x="690" y="0" width="150" height="92" rx="20"/>
-    <circle cx="720" cy="32" r="15" class="accent-green"/>
-    <text x="745" y="36" class="card-title">Build</text>
-    <text x="712" y="67" class="card-text">TDD + verify</text>
-
-    <path class="line" d="M848 46 H908"/>
-
-    <rect class="node" x="920" y="0" width="150" height="92" rx="20"/>
-    <circle cx="950" cy="32" r="15" class="accent-pink"/>
-    <text x="975" y="36" class="card-title">Review</text>
-    <text x="942" y="67" class="card-text">quality package</text>
-  </g>
-
-  <g transform="translate(226 366)">
-    <rect class="node" x="0" y="0" width="748" height="122" rx="26"/>
-    <text x="32" y="40" class="card-title">Autonomous where safe, human-approved where risky</text>
-    <text x="32" y="72" class="card-text">interview → plan → guard → implement → review → document → commit</text>
-    <text x="32" y="98" class="card-text">commit → push requires explicit approval and policy scan</text>
-    <g transform="translate(540 27)">
-      <rect x="0" y="0" width="160" height="68" rx="18" fill="#0d1117" stroke="#30363d"/>
-      <text x="21" y="29" class="small">APPROVAL GATE</text>
-      <text x="27" y="53" class="card-title">Push</text>
+    <g transform="translate(226 200)">
+      <rect class="node" width="170" height="94" rx="21"/>
+      <circle cx="31" cy="32" r="15" class="accent-cyan"/>
+      <text x="58" y="37" class="card-title">Interview</text>
+      <text x="22" y="68" class="card-text">goal · scope · risk</text>
     </g>
+
+    <g transform="translate(515 132)">
+      <rect class="node" width="170" height="94" rx="21"/>
+      <circle cx="31" cy="32" r="15" class="accent-cyan"/>
+      <text x="58" y="37" class="card-title">Plan</text>
+      <text x="22" y="68" class="card-text">spec · tasks · checks</text>
+    </g>
+
+    <g transform="translate(804 200)">
+      <rect class="node" width="170" height="94" rx="21"/>
+      <circle cx="31" cy="32" r="15" class="accent-amber"/>
+      <text x="58" y="37" class="card-title">Guard</text>
+      <text x="22" y="68" class="card-text">DPAA · SBADR</text>
+    </g>
+
+    <g transform="translate(804 414)">
+      <rect class="node" width="170" height="94" rx="21"/>
+      <circle cx="31" cy="32" r="15" class="accent-green"/>
+      <text x="58" y="37" class="card-title">Implement</text>
+      <text x="22" y="68" class="card-text">TDD · verify</text>
+    </g>
+
+    <g transform="translate(515 482)">
+      <rect class="node" width="170" height="94" rx="21"/>
+      <circle cx="31" cy="32" r="15" class="accent-pink"/>
+      <text x="58" y="37" class="card-title">Review</text>
+      <text x="22" y="68" class="card-text">quality package</text>
+    </g>
+
+    <g transform="translate(226 414)">
+      <rect class="node" width="170" height="94" rx="21"/>
+      <circle cx="31" cy="32" r="15" class="accent-green"/>
+      <text x="58" y="37" class="card-title">Document</text>
+      <text x="22" y="68" class="card-text">commit · push · done</text>
+    </g>
+
+    <path class="repair" d="M822 210 C740 116, 590 96, 530 142"/>
+    <text x="694" y="117" class="small">repair ambiguous plan</text>
+
+    <path class="feedback" d="M526 548 C630 622, 806 572, 842 506"/>
+    <text x="706" y="616" class="small">fix findings before completion</text>
+
+    <path class="feedback" d="M296 414 C174 344, 186 240, 230 220"/>
+    <text x="118" y="332" class="small">next task uses memory + logs</text>
   </g>
 
   <!-- support components -->
-  <g transform="translate(60 550)">
-    <rect class="node" x="0" y="0" width="250" height="120" rx="24"/>
-    <rect x="22" y="23" width="48" height="48" rx="14" class="accent-cyan"/>
-    <text x="88" y="43" class="card-title">Workflow OS</text>
-    <text x="22" y="80" class="card-text">phase control · command catalog</text>
-    <text x="22" y="103" class="card-text">guarded tool usage</text>
+  <g transform="translate(60 616)">
+    <rect class="node" x="0" y="0" width="250" height="96" rx="23"/>
+    <rect x="22" y="22" width="44" height="44" rx="13" class="accent-cyan"/>
+    <text x="84" y="40" class="card-title">Workflow Policy</text>
+    <text x="22" y="74" class="card-text">phase control · command catalog</text>
   </g>
 
-  <g transform="translate(340 550)">
-    <rect class="node" x="0" y="0" width="250" height="120" rx="24"/>
-    <rect x="22" y="23" width="48" height="48" rx="14" class="accent-green"/>
-    <text x="88" y="43" class="card-title">External Memory</text>
-    <text x="22" y="80" class="card-text">durable facts · feedback</text>
-    <text x="22" y="103" class="card-text">top-N relevant injection</text>
+  <g transform="translate(340 616)">
+    <rect class="node" x="0" y="0" width="250" height="96" rx="23"/>
+    <rect x="22" y="22" width="44" height="44" rx="13" class="accent-green"/>
+    <text x="84" y="40" class="card-title">External Memory</text>
+    <text x="22" y="74" class="card-text">durable facts · feedback</text>
   </g>
 
-  <g transform="translate(620 550)">
-    <rect class="node" x="0" y="0" width="250" height="120" rx="24"/>
-    <rect x="22" y="23" width="48" height="48" rx="14" class="accent-amber"/>
-    <text x="88" y="43" class="card-title">Failure Evidence</text>
-    <text x="22" y="80" class="card-text">field logs · audit stream</text>
-    <text x="22" y="103" class="card-text">recovery hints</text>
+  <g transform="translate(620 616)">
+    <rect class="node" x="0" y="0" width="250" height="96" rx="23"/>
+    <rect x="22" y="22" width="44" height="44" rx="13" class="accent-amber"/>
+    <text x="84" y="40" class="card-title">Failure Logs</text>
+    <text x="22" y="74" class="card-text">audit stream · recovery hints</text>
   </g>
 
-  <g transform="translate(900 550)">
-    <rect class="node" x="0" y="0" width="250" height="120" rx="24"/>
-    <rect x="22" y="23" width="48" height="48" rx="14" class="accent-pink"/>
-    <text x="88" y="43" class="card-title">TUI Experience</text>
-    <text x="22" y="80" class="card-text">wizard · theme · boxes</text>
-    <text x="22" y="103" class="card-text">low-noise progress</text>
+  <g transform="translate(900 616)">
+    <rect class="node" x="0" y="0" width="250" height="96" rx="23"/>
+    <rect x="22" y="22" width="44" height="44" rx="13" class="accent-pink"/>
+    <text x="84" y="40" class="card-title">TUI Experience</text>
+    <text x="22" y="74" class="card-text">wizard · theme · progress</text>
   </g>
-
-  <text x="62" y="722" class="bg-text">Built as a reusable project-local harness template under target/.pi/ for Pi coding-agent sessions.</text>
 </svg>

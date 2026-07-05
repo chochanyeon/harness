@@ -2,26 +2,23 @@
 
 [English README](README.en.md)
 
-![Pi Workflow Harness overview](docs/assets/harness-overview.svg)
+![Pi Workflow Harness closed-loop overview](docs/assets/harness-overview.svg)
 
-## 한 줄 소개
+## What this is
 
-**Pi 기반 AI 코딩 세션을 “요구사항 → 계획 → guard → 구현 → 리뷰 → 문서화 → 커밋/승인 push” 흐름으로 묶어 주는 프로젝트 로컬 하네스입니다.**
+**Pi 기반 AI 코딩 세션을 `interview → plan → guard → implement → review → document → commit/push` 흐름으로 묶어 주는 프로젝트 로컬 하네스입니다.**
 
-이력서 관점에서 보면, 이 프로젝트는 단순 프롬프트 모음이 아니라 **AI 개발 세션에 SDLC 거버넌스, 품질 게이트, 장기 기억, 실패 증거 로그를 붙인 런타임 템플릿**입니다.
+단순 프롬프트 모음이 아니라, AI 개발 세션에 **SDLC 거버넌스, 기계적 품질 게이트, 장기 기억, 실패 증거 로그**를 붙인 재사용 가능한 런타임 템플릿입니다.
 
-## 무엇을 해결하나
+![Before and after applying harness](docs/assets/harness-before-after.svg)
 
-| 문제 | 하네스가 하는 일 |
-|---|---|
-| AI가 바로 코드를 고치며 범위를 넓힘 | `interview → plan → plan_review`로 요구사항과 범위를 먼저 고정 |
-| 계획이 모호한데 자동 구현됨 | DPAA/SBADR guard로 모호한 계획을 차단하거나 보수 |
-| 리뷰/검증 없이 끝났다고 주장 | `submit_review_package`, quality gate, verification evidence를 요구 |
-| push 같은 위험 경계를 자동 통과 | `commit → push`에서 사용자 승인과 policy scan 요구 |
-| 세션이 길어지며 맥락이 유실 | Run Ledger, task queue, external memory로 재개 단서 유지 |
-| 반복되는 guard 실패를 추적하기 어려움 | field failure log와 audit stream으로 원인/빈도 기록 |
+## How it works
 
-## 핵심 흐름
+핵심은 “자동화”가 아니라 **되돌아갈 수 있는 loop**입니다. 계획이 모호하면 구현으로 가지 않고 plan을 보수하고, 리뷰에서 문제가 나오면 완료 처리하지 않고 다시 수정합니다.
+
+![Harness guard and feedback loops](docs/assets/harness-guard-loop.svg)
+
+기본 phase:
 
 ```text
 interview
@@ -36,13 +33,18 @@ interview
 → done
 ```
 
-자동 진행 구간과 승인 경계가 분리되어 있습니다.
+- 안전한 구간은 agent가 자율 진행합니다.
+- 위험 경계인 `commit → push`는 사용자 승인과 policy scan을 요구합니다.
+- guard 실패는 skip이 아니라 원인 수정 후 재시도가 기본입니다.
+- Run Ledger, task queue, external memory가 다음 iteration의 재개 단서를 남깁니다.
 
-- 안전한 구간: agent가 다음 phase로 자율 진행
-- 위험 경계: push 전 사용자 확인과 정책 검사
-- guard 실패: 먼저 원인 수정 후 재시도, skip은 accepted-risk 예외로만 처리
+## What gets installed
 
-## 구성 요소
+![Harness install footprint](docs/assets/harness-install-footprint.svg)
+
+`target/`는 이 저장소의 배포 템플릿입니다. 다른 프로젝트에 설치하면 `target/.pi/` 내용이 해당 프로젝트의 `.pi/`로 배치됩니다.
+
+## Key components
 
 | 영역 | 위치 | 역할 |
 |---|---|---|
@@ -53,17 +55,7 @@ interview
 | TUI helpers/theme | `target/.pi/themes/`, `target/.pi/extensions/assistant-markdown-box.ts` | workflow console theme, boxed markdown rendering |
 | Docs | `docs/` | guard recovery, runtime events, prompt contracts, protocol taxonomy |
 
-## 설치 후 프로젝트에 생기는 것
-
-```text
-AGENTS.md
-.harness/workflow-policy.json
-.pi/
-```
-
-`target/`는 이 저장소의 배포 템플릿입니다. 다른 프로젝트에 설치하면 `target/.pi/` 내용이 해당 프로젝트의 `.pi/`로 배치됩니다.
-
-## 중요한 경계
+## Ownership boundary
 
 | 분류 | 하네스가 관리/갱신 가능 | 프로젝트가 소유 |
 |---|---|---|
@@ -75,7 +67,7 @@ AGENTS.md
 
 ---
 
-# 명령어 모음
+# Commands
 
 ## 다른 프로젝트에 설치
 

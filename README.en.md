@@ -2,26 +2,23 @@
 
 [한국어 README](README.md)
 
-![Pi Workflow Harness overview](docs/assets/harness-overview.svg)
+![Pi Workflow Harness closed-loop overview](docs/assets/harness-overview.svg)
 
-## One-line summary
+## What this is
 
-**A project-local harness that turns Pi-based AI coding sessions into a governed flow: interview → plan → guard → implement → review → document → commit/approved push.**
+**A project-local harness that turns Pi-based AI coding sessions into a governed flow: `interview → plan → guard → implement → review → document → commit/push`.**
 
-For a portfolio or resume reader, this is not just a prompt collection. It is a reusable **runtime template for AI-assisted software delivery**, adding SDLC governance, mechanical quality gates, external memory, and failure-evidence logging to coding-agent sessions.
+It is not just a prompt collection. It is a reusable runtime template for AI-assisted software delivery, adding **SDLC governance, mechanical quality gates, external memory, and failure-evidence logging** to coding-agent sessions.
 
-## What it solves
+![Before and after applying harness](docs/assets/harness-before-after.svg)
 
-| Problem | What the harness adds |
-|---|---|
-| The agent edits code before scope is clear | `interview → plan → plan_review` fixes goal, scope, and acceptance criteria first |
-| Ambiguous plans move straight into implementation | DPAA/SBADR guards block or downgrade ambiguous plans before implementation |
-| The agent claims completion without review evidence | `submit_review_package`, quality gates, and verification evidence are required |
-| Risky push boundaries are crossed automatically | `commit → push` requires human approval and policy scanning |
-| Long sessions lose context | Run Ledger, task queue, and external memory preserve restart cues |
-| Repeated guard failures are hard to diagnose | Field failure logs and audit streams record cause/frequency |
+## How it works
 
-## Core flow
+The key behavior is not simple automation. It is a **recoverable loop**: ambiguous plans return to planning, review findings return to implementation, and evidence feeds the next iteration.
+
+![Harness guard and feedback loops](docs/assets/harness-guard-loop.svg)
+
+Default phases:
 
 ```text
 interview
@@ -36,9 +33,18 @@ interview
 → done
 ```
 
-Safe segments can advance autonomously. Risk boundaries require explicit confirmation. If a guard blocks, the default path is to fix the underlying cause and retry; skipping is an accepted-risk exception only.
+- Safe segments can advance autonomously.
+- The `commit → push` risk boundary requires human approval and policy scanning.
+- Guard failures default to repair and retry, not skip.
+- Run Ledger, task queue, and external memory leave restart cues for the next iteration.
 
-## Components
+## What gets installed
+
+![Harness install footprint](docs/assets/harness-install-footprint.svg)
+
+`target/` is the distributable template in this source repository. Installing the harness into another project copies the relevant `target/.pi/` runtime files into that project's `.pi/` directory.
+
+## Key components
 
 | Area | Path | Purpose |
 |---|---|---|
@@ -48,16 +54,6 @@ Safe segments can advance autonomously. Risk boundaries require explicit confirm
 | Policies/schemas | `target/.harness/`, `target/.pi/schemas/` | workflow hard rules, field log and memory schemas |
 | TUI helpers/theme | `target/.pi/themes/`, `target/.pi/extensions/assistant-markdown-box.ts` | workflow console theme and boxed markdown rendering |
 | Docs | `docs/` | guard recovery, runtime events, prompt contracts, protocol taxonomy |
-
-## Installed footprint
-
-```text
-AGENTS.md
-.harness/workflow-policy.json
-.pi/
-```
-
-`target/` is the distributable template in this source repository. Installing the harness into another project copies the relevant `target/.pi/` runtime files into that project's `.pi/` directory.
 
 ## Ownership boundary
 
@@ -71,7 +67,7 @@ In installed projects, mutating runtime `.pi/extensions/**` requires explicit us
 
 ---
 
-# Command reference
+# Commands
 
 ## Install into another project
 

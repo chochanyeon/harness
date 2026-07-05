@@ -15,7 +15,7 @@
   <text x="60" y="76" class="title">From loose agent actions to governed delivery</text>
 
   <g transform="translate(70 125)">
-    <rect class="card" width="455" height="360" rx="28"/>
+    <rect class="card" width="455" height="386" rx="28"/>
     <circle cx="48" cy="54" r="18" fill="url(#bad)"/>
     <text x="82" y="63" class="label">Unstructured session</text>
     <g transform="translate(42 112)">
@@ -24,8 +24,8 @@
       <rect class="pill" y="116" width="352" height="42" rx="21"/><text x="24" y="143" class="text">Review and tests become optional</text>
       <rect class="pill" y="174" width="318" height="42" rx="21"/><text x="24" y="201" class="text">Risky push can be rushed</text>
     </g>
-    <rect x="42" y="305" width="198" height="34" rx="17" class="badge"/>
-    <text x="62" y="327" class="muted">hard to audit afterward</text>
+    <rect x="42" y="338" width="198" height="34" rx="17" class="badge"/>
+    <text x="62" y="360" class="muted">hard to audit afterward</text>
   </g>
 
   <g>
@@ -36,7 +36,7 @@
   </g>
 
   <g transform="translate(675 125)">
-    <rect class="card" width="455" height="360" rx="28"/>
+    <rect class="card" width="455" height="386" rx="28"/>
     <circle cx="48" cy="54" r="18" fill="url(#good)"/>
     <text x="82" y="63" class="label">Harnessed session</text>
     <g transform="translate(42 112)">
@@ -45,7 +45,7 @@
       <rect class="pill" y="116" width="360" height="42" rx="21"/><text x="24" y="143" class="text">Implementation tied to evidence</text>
       <rect class="pill" y="174" width="342" height="42" rx="21"/><text x="24" y="201" class="text">Review package before completion</text>
     </g>
-    <rect x="42" y="305" width="226" height="34" rx="17" class="badge"/>
-    <text x="62" y="327" class="muted">evidence remains reusable</text>
+    <rect x="42" y="338" width="226" height="34" rx="17" class="badge"/>
+    <text x="62" y="360" class="muted">evidence remains reusable</text>
   </g>
 </svg>

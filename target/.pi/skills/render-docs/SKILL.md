@@ -1,6 +1,6 @@
 ---
 name: render-docs
-description: Use this skill whenever the user mentions feature docs, HTML rendering, documentation updates, publishing md files, or requests "render the docs" / "update feature docs" / "make X into HTML". Always invoke this skill after document-feature creates a new .md file. Output language is Korean; skill instructions are English.
+description: Use for feature docs, HTML rendering, doc updates/publishing, render-docs requests, or after document-feature creates a .md file. Output Korean; instructions English.
 ---
 
 # render-docs

@@ -1,6 +1,6 @@
 ---
 name: push-with-review
-description: Legacy convenience skill for the post-implementation path. Prefer the explicit workflow phases (`code_review → review_approved → document → commit → push`). Use this skill only as a checklist helper when the user asks for push/review guidance. Output language is Korean.
+description: Legacy post-implementation checklist helper. Prefer `code_review → review_approved → document → commit → push`. Use only for user-requested push/review guidance. Output Korean.
 disable-model-invocation: true
 ---
 

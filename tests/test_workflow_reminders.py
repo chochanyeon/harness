@@ -68,11 +68,11 @@ def test_documentation_and_commit_summary_reminders_are_injected_in_commit_phase
     assert "No recent test/lint/typecheck/build/codeQualityGuard command was observed" in data["prompt"]
     assert "Commit Summary:" in data["prompt"]
     assert "Provide a concise diff summary" in data["prompt"]
-    assert "Cause:" in data["prompt"]
-    assert "Required action:" in data["prompt"]
-    assert "Do not:" in data["prompt"]
-    assert "Pass condition:" in data["prompt"]
-    assert "explicitly state why" in data["prompt"]
+    assert "Resolve each item or mark N/A with reason:" in data["prompt"]
+    assert "Cause:" not in data["prompt"]
+    assert "Required action:" not in data["prompt"]
+    assert "Do not:" not in data["prompt"]
+    assert "Pass condition:" not in data["prompt"]
 
 
 def test_verification_reminder_disappears_when_code_quality_guard_is_satisfied(tmp_path):

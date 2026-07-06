@@ -38,19 +38,19 @@ The default path is the phase sequence above. Conditional protocols (`trace`, `e
 
 - Follow `/workflow status`; work only in the current phase.
 - The only user-approval boundary is `commit → push`. Everything from interview through commit is autonomous.
-- Auto-chain sequence: `interview → plan → plan_review → implement → code_review → review_approved → document → commit`. Each transition is automatic once the phase work is complete and guards pass. `code_review → review_approved` is triggered by `submit_review_package` after main review, independent review, and quality gates pass.
-- The extension injects mechanical reminders instead of blocking for easy-to-forget deliverables: documentation markdown/HTML/indexes, verification evidence before commit, review package summary in code review, commit summary/message, and field-log evidence for harness-runtime changes. Address each reminder or explicitly state why it is not applicable.
-- For long sessions, use the `compact-handoff` skill before manual compaction. It prepares a concise resume note but does not invoke compaction itself.
-- Before phase advancement, review package submission, commit, push, or compaction, use the `continuation-safety` protocol when a tool/guard/transition failed or when subagents, async jobs, background commands, or delegated reviewers may still be running or uncollected.
-- After changing workflow prompts, guards, interview behavior, review protocols, or runtime routing, use `evidence-verification` to record baseline, target behavior, verification evidence, and dogfood gaps.
-- Natural-language approval is accepted only from the interactive user.
-- If plan metadata says `Risk: high`, `Ambiguity gate: strict`, or `Work type: api|security|migration|data|deploy`, perform an Architect/Critic consensus review in `plan_review` and repair feasibility/testability gaps before implementation approval. This is a **separate layer from DPAA** (DPAA checks linguistic clarity; Critic checks logical soundness). Critic review steps: (1) extract key assumptions and rate each VERIFIED/REASONABLE/FRAGILE — FRAGILE assumptions are highest-priority targets; (2) run a pre-mortem: assume this plan was executed and failed, generate 3 concrete failure scenarios, verify the plan addresses each; (3) apply executor perspective: can each step be completed with only what is written, without asking questions? Repair any FRAGILE assumption or unaddressed failure scenario before requesting implementation approval.
-- If a DPAA/SBADR guard blocks, attempt to repair the plan autonomously (rewrite vague sentences, add missing metrics, remove placeholders, fix syntactic ambiguity) and retry `/workflow approve`. Repeat until DPAA PASS or a genuine business decision is required. Only then ask the user.
-- For all other guards, report the blocker and wait. Do not bypass or simulate guard results.
-- Modifying installed runtime `.pi/extensions/**` requires explicit interactive user approval for that tool call. The approval is extension in-memory only; do not create approval files. In the company-harness source repository only, `target/.pi/extensions/**` is deployment-template source and is a normal development target.
-- Do not create approval artifacts or authority files. Guard satisfaction comes from workflow phase, transition history, and extension-recorded evidence.
-- Abort/cancel semantics: `/workflow abort` stops the active workflow only after interactive confirmation; it does not create guard evidence, does not imply DPAA/code-review/quality/push approval, and should preserve dirty workspace changes for explicit user handling.
-- Keep changes surgical: touch only files required by the current phase/task.
+- Auto-chain: `interview → plan → plan_review → implement → code_review → review_approved → document → commit`; guards must pass. `code_review → review_approved` requires `submit_review_package` after self-review, independent review, and quality gates.
+- Resolve mechanical reminders, or mark them not applicable with a reason.
+- Use `compact-handoff` before manual compaction in long sessions.
+- Use `continuation-safety` before advancing, submitting review, committing, pushing, or compacting after a failed tool/guard/transition or uncollected delegated/background work.
+- Use `evidence-verification` after changing workflow prompts, guards, interview behavior, review protocols, or runtime routing.
+- Only the interactive user can approve in natural language.
+- For high-risk/strict/API/security/migration/data/deploy plans, run Architect/Critic consensus in `plan_review`: rate assumptions, pre-mortem 3 failure scenarios, and executor-readiness. Repair fragile assumptions or uncovered failures before implementation.
+- If DPAA/SBADR blocks, repair clear plan ambiguity autonomously and retry `/workflow approve`; ask only for genuine business decisions.
+- For other guards, report the blocker and wait. Never bypass or simulate guards.
+- Do not create approval/authority artifacts; guard evidence is extension-recorded.
+- Runtime `.pi/extensions/**` edits need explicit interactive approval; never create approval files. In this source repo, `target/.pi/extensions/**` is normal deployment-template source.
+- `/workflow abort` only cancels after confirmation; it creates no guard evidence and preserves dirty workspace for explicit handling.
+- Keep changes surgical.
 
 ## Phase Protection Levels
 

@@ -1,6 +1,6 @@
 ---
 name: planning-and-task-breakdown
-description: Breaks work into ordered tasks for Java/Spring Boot. ALWAYS use this skill when you have a spec, receive a multi-step request, see "implement feature X", or feel uncertain about implementation order. Even simple features benefit from explicit task breakdown — use this whenever you'd otherwise "figure it out as you go". Use when the user mentions "plan this", "break this down", "what are the steps", or before starting any non-trivial implementation. Considers Spring layered architecture, JPA dependencies, and Gradle modules.
+description: ALWAYS use to order Java/Spring tasks for specs, multi-step/non-trivial requests, feature work, planning/steps, or uncertain order. Covers Spring layers/JPA/Gradle.
 ---
 
 # Planning and Task Breakdown (DevCenter)

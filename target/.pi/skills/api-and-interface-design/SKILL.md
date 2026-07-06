@@ -1,6 +1,6 @@
 ---
 name: api-and-interface-design
-description: Guides stable REST API design for Spring Boot. ALWAYS use when designing endpoints, creating DTOs, defining entity relationships, or changing public API contracts. Use when the user mentions "API", "endpoint", "contract", "interface". Every observable behavior is a commitment — this skill ensures backward-compatible, well-documented interfaces.
+description: ALWAYS use for Spring REST endpoints, DTOs, entity relationships, or public API contracts; triggers include API/endpoint/contract/interface. Preserve backward compatibility.
 ---
 
 # API and Interface Design (DevCenter)

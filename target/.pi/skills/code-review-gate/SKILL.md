@@ -1,6 +1,6 @@
 ---
 name: code-review-gate
-description: Run the review/fix loop during the `code_review` workflow phase. Report findings in Korean. Do not create approval artifacts; the workflow extension records review evidence during `/workflow approve` or `submit_review_package`.
+description: Use in `code_review` for review/fix loops. Report Korean findings. Do not create approval artifacts; extension records evidence via approve or submit_review_package.
 disable-model-invocation: true
 ---
 

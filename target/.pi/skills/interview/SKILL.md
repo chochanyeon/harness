@@ -1,6 +1,6 @@
 ---
 name: interview
-description: Use for structured pre-implementation interviews before planning non-trivial work. Guides requirement discovery, ambiguity removal, spec/plan creation, iterative review, subagent implementation handoff, and final goal review. Trigger only when the user explicitly asks to plan, design, interview, or work through requirements before implementation. Output language is Korean.
+description: Use for structured interviews before non-trivial planning when user asks to plan/design/interview/requirements. Covers spec/plan, subagent handoff, goal review. Output Korean.
 ---
 
 # Interview Skill

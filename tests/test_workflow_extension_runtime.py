@@ -961,6 +961,7 @@ def test_workflow_extension_runtime_git_push_catalog_command_completes_push_phas
     assert "Workflow 전이: push → done" in joined
     assert "No active workflow" in joined
     assert "No active workflow" in data["prompt"]
+    assert "[Workflow Guard Evidence]" not in data["prompt"]
 
 
 def test_workflow_extension_runtime_clears_active_workflow_after_successful_git_push(tmp_path):
@@ -1003,6 +1004,7 @@ def test_workflow_extension_runtime_clears_active_workflow_after_successful_git_
     assert "Current phase: done" not in data["prompt"]
     assert "Current phase: push" not in data["prompt"]
     assert "No active workflow" in data["prompt"]
+    assert "[Workflow Guard Evidence]" not in data["prompt"]
 
 
 def test_workflow_extension_runtime_auto_advances_low_risk_phase_boundaries(tmp_path):

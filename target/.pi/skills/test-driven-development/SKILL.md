@@ -1,6 +1,6 @@
 ---
 name: test-driven-development
-description: Drives development with tests (Java/Spring Boot). ALWAYS use this skill when implementing logic, fixing bugs, changing behavior, adding methods, or writing Java classes. Never write production code without a failing test first. Use when implementing features, fixing bugs, or changing behavior — skip for pure configuration, documentation, or boilerplate changes. Write JUnit5 tests first, then make them pass.
+description: ALWAYS use for Java/Spring logic, bugs, behavior changes, methods, or classes. Write failing JUnit5 test before production; skip pure config/docs/boilerplate/no-behavior-change.
 ---
 
 # Test-Driven Development (DevCenter)

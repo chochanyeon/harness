@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: For Java/Spring Boot code review. Use this skill when the user says "review", "check this code", "is this ready to push", "코드 리뷰", "리뷰해줘", "푸시 전에 봐줘", "이거 괜찮아?", or during the `code_review` workflow phase. Even simple changes benefit from review. Output language is Korean; skill instructions are English.
+description: Use for Java/Spring code review when user asks review/readiness, says 코드 리뷰/리뷰해줘/푸시 전에 봐줘/이거 괜찮아, or during `code_review`. Even simple changes benefit. Output Korean.
 ---
 
 # Code Review Skill

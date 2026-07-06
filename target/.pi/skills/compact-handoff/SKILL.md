@@ -1,6 +1,6 @@
 ---
 name: compact-handoff
-description: Prepare a concise handoff note before manual context compaction. Does not invoke compaction itself; summarizes workflow state, decisions, artifacts, verification, and next action. Output language is Korean.
+description: Use before manual context compaction. Summarizes workflow state, decisions, artifacts, verification, and next action; does not compact. Output Korean.
 ---
 
 # Compact Handoff Skill

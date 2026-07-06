@@ -1,6 +1,6 @@
 ---
 name: document-feature
-description: Use this skill in the `document` workflow phase for feature/API/schema/architecture-impacting changes, or when the user asks to "document the feature" / "write feature docs" / "summarize this work". Requires Context & Problem, Flow Diagram, and Decision Log; asks the user for facts that cannot be inferred. Output language is Korean; skill instructions are English.
+description: Use in document for feature/API/schema/architecture changes or docs/summary requests. Requires Context, Problem, Flow Diagram, Decision Log. Ask only for unknowable facts. Output Korean.
 ---
 
 # Document Feature Skill

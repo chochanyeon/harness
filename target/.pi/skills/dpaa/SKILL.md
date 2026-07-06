@@ -1,6 +1,6 @@
 ---
 name: dpaa
-description: Interpret and repair DPAA failures during `plan_review`. The workflow extension mechanically enforces DPAA before `implement`. Output language is Korean.
+description: Use to interpret and repair DPAA failures in `plan_review`. Extension enforces DPAA before `implement`. Output Korean.
 ---
 
 # DPAA Skill

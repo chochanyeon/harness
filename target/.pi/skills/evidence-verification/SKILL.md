@@ -1,6 +1,6 @@
 ---
 name: evidence-verification
-description: Use before claiming completion or after changing workflow prompts, guards, interview behavior, review protocols, or runtime routing. Combines concrete verification evidence with small regression benchmark matrices. Output language is Korean.
+description: Use before completion claims or after changing workflow prompts, guards, interview, review, or runtime routing. Records verification evidence/regression matrix. Output Korean.
 ---
 
 # Evidence Verification Skill

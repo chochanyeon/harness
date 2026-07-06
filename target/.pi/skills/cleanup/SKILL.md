@@ -1,6 +1,6 @@
 ---
 name: cleanup
-description: Use for regression-safe cleanup of AI slop, duplicate code, dead code, needless abstractions, or boundary leaks. Preserves behavior, prefers deletion, and requires verification. Output language is Korean.
+description: Use for behavior-preserving cleanup of AI slop, duplication, dead code, needless abstractions, or boundary leaks. Prefer deletion; verify. Output Korean.
 ---
 
 # Cleanup Skill

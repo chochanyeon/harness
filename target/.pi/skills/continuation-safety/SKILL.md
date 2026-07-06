@@ -1,6 +1,6 @@
 ---
 name: continuation-safety
-description: Use before continuing after failures or when delegated/async/background work may still be pending. Combines retryability diagnosis with pending-work checks before phase advancement, review package submission, commit, push, or compaction. Output language is Korean.
+description: Use before advancement/review package/commit/push/compaction after failures or pending delegated/async/background work. Classifies retryability/pending work. Output Korean.
 ---
 
 # Continuation Safety Skill

@@ -1,6 +1,6 @@
 ---
 name: subagent-driven-development
-description: Main-agent-as-user-proxy pattern for implementing approved plans via subagents while keeping the main session context-light. Invoke after a plan is approved, when the user says "실행해줘", "구현해줘", "서브에이전트로 해줘", or when planning-and-task-breakdown/interview has produced an approved plan. Output language is Korean.
+description: Use after an approved plan to implement via subagents while main stays context-light. Triggers include 실행해줘/구현해줘/서브에이전트로 해줘 or approved planning/interview output. Output Korean.
 ---
 
 # Subagent-Driven Development

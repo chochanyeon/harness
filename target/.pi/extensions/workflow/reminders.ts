@@ -178,11 +178,7 @@ export function formatWorkflowReminders(reminder: WorkflowReminder | null): stri
     "",
     "[Workflow Mechanical Reminders]",
     `Phase: ${reminder.phase}`,
-    "Cause: mechanical checks found workflow items that still need attention.",
-    "Required action: address each relevant reminder by doing the work, or explicitly state why it is not applicable for this change.",
-    "Do not: silently skip reminders, claim completion without evidence, or ask the user to bypass a fixable reminder.",
-    "Pass condition: each listed reminder is resolved, verified, or explicitly marked not applicable with a reason.",
-    "Items:",
+    "Resolve each item or mark N/A with reason:",
     ...reminder.sections.flatMap((section) => [
       `${section.title}:`,
       ...section.items.slice(0, 8).map((item) => `- ${item}`),

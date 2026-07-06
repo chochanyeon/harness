@@ -1,6 +1,6 @@
 ---
 name: worktree-safety
-description: Use when creating, reusing, cleaning, or diagnosing git worktrees. Enforces .worktrees-only placement, dirty-worktree preservation, symlink refusal, and safe cleanup. Output language is Korean.
+description: Use when creating, reusing, cleaning, or diagnosing git worktrees. Enforces .worktrees-only placement, dirty preservation, symlink refusal, and safe cleanup. Output Korean.
 ---
 
 # Worktree Safety Skill

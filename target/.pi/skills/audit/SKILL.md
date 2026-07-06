@@ -1,6 +1,6 @@
 ---
 name: audit
-description: Independent LLM audit workflow for commit ranges. Use when checking audit status, starting an audit session, advancing the reviewed pointer, or resetting it. No CLI required — all operations use git directly.
+description: Use for independent LLM audit of commit ranges, including status/start/advance/reset. No CLI; uses git directly.
 ---
 
 # AI Audit Harness

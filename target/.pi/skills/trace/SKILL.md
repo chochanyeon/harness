@@ -1,6 +1,6 @@
 ---
 name: trace
-description: Use for evidence-driven causal analysis before fixing ambiguous workflow, guard, runtime, or test failures. Separates observation, hypotheses, evidence, missing facts, and the next discriminating probe. Output language is Korean.
+description: Use for causal analysis before fixing ambiguous workflow, guard, runtime, or test failures. Separates observations, hypotheses, evidence, gaps, next probe. Output Korean.
 ---
 
 # Trace Skill

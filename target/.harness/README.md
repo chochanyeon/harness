@@ -44,7 +44,7 @@ Use Pi's workflow tools or `/workflow` commands from the Pi TUI:
 /workflow undo
 /workflow redo
 /workflow skip <gate> <reason>
-/workflow failures [export]
+/workflow failures [export|report|improve]
 /workflow doctor
 /workflow state <phase>
 /workflow abort

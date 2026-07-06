@@ -37,6 +37,8 @@ interview
 - The `commit → push` risk boundary requires human approval and policy scanning.
 - Guard failures default to repair and retry, not skip.
 - Run Ledger, task queue, and external memory leave restart cues for the next iteration.
+- For a long-running workflow, heartbeat and `workflow_run_command` evidence reduce context pollution.
+- Missing Pre-code_review verification is surfaced before `code_review → review_approved`; later improvements are recorded as deferred instead of hidden.
 
 ## What gets installed
 
@@ -156,6 +158,7 @@ Updates overwrite upstream-managed files only. Put project-specific customizatio
 /workflow doctor
 /workflow failures
 /workflow failures export
+/workflow failures report   # alias: /workflow failures improve
 /workflow list
 /workflow load <id>
 /workflow unload

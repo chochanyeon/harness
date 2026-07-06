@@ -53,8 +53,14 @@ def test_workflow_commands_and_gates_emit_field_logs():
     assert '"failures"' in workflow
     assert "formatRecentFieldLogs" in workflow
     assert "exportFieldLogs" in workflow
+    assert "generateEvidenceImprovementReport" in workflow
+    assert "failures — show/export/report|improve field logs" in workflow
+    assert 'rest[0] === "report"' in workflow
+    assert 'rest[0] === "improve"' in workflow
+    assert "/workflow failures report|improve" in workflow
     assert "writeFieldLogEvent" in workflow
     assert "writeFieldLogEvent" in gates
     assert "DPAA returned" in gates
     assert "Code quality guard failed" in gates
     assert 'export * from "./field-log";' in core
+    assert 'export * from "./evidence-improvement-report";' in core

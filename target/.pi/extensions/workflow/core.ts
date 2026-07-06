@@ -10,6 +10,7 @@ export * from "./state";
 export * from "./format";
 export * from "./catalog";
 export * from "./field-log";
+export * from "./evidence-improvement-report";
 export * from "./reminders";
 export * from "./edit-scope";
 export * from "./task-queue";

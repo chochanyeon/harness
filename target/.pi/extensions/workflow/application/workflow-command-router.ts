@@ -9,6 +9,7 @@ import {
   createWorkflow,
   formatArtifactSnapshotCreated,
   exportFieldLogs,
+  generateEvidenceImprovementReport,
   formatHarnessDoctor,
   formatLatestActionableFailureHint,
   formatLatestDpaaAudit,
@@ -168,7 +169,7 @@ pi.registerCommand("workflow", {
       status: "status — 현재 워크플로우 상태 표시",
       doctor: "doctor — check harness runtime",
       trace: "trace <observation> — evidence-driven causal analysis before fixing",
-      failures: "failures — show/export field logs",
+      failures: "failures — show/export/report|improve field logs",
       list: "list — show active or persisted workflow",
       load: "load — load persisted workflow",
       undo: "undo — restore previous workflow checkpoint",
@@ -273,6 +274,18 @@ pi.registerCommand("workflow", {
       if (rest[0] === "export") {
         const exported = exportFieldLogs();
         ctx.ui.notify(`Harness field logs exported: ${path.relative(process.cwd(), exported)}`, "info");
+        return;
+      }
+      if (rest[0] === "report" || rest[0] === "improve") {
+        const report = generateEvidenceImprovementReport({
+          root: state.workflow?.gitRoot ?? state.workflow?.cwd,
+          workflowId: state.workflow?.id ?? null,
+        });
+        ctx.ui.notify([
+          `Harness improvement report generated: ${path.relative(process.cwd(), report.path)}`,
+          `Findings: ${report.findings.length}`,
+          "No automatic code changes were made. Alias: /workflow failures report|improve",
+        ].join("\n"), "info");
         return;
       }
       const limit = Number.parseInt(rest[0] ?? "10", 10);

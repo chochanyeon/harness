@@ -407,6 +407,109 @@ def test_field_log_actionable_hint_handles_interview_ambiguity_gate_category(tmp
     assert "Interview ambiguity score missing" in data["active"]
 
 
+def test_evidence_improvement_report_generates_redacted_markdown_from_local_evidence(tmp_path):
+    script = textwrap.dedent(
+        rf'''
+        const fs = require('fs');
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const mod = jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "evidence-improvement-report.ts"))});
+
+        const root = process.env.HARNESS_FIELD_LOG_ROOT;
+        const logDir = path.join(root, '.project-memory', 'harness');
+        fs.mkdirSync(logDir, {{ recursive: true }});
+        const exportableDpaa = (idx) => ({{
+          eventId: `hlog_dpaa_${{idx}}_secret-token-should-redact`,
+          timestamp: `2026-07-06T00:0${{idx}}:00.000Z`,
+          event: {{ category: 'dpaa', type: 'gate.failed', severity: 'major', status: 'open' }},
+          failure: {{
+            summary: `DPAA ambiguity repeated in /private/project-${{idx}}`,
+            actual: 'Raw detail should not be copied: super-secret-token',
+            evidence: {{ primaryMessage: 'raw prompt super-secret-token', logExcerpt: 'private excerpt super-secret-token' }},
+          }},
+          llmAnalysisPacket: {{
+            problemForHarnessRepo: 'DPAA ambiguity is recurring',
+            reproductionHint: 'Create a plan with vague acceptance criteria',
+            improvementKind: 'dpaa-rule',
+            candidateChange: 'Tighten DPAA ambiguity guidance',
+            targetFilesHint: ['target/.pi/dpaa/rules/ambiguity.yaml'],
+            acceptanceCriteria: ['Regression test covers repeated ambiguity failures'],
+          }},
+          privacy: {{ exportableToHarnessRepo: true }},
+        }});
+        const events = [
+          exportableDpaa(1),
+          exportableDpaa(2),
+          {{
+            eventId: 'hlog_sensitive',
+            timestamp: '2026-07-06T00:03:00.000Z',
+            event: {{ category: 'tool', type: 'tool.failed', severity: 'critical', status: 'open' }},
+            failure: {{ summary: 'Sensitive raw token ABC123' }},
+            llmAnalysisPacket: {{ candidateChange: 'Do not include me', targetFilesHint: ['secret.ts'], acceptanceCriteria: ['secret'] }},
+            privacy: {{ exportableToHarnessRepo: false }},
+          }},
+        ];
+        fs.writeFileSync(path.join(logDir, 'events.jsonl'), events.map((event) => JSON.stringify(event)).join('\n') + '\n', 'utf8');
+        fs.writeFileSync(path.join(logDir, 'audit.jsonl'), JSON.stringify({{
+          timestamp: '2026-07-06T00:04:00.000Z',
+          eventType: 'guard_block',
+          gate: 'dpaa',
+          severity: 'major',
+          reasonSummary: 'DPAA blocked transition',
+        }}) + '\n', 'utf8');
+
+        const result = mod.generateEvidenceImprovementReport({{ root, workflowId: 'wf-report-test' }});
+        const markdown = fs.readFileSync(result.path, 'utf8');
+        console.log(JSON.stringify({{
+          path: result.path,
+          exists: fs.existsSync(result.path),
+          findingCount: result.findings.length,
+          markdown,
+        }}));
+        '''
+    )
+    data = _run_node(script, tmp_path)
+
+    assert data["exists"] is True
+    assert ".ai" in data["path"]
+    assert "workflow-artifacts" in data["path"]
+    assert data["findingCount"] >= 1
+    assert "Harness Improvement Report" in data["markdown"]
+    assert "dpaa" in data["markdown"]
+    assert "Occurrences: 2" in data["markdown"]
+    assert "target/.pi/dpaa/rules/ambiguity.yaml" in data["markdown"]
+    assert "Regression test covers repeated ambiguity failures" in data["markdown"]
+    assert "No automatic code changes were made" in data["markdown"]
+    assert "super-secret-token" not in data["markdown"]
+    assert "secret-token-should-redact" not in data["markdown"]
+    assert "Sensitive raw token" not in data["markdown"]
+    assert "secret.ts" not in data["markdown"]
+
+
+def test_evidence_improvement_report_handles_missing_local_evidence(tmp_path):
+    script = textwrap.dedent(
+        rf'''
+        const fs = require('fs');
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const mod = jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "evidence-improvement-report.ts"))});
+
+        const root = process.env.HARNESS_FIELD_LOG_ROOT;
+        const result = mod.generateEvidenceImprovementReport({{ root, workflowId: 'wf-empty-report-test' }});
+        const markdown = fs.readFileSync(result.path, 'utf8');
+        console.log(JSON.stringify({{ exists: fs.existsSync(result.path), findingCount: result.findings.length, markdown }}));
+        '''
+    )
+    data = _run_node(script, tmp_path)
+
+    assert data["exists"] is True
+    assert data["findingCount"] == 0
+    assert "No local harness evidence found" in data["markdown"]
+    assert "No automatic code changes were made" in data["markdown"]
+
+
 def test_write_dpaa_receipt_includes_report_descriptor(tmp_path):
     plan = tmp_path / "plan.md"
     report = tmp_path / "dpaa-report.json"

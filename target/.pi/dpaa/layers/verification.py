@@ -44,7 +44,7 @@ class VerificationLayer(LayerAnalyzer):
         findings: list[Finding] = []
 
         for section in doc.sections.values():
-            for line_no, sentence in split_sentences(section.content):
+            for line_no, sentence in split_sentences(section.content, section.content_line_map):
                 lower = sentence.lower()
                 if not any(t in lower for t in triggers):
                     continue
@@ -74,7 +74,7 @@ class VerificationLayer(LayerAnalyzer):
                         layer=self.LAYER_NAME,
                         rule="missing_metric",
                         severity="high",
-                        line=section.line_start + line_no,
+                        line=line_no,
                         text=sentence,
                         message="Acceptance criterion has no numeric metric.",
                         score=10,
@@ -85,7 +85,7 @@ class VerificationLayer(LayerAnalyzer):
                         layer=self.LAYER_NAME,
                         rule="missing_threshold",
                         severity="high",
-                        line=section.line_start + line_no,
+                        line=line_no,
                         text=sentence,
                         message="Acceptance criterion has no measurable threshold.",
                         score=10,

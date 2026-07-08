@@ -20,6 +20,14 @@ def test_good_plan_no_structural_findings():
     assert result.score == 0
 
 
+def test_placeholder_reports_true_source_line_not_heading_line():
+    text = (FIXTURES / "line_number_plan.md").read_text(encoding="utf-8")
+    doc = MarkdownParser().parse(text)
+    result = StructuralLayer().analyze(doc)
+    finding = next(f for f in result.findings if f.rule == "placeholder_found")
+    assert finding.line == 11
+
+
 def test_headerless_plan_is_still_analyzed_for_placeholders():
     doc = MarkdownParser().parse("TODO maybe later\n")
     result = StructuralLayer().analyze(doc)

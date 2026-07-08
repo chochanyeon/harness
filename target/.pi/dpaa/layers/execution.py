@@ -30,7 +30,7 @@ class ExecutionLayer(LayerAnalyzer):
         findings: list[Finding] = []
 
         for section in doc.sections.values():
-            for line_no, sentence in split_sentences(section.content):
+            for line_no, sentence in split_sentences(section.content, section.content_line_map):
                 lower = sentence.lower()
                 has_weak = any(term in lower for term in weak_terms)
                 has_metric = bool(_METRIC_RE.search(sentence))
@@ -40,7 +40,7 @@ class ExecutionLayer(LayerAnalyzer):
                         layer=self.LAYER_NAME,
                         rule="weak_action_without_metric",
                         severity=rule_cfg["severity"],
-                        line=section.line_start + line_no,
+                        line=line_no,
                         text=sentence,
                         message="Weak action term without measurable metric.",
                         score=rule_cfg["score"],

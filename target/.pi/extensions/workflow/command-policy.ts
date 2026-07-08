@@ -6,6 +6,7 @@ import {
   COMMAND_CATALOG,
   PHASE_ALLOWED_BUILTIN_TOOLS,
   formatCatalogCommandResult,
+  getBranch,
   getCatalogCommand,
   getCatalogCommandsForPhase,
   getGitRoot,
@@ -18,6 +19,12 @@ import {
   type WorkflowInstance,
   type WorkflowPhase,
 } from "./core";
+
+const GIT_PUSH_NO_UPSTREAM_MARKER = "has no upstream branch";
+// Force English git messages so GIT_PUSH_NO_UPSTREAM_MARKER matching does not
+// depend on the caller's locale (git translates its own messages via gettext
+// when LC_ALL/LANG/LANGUAGE select a non-English locale).
+const GIT_PUSH_ENGLISH_LOCALE_ENV = { LC_ALL: "C", LANG: "C", LANGUAGE: "C" };
 
 export type WorkflowCatalogCommandState = {
   workflow: WorkflowInstance | null;
@@ -82,12 +89,21 @@ export async function executeWorkflowCatalogCommand(
   }
 
   const gitRoot = getGitRoot();
-  const result = await runCatalogCommandAsync(spec, gitRoot, userArgs, {
-    onHeartbeat: ({ commandId, elapsedMs }) => {
-      if (!ctx.hasUI || typeof ctx.ui?.notify !== "function") return;
-      ctx.ui.notify(`workflow_run_command ${commandId} still running (${Math.floor(elapsedMs / 1000)}s elapsed)`, "info");
-    },
-  });
+  const onHeartbeat = ({ commandId, elapsedMs }: { commandId: string; elapsedMs: number }) => {
+    if (!ctx.hasUI || typeof ctx.ui?.notify !== "function") return;
+    ctx.ui.notify(`workflow_run_command ${commandId} still running (${Math.floor(elapsedMs / 1000)}s elapsed)`, "info");
+  };
+  const envOverride = spec.id === "git-push" ? GIT_PUSH_ENGLISH_LOCALE_ENV : undefined;
+  let result = await runCatalogCommandAsync(spec, gitRoot, userArgs, { onHeartbeat, envOverride });
+
+  if (spec.id === "git-push" && !result.ok && gitRoot && result.output.includes(GIT_PUSH_NO_UPSTREAM_MARKER)) {
+    const branch = getBranch(gitRoot);
+    // "unknown" means `git rev-parse --abbrev-ref HEAD` failed; do not push to a
+    // literal branch named "unknown" — leave the original failure result intact.
+    if (branch !== "unknown") {
+      result = await runCatalogCommandAsync(spec, gitRoot, ["--set-upstream", "origin", branch], { onHeartbeat, envOverride });
+    }
+  }
   const commandArtifact = writeCommandOutputArtifact(state, spec.id, result, gitRoot);
   const artifactNote = commandArtifact
     ? `\n\nCommand output artifact: ${path.relative(gitRoot ?? process.cwd(), commandArtifact.path)} (${commandArtifact.sizeBytes} bytes, sha256=${commandArtifact.sha256.slice(0, 12)}…)`

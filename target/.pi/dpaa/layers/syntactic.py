@@ -75,8 +75,8 @@ class SyntacticLayer(LayerAnalyzer):
     def _analyze_impl(self, doc: PlanDocument) -> LayerResult:
         findings: list[Finding] = []
         for section in doc.sections.values():
-            for line_no, sentence in split_sentences(section.content):
-                actual_line = section.line_start + line_no
+            for line_no, sentence in split_sentences(section.content, section.content_line_map):
+                actual_line = line_no
                 for check in (_check_long_sentence, _check_multiple_subjects, _check_passive_voice):
                     finding = check(self.LAYER_NAME, actual_line, sentence)
                     if finding is not None:

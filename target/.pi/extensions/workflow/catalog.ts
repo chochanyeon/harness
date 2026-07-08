@@ -498,6 +498,7 @@ type CatalogInvocation =
 type CatalogCommandProgress = {
   heartbeatMs?: number;
   onHeartbeat?: (event: { commandId: string; elapsedMs: number }) => void;
+  envOverride?: Record<string, string>;
 };
 
 function resolveCatalogInvocation(
@@ -650,7 +651,7 @@ export async function runCatalogCommandAsync(
     try {
       child = spawn(invocation.executable, invocation.args, {
         cwd: invocation.cwd,
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        env: { ...process.env, PYTHONIOENCODING: "utf-8", ...progress.envOverride },
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       });

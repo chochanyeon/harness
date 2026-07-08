@@ -334,14 +334,26 @@ export function readRecentFieldLogEvents(limitCount = 10): any[] {
   }).filter(Boolean);
 }
 
+const ACTIONABLE_FAILURE_MAX_AGE_MS = 1_800_000; // 30 minutes
+
+function isExpiredFailureEvent(event: any, cutoffMs: number): boolean {
+  const parsed = Date.parse(String(event?.timestamp ?? ""));
+  return Number.isFinite(parsed) && parsed < cutoffMs;
+}
+
 export function formatLatestActionableFailureHint(
   limitCount = 20,
-  options: { activeGateFailures?: Iterable<string> } = {},
+  options: { activeGateFailures?: Iterable<string>; nowMs?: number } = {},
 ): string {
   const activeGateFailures = options.activeGateFailures ? new Set([...options.activeGateFailures].map(String)) : null;
+  const cutoffMs = (options.nowMs ?? Date.now()) - ACTIONABLE_FAILURE_MAX_AGE_MS;
   const latest = readRecentFieldLogEvents(limitCount)
     .reverse()
-    .find((event) => event?.event?.status !== "resolved" && !isOptionalEnvironmentFollowUp(event) && !isStaleGateFailure(event, activeGateFailures));
+    .find((event) =>
+      event?.event?.status !== "resolved"
+      && !isOptionalEnvironmentFollowUp(event)
+      && !isStaleGateFailure(event, activeGateFailures)
+      && !isExpiredFailureEvent(event, cutoffMs));
   if (!latest) return "";
   const category = String(latest.event?.category ?? "unknown");
   const summary = String(latest.failure?.summary ?? latest.event?.summary ?? "unknown failure").slice(0, 120);

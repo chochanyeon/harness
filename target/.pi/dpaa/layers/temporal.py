@@ -28,7 +28,7 @@ class TemporalLayer(LayerAnalyzer):
         findings: list[Finding] = []
 
         for section in doc.sections.values():
-            for line_no, sentence in split_sentences(section.content):
+            for line_no, sentence in split_sentences(section.content, section.content_line_map):
                 lower = sentence.lower()
                 has_interval = bool(_INTERVAL_RE.search(sentence))
 
@@ -40,7 +40,7 @@ class TemporalLayer(LayerAnalyzer):
                                 layer=self.LAYER_NAME,
                                 rule=rule,
                                 severity=rules["rules"][rule]["severity"],
-                                line=section.line_start + line_no,
+                                line=line_no,
                                 text=sentence,
                                 message=f"Temporal term '{term}' has no exact interval or condition.",
                                 score=rules["rules"][rule]["score"],

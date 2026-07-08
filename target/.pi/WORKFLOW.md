@@ -41,15 +41,15 @@ The default path is the phase sequence above. Conditional protocols (`trace`, `e
 - Auto-chain: `interview → plan → plan_review → implement → code_review → review_approved → document → commit`; guards must pass. `code_review → review_approved` requires `submit_review_package` after self-review, independent review, and quality gates.
 - Resolve mechanical reminders, or mark them not applicable with a reason.
 - Use `compact-handoff` before manual compaction in long sessions.
-- Use `continuation-safety` before advancing, submitting review, committing, pushing, or compacting after a failed tool/guard/transition or uncollected delegated/background work.
-- Use `evidence-verification` after changing workflow prompts, guards, interview behavior, review protocols, or runtime routing.
+- Use `continuation-safety` before advancing, submitting review, committing, pushing, or compacting after a failed tool/guard/transition or uncollected work from subagents, async jobs, background commands, or delegated reviewers.
+- Use `evidence-verification` after changing workflow prompts, guards, interview behavior, review protocols, or runtime routing; its benchmark records baseline, target behavior, verification evidence, and dogfood gaps for each scenario.
 - Only the interactive user can approve in natural language.
 - For high-risk/strict/API/security/migration/data/deploy plans, run Architect/Critic consensus in `plan_review`: rate assumptions, pre-mortem 3 failure scenarios, and executor-readiness. Repair fragile assumptions or uncovered failures before implementation.
 - If DPAA/SBADR blocks, repair clear plan ambiguity autonomously and retry `/workflow approve`; ask only for genuine business decisions.
 - For other guards, report the blocker and wait. Never bypass or simulate guards.
 - Do not create approval/authority artifacts; guard evidence is extension-recorded.
 - Runtime `.pi/extensions/**` edits need explicit interactive approval; never create approval files. In this source repo, `target/.pi/extensions/**` is normal deployment-template source.
-- `/workflow abort` only cancels after confirmation; it creates no guard evidence and preserves dirty workspace for explicit handling.
+- Abort/cancel semantics: `/workflow abort` only cancels after confirmation; it does not create guard evidence and preserves dirty workspace for explicit handling.
 - Keep changes surgical.
 
 ## Phase Protection Levels

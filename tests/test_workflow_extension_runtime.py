@@ -723,6 +723,106 @@ def test_workflow_extension_runtime_blocks_cd_and_git_shell_chains_during_workfl
     assert data["shellChainEvent"]["event"]["severity"] == "major"
 
 
+def _seed_field_log_event(tmp_path, timestamp_ms):
+    events_dir = tmp_path / "field-log-root" / ".project-memory" / "harness"
+    events_dir.mkdir(parents=True, exist_ok=True)
+    event = {
+        "schemaVersion": 1,
+        "eventId": "hlog_test_seed",
+        "timestamp": None,
+        "event": {"type": "tool.failed", "category": "tool", "severity": "major", "status": "open"},
+        "failure": {
+            "summary": "Shell cd/git chain was blocked during an active workflow.",
+            "expected": "", "actual": "", "impact": "",
+        },
+    }
+    import datetime
+    event["timestamp"] = datetime.datetime.fromtimestamp(timestamp_ms / 1000, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    (events_dir / "events.jsonl").write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+
+def test_workflow_failure_hint_hidden_when_no_active_workflow(tmp_path):
+    import time
+    _seed_field_log_event(tmp_path, int(time.time() * 1000))
+
+    script = textwrap.dedent(
+        '''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        (async () => {
+          const prompt = await pi.events.before_agent_start({ systemPrompt: 'base' });
+          console.log(JSON.stringify({ prompt: prompt.systemPrompt }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert "[Workflow Failure Hint]" not in data["prompt"]
+
+
+def test_workflow_failure_hint_expires_after_max_age(tmp_path):
+    import time
+    forty_minutes_ago_ms = int(time.time() * 1000) - (40 * 60 * 1000)
+    _seed_field_log_event(tmp_path, forty_minutes_ago_ms)
+
+    script = textwrap.dedent(
+        '''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const ctx = { hasUI: true, ui: { notify() {}, confirm: async () => true, setWidget() {}, setStatus() {} } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime failure hint age expiry', ctx);
+          const prompt = await pi.events.before_agent_start({ systemPrompt: 'base' });
+          console.log(JSON.stringify({ prompt: prompt.systemPrompt }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert "[Workflow Failure Hint]" not in data["prompt"]
+
+
+def test_workflow_failure_hint_shown_for_recent_failure_during_active_workflow(tmp_path):
+    import time
+    _seed_field_log_event(tmp_path, int(time.time() * 1000))
+
+    script = textwrap.dedent(
+        '''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/workflow.ts')).default(pi);
+
+        const ctx = { hasUI: true, ui: { notify() {}, confirm: async () => true, setWidget() {}, setStatus() {} } };
+
+        (async () => {
+          await pi.commands.workflow.handler('start Runtime failure hint recent shown', ctx);
+          const prompt = await pi.events.before_agent_start({ systemPrompt: 'base' });
+          console.log(JSON.stringify({ prompt: prompt.systemPrompt }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert "[Workflow Failure Hint]" in data["prompt"]
+
+
 def test_task_queue_done_auto_activates_next_pending_without_approval(tmp_path):
     script = textwrap.dedent(
         r'''
@@ -962,6 +1062,57 @@ def test_workflow_extension_runtime_git_push_catalog_command_completes_push_phas
     assert "No active workflow" in joined
     assert "No active workflow" in data["prompt"]
     assert "[Workflow Guard Evidence]" not in data["prompt"]
+
+
+def test_workflow_run_command_git_push_new_branch_sets_upstream_automatically(tmp_path):
+    repo = tmp_path / "repo"
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "init", str(repo)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (repo / "README.md").write_text("# Push upstream retry test\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "commit", "-m", "test: initial"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "branch", "-M", "main"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "checkout", "-b", "feature-x"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "commit", "-m", "test: feature commit"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        process.chdir({json.dumps(str(repo))});
+        process.env.HARNESS_POLICY_MAX_CHANGED_FILES = '500';
+
+        const pi = {{ events: {{}}, commands: {{}}, tools: {{}}, on(name, fn) {{ this.events[name] = fn; }}, registerCommand(name, spec) {{ this.commands[name] = spec; }}, registerTool(spec) {{ this.tools[spec.name] = spec; }} }};
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        jiti({json.dumps(str(ROOT / "target" / ".pi" / "extensions" / "workflow.ts"))}).default(pi);
+
+        const ctx = {{ hasUI: true, ui: {{ notify() {{}}, confirm: async () => true, setWidget() {{}}, setStatus() {{}} }} }};
+
+        (async () => {{
+          await pi.commands.workflow.handler('start Runtime new branch push upstream retry', ctx);
+          await pi.commands.workflow.handler('state commit', ctx);
+          await pi.commands.workflow.handler('approve', ctx);
+          const push = await pi.tools.workflow_run_command.execute('push-upstream-1', {{ commandId: 'git-push', reason: 'new branch first push must set upstream automatically' }}, undefined, undefined, ctx);
+          console.log(JSON.stringify({{ push: push.details, text: push.content[0].text }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["push"]["ok"] is True, data["text"]
+
+    upstream = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8",
+    ).stdout.strip()
+    assert upstream == "origin/feature-x"
 
 
 def test_workflow_extension_runtime_clears_active_workflow_after_successful_git_push(tmp_path):

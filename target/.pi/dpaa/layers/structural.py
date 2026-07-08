@@ -24,7 +24,8 @@ class StructuralLayer(LayerAnalyzer):
         rule_cfg = rules["rules"]
 
         for section in doc.sections.values():
-            for line_no, line in enumerate(section.content.splitlines(), start=section.line_start + 1):
+            for idx, line in enumerate(section.content.splitlines()):
+                line_no = section.content_line_map[idx]
                 upper = line.upper()
                 for placeholder in placeholders:
                     if placeholder.upper() in upper:

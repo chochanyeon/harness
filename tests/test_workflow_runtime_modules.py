@@ -333,7 +333,7 @@ def test_field_log_actionable_hint_ignores_optional_corenlp_noise(tmp_path):
           }},
         ];
         fs.writeFileSync(path.join(logDir, 'events.jsonl'), events.map((event) => JSON.stringify(event)).join('\n') + '\n', 'utf8');
-        console.log(JSON.stringify({{ hint: mod.formatLatestActionableFailureHint() }}));
+        console.log(JSON.stringify({{ hint: mod.formatLatestActionableFailureHint(20, {{ nowMs: Date.parse('2026-06-12T00:05:00.000Z') }}) }}));
         '''
     )
     data = _run_node(script, tmp_path)
@@ -362,9 +362,10 @@ def test_field_log_actionable_hint_suppresses_resolved_gate_categories(tmp_path)
           failure: {{ summary: 'Failed to read DPAA report: ENOENT' }},
         }};
         fs.writeFileSync(path.join(logDir, 'events.jsonl'), JSON.stringify(event) + '\n', 'utf8');
+        const nowMs = Date.parse('2026-06-12T00:05:00.000Z');
         console.log(JSON.stringify({{
-          stale: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: [] }}),
-          active: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: ['dpaa'] }}),
+          stale: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: [], nowMs }}),
+          active: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: ['dpaa'], nowMs }}),
         }}));
         '''
     )
@@ -393,9 +394,10 @@ def test_field_log_actionable_hint_handles_interview_ambiguity_gate_category(tmp
           failure: {{ summary: 'Interview ambiguity score missing before interview → plan transition.' }},
         }};
         fs.writeFileSync(path.join(logDir, 'events.jsonl'), JSON.stringify(event) + '\n', 'utf8');
+        const nowMs = Date.parse('2026-06-12T00:05:00.000Z');
         console.log(JSON.stringify({{
-          stale: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: [] }}),
-          active: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: ['interview-ambiguity'] }}),
+          stale: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: [], nowMs }}),
+          active: mod.formatLatestActionableFailureHint(20, {{ activeGateFailures: ['interview-ambiguity'], nowMs }}),
         }}));
         '''
     )

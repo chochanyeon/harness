@@ -63,7 +63,7 @@ export function buildWorkflowSystemPromptInjection(state: WorkflowRuntimeState):
     ...(state.workflow?.taskQueue ? [formatWorkflowTaskQueueSummary(state.workflow.taskQueue)] : []),
     ...(ledgerResume ? [ledgerResume] : []),
     ...(state.workflow ? [authLines] : []),
-    ...(latestActionableFailure ? ["", "[Workflow Failure Hint]", latestActionableFailure, "[/Workflow Failure Hint]"] : []),
+    ...(state.workflow && latestActionableFailure ? ["", "[Workflow Failure Hint]", latestActionableFailure, "[/Workflow Failure Hint]"] : []),
     formatWorkflowReminders(scanWorkflowReminders(state.workflow, {
       recentVerificationCommands: state.recentVerificationCommands,
       interviewWizardCompleted: Boolean(state.workflow && state.interviewWizardCompletedToken?.workflowId === state.workflow.id),

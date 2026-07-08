@@ -25,7 +25,7 @@ class ReferentialLayer(LayerAnalyzer):
         findings: list[Finding] = []
 
         for section in doc.sections.values():
-            sentences = split_sentences(section.content)
+            sentences = split_sentences(section.content, section.content_line_map)
             for idx, (line_no, sentence) in enumerate(sentences):
                 prior_window = " ".join(
                     s for _, s in sentences[max(0, idx - _ANTECEDENT_WINDOW):idx]
@@ -54,7 +54,7 @@ class ReferentialLayer(LayerAnalyzer):
                                 layer=self.LAYER_NAME,
                                 rule="unresolved_pronoun",
                                 severity="high",
-                                line=section.line_start + line_no,
+                                line=line_no,
                                 text=sentence,
                                 message=f"Pronoun '{pronoun}' has no clear antecedent.",
                                 score=10,

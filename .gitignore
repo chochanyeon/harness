@@ -23,3 +23,6 @@ __pycache__/
 *review*.md
 *-findings.md
 progress.md
+
+# pi-subagents run artifacts
+.pi-subagents/

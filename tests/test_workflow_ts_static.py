@@ -656,32 +656,28 @@ class TestFormatTs:
         src = _src("format.ts")
         assert "workflow_run_command git-push" in src
         assert "workflow_run_command with commandId 'git-push'" in src
-        assert "Do NOT call workflow_approve" in src
+        assert "Do not call workflow_approve in push" in src
 
     def _implement_action_guidance(self) -> str:
         src = _src("format.ts")
-        start = src.index("If the approved scope is already satisfied")
+        action_start = src.index("export function formatWorkflowAction")
+        start = src.index('case "implement"', action_start)
         end = src.index('case "code_review"', start)
         return src[start:end]
 
-    def test_implement_guidance_does_not_ask_about_tests_when_no_changes(self):
+    def test_implement_guidance_keeps_current_goal_and_transition(self):
         guidance_block = self._implement_action_guidance()
-        assert "Decide test necessity autonomously" in guidance_block
-        assert "do not ask whether to write or skip tests" in guidance_block
-        assert "state that no new tests are needed" in guidance_block
+        assert "implement the approved scope" in guidance_block
+        assert "narrowest useful verification" in guidance_block
+        assert "summarize changed files" in guidance_block
+        assert "automatically advance to code_review" in guidance_block
 
-    def test_implement_guidance_uses_compact_context_budget_policy(self):
+    def test_implement_guidance_is_compact(self):
         guidance_block = self._implement_action_guidance()
-        for token in [
-            "Context budget",
-            "Goal lock",
-            "one next action",
-            "avoid scope drift",
-            "write/update the failing test first",
-        ]:
-            assert token in guidance_block
-        assert "Autonomous task execution policy" not in guidance_block
-        assert guidance_block.count("- ") <= 8
+        assert guidance_block.count("- ") == 2
+        assert "Context budget" not in guidance_block
+        assert "Goal lock" not in guidance_block
+        assert "write/update the failing test first" not in guidance_block
 
     def test_target_agents_testing_policy_requires_autonomous_test_decision(self):
         src = TARGET_AGENTS.read_text(encoding="utf-8")
@@ -1002,3 +998,43 @@ class TestWorkflowPromptLighteningContract:
         assert "advanceWorkflow" not in src
         assert "transitionWorkflow" not in src
         assert "runCodeQualityGate" not in src
+
+    def test_runtime_prompt_consolidates_common_instructions_and_guard_evidence_by_phase(self):
+        format_src = _src("format.ts")
+        prompt_block = format_src[
+            format_src.index("export function formatWorkflowPrompt"):
+            format_src.index("function formatHardRules")
+        ]
+        assert "formatWorkflowAction(workflow)" in prompt_block
+        assert "formatHardRules()" in prompt_block
+        assert "formatContextStrategy(workflow.phase)" not in prompt_block
+        assert "phaseGuidance(workflow.phase)" not in prompt_block
+        assert "• Workflow phase:" not in prompt_block
+        assert "• Next phase:" not in prompt_block
+        hard_rules_block = format_src[
+            format_src.index("function formatHardRules"):
+            format_src.index("function formatContextStrategy")
+        ]
+        assert 'rule.startsWith("User approval is required")' in hard_rules_block
+        assert "Never skip phases; only advance to the next phase." in _src("policy-core.ts")
+
+        action_block = format_src[
+            format_src.index("export function formatWorkflowAction"):
+            format_src.index("export function formatWorkflowHistory")
+        ]
+        for contract in [
+            "Required now:",
+            "User approval is required only at commit → push.",
+            "workflow_state tool or /workflow state <phase> is manual recovery only",
+            "DPAA/SBADR",
+            "submit_review_package",
+            "git-push",
+        ]:
+            assert contract in action_block
+
+        context_src = (EXT_DIR / "application" / "prompt-context.ts").read_text(encoding="utf-8")
+        assert "function formatRequiredGuardEvidence" in context_src
+        assert "switch (phase)" in context_src
+        for phase in ["plan_review", "code_review", "commit", "push"]:
+            assert f'case "{phase}":' in context_src
+        assert "formatRequiredGuardEvidence(state.workflow.phase" in context_src

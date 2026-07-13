@@ -70,6 +70,7 @@
     "thinkingMedium": "cyan",
     "thinkingHigh": "purple",
     "thinkingXhigh": "pink",
+    "thinkingMax": "#ff5fff",
     "bashMode": "orange"
   },
   "export": {

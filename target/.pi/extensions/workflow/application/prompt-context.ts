@@ -1,4 +1,5 @@
 import type { WorkflowRuntimeState } from "../runtime-state";
+import type { WorkflowPhase } from "../types";
 import { getBranch, getGitRoot } from "../git";
 import { formatWorkflowAction, formatWorkflowPrompt } from "../format";
 import { formatWorkflowReminders, scanWorkflowReminders } from "../reminders";
@@ -13,6 +14,46 @@ function fieldLogCategoryForGate(gate: string): string {
   if (gate === "dpaa") return "dpaa";
   if (gate === "interview-ambiguity") return "interview-ambiguity";
   return gate;
+}
+
+type GuardEvidence = {
+  interviewScoreOk: boolean;
+  dpaaOk: boolean;
+  qualOk: boolean;
+  reviewOk: boolean;
+  pushOk: boolean;
+  policyApprovalCount: number;
+};
+
+function formatRequiredGuardEvidence(phase: WorkflowPhase, evidence: GuardEvidence): string {
+  const lines = ["[Workflow Guard Evidence]"];
+  switch (phase) {
+    case "interview":
+      lines.push(`Interview ambiguity score evidence: ${evidence.interviewScoreOk ? "present" : "absent"} (required: interview → plan)`);
+      break;
+    case "plan_review":
+      lines.push(`DPAA guard evidence: ${evidence.dpaaOk ? "present" : "absent"} (required: plan_review → implement)`);
+      break;
+    case "code_review":
+      lines.push(
+        `Code quality guard evidence: ${evidence.qualOk ? "present" : "absent"} (required: code_review → review_approved)`,
+        `Code review guard evidence: ${evidence.reviewOk ? "present" : "absent"} (required: submit_review_package before review_approved)`,
+      );
+      break;
+    case "commit":
+      lines.push(`Policy scan approvals this session: ${evidence.policyApprovalCount} (required: commit → push)`);
+      break;
+    case "push":
+      lines.push(
+        `Push transition evidence: ${evidence.pushOk ? "present" : "absent"} (required: commit → push before git push)`,
+        `Policy scan approvals this session: ${evidence.policyApprovalCount}`,
+      );
+      break;
+    default:
+      return "";
+  }
+  lines.push("[/Workflow Guard Evidence]");
+  return lines.join("\n");
 }
 
 export function formatGuardMemoryStatus(state: WorkflowRuntimeState): string {
@@ -45,15 +86,14 @@ export function buildWorkflowSystemPromptInjection(state: WorkflowRuntimeState):
     activeGateFailures: failedGates.map(([gate]) => fieldLogCategoryForGate(gate)),
   });
   const ledgerResume = state.workflow ? formatWorkflowLedgerResumePrompt(state.workflow) : null;
-  const authLines = [
-    "[Workflow Guard Evidence]",
-    `Interview ambiguity score evidence: ${interviewScoreOk ? "present" : "absent"}  (required: interview → plan; call workflow_score_interview after wizard)`,
-    `DPAA guard evidence: ${dpaaOk ? "present" : "absent"}  (required: plan_review → implement)`,
-    `Code quality guard evidence: ${qualOk ? "present" : "absent"}  (required: code_review → review_approved)`,
-    `Code review guard evidence: ${reviewOk ? "present" : "absent"}  (required: submit_review_package before review_approved)`,
-    `Push transition evidence: ${pushOk ? "present" : "absent"}  (required: commit → push before git push)`,
-    `Policy scan approvals this session: ${state.policyApprovals.length}`,
-  ].join("\n");
+  const guardEvidence = state.workflow ? formatRequiredGuardEvidence(state.workflow.phase, {
+    interviewScoreOk,
+    dpaaOk,
+    qualOk,
+    reviewOk,
+    pushOk,
+    policyApprovalCount: state.policyApprovals.length,
+  }) : "";
 
   return [
     "",
@@ -62,7 +102,7 @@ export function buildWorkflowSystemPromptInjection(state: WorkflowRuntimeState):
     formatWorkflowPrompt(state.workflow),
     ...(state.workflow?.taskQueue ? [formatWorkflowTaskQueueSummary(state.workflow.taskQueue)] : []),
     ...(ledgerResume ? [ledgerResume] : []),
-    ...(state.workflow ? [authLines] : []),
+    ...(guardEvidence ? [guardEvidence] : []),
     ...(state.workflow && latestActionableFailure ? ["", "[Workflow Failure Hint]", latestActionableFailure, "[/Workflow Failure Hint]"] : []),
     formatWorkflowReminders(scanWorkflowReminders(state.workflow, {
       recentVerificationCommands: state.recentVerificationCommands,

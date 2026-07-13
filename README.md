@@ -38,7 +38,7 @@ interview
 - guard 실패는 skip이 아니라 원인 수정 후 재시도가 기본입니다.
 - Run Ledger, task queue, external memory가 다음 iteration의 재개 단서를 남깁니다.
 - long-running workflow에서는 heartbeat와 `workflow_run_command` 증거를 남겨 context pollution을 줄입니다.
-- 비활성 workflow와 reminder prompt는 필요한 증거만 간결하게 주입해 context noise를 줄입니다.
+- runtime workflow prompt는 현재 phase의 행동·전이·필수 guard 증거만 주입해 context noise를 줄입니다.
 - Pre-code_review 단계의 누락된 검증은 `code_review → review_approved` 전에 드러나며, 나중에 처리할 개선은 명시적으로 deferred로 남깁니다.
 
 ## What gets installed

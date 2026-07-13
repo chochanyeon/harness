@@ -8,7 +8,7 @@ Covers:
 - refreshBoard() uses theme coloring
 - /workflow tools subcommand
 - /workflow logs subcommand
-- workflow-console.json has 51 tokens matching Pi dark theme
+- workflow-console.json has 52 tokens matching Pi dark theme
 - formatWorkflowBoard defined in format.ts
 - WorkflowBoardState type exported
 """
@@ -218,27 +218,21 @@ def test_format_workflow_board_defined():
     assert "export function formatWorkflowBoard" in src
 
 
-def test_automatic_chain_display_guidance_is_explicit():
+def test_workflow_phase_actions_remain_explicit():
     src = FORMAT.read_text(encoding="utf-8")
-    assert "User-visible next stop" in src
-    assert "planning in progress" in src
-    assert "plan_review awaiting DPAA" in src
+    assert "Required now:" in src
+    assert "Transition:" in src
 
 
-def test_plan_review_guidance_matches_commit_push_only_approval_boundary():
+def test_plan_review_guidance_uses_automatic_dpaa_and_commit_push_only_approval():
     src = FORMAT.read_text(encoding="utf-8")
-    assert "The only user-approval boundary is commit → push" in src
-    assert "automatic DPAA/SBADR gate" in src
-    assert "user approval boundary before implement" not in src
-    assert "yes/no dialog before implementation" not in src
-    assert "present the plan for approval" not in src
-    assert "approval dialog runs DPAA" not in src
+    assert "User approval is required only at commit → push." in src
+    assert "run workflow_approve; DPAA/SBADR advances to implement only when it passes." in src
 
 
-def test_code_review_guidance_prefers_async_subagent_review():
+def test_code_review_guidance_requires_independent_review_and_submission():
     src = FORMAT.read_text(encoding="utf-8")
-    assert "Prefer async subagent review" in src
-    assert "foreground timeouts" in src
+    assert "self-review, independent review, and quality gates" in src
     assert "submit_review_package" in src
 
 
@@ -404,14 +398,14 @@ def test_semantic_box_rendered_lines_fit_width_40():
 
 # ── Theme validation ──────────────────────────────────────────────────────────
 
-def test_workflow_console_theme_has_51_tokens():
+def test_workflow_console_theme_has_52_tokens():
     with open(THEME, encoding="utf-8") as f:
         d = json.load(f)
-    assert len(d["colors"]) == 51, f"Expected 51 tokens, got {len(d['colors'])}"
+    assert len(d["colors"]) == 52, f"Expected 52 tokens, got {len(d['colors'])}"
 
 
 def test_workflow_console_theme_matches_pi_dark_token_names():
-    """All 51 token names must match Pi's built-in dark theme."""
+    """All 52 token names must match Pi's built-in dark theme."""
     if not PI_DARK_THEME.exists():
         return  # skip if Pi not installed
     with open(THEME, encoding="utf-8") as f:

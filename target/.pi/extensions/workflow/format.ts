@@ -3,7 +3,7 @@ import { listArtifactSnapshots } from "./artifacts";
 import { validateWorkflowWorkspace, formatWorkspaceMismatch } from "./gates";
 import { getNextPhase } from "./state";
 import { banner, table } from "./ui";
-import { isSharedAutoAdvancePhase, sharedContextStrategy, sharedHardRules, sharedPhaseGuidance, sharedSubagentHandoffContract } from "./policy-core";
+import { sharedContextStrategy, sharedHardRules, sharedPhaseGuidance, sharedSubagentHandoffContract } from "./policy-core";
 import { getCatalogCommandsForPhase } from "./catalog";
 
 export function formatWorkflowStatus(workflow: WorkflowInstance | null): string {
@@ -74,94 +74,59 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
   switch (workflow.phase) {
     case "interview":
       lines.push(
-        "- Transition mode: automatic preparation chain.",
-        "- Required now: clarify requirements, record interview artifacts, then advance through plan to plan_review when ready.",
-        "- After workflow_interview_wizard completes: call workflow_score_interview with per-dimension clarity scores (0-100). This is required before interview → plan.",
-        "- User-visible next stop after the automatic preparation chain: plan_review awaiting DPAA/SBADR gate execution.",
-        "- Do not request user approval before plan_review; the only user-approval boundary is commit → push.",
+        "- Required now: clarify requirements, record interview artifacts, and call workflow_score_interview with per-dimension clarity scores after the wizard.",
+        "- Transition: automatically prepare plan artifacts through plan_review; DPAA/SBADR runs there.",
       );
       break;
     case "plan":
       lines.push(
-        "- Transition mode: automatic preparation chain.",
-        "- Required now: produce/update the plan and DPAA/SBADR-ready artifacts, then advance to plan_review.",
-        "- User-visible state: planning in progress; next stop is plan_review for DPAA/SBADR gate execution.",
-        "- Do not ask for implementation approval; plan_review → implement advances after DPAA/SBADR passes.",
+        "- Required now: produce/update the plan and DPAA/SBADR-ready artifacts.",
+        "- Transition: automatically advance to plan_review for the DPAA/SBADR gate.",
       );
       break;
     case "plan_review":
       lines.push(
-        "- Transition mode: automatic DPAA/SBADR gate before implement; not a user-approval boundary.",
-        "- Required now: run workflow_approve so DPAA/SBADR executes and advances to implement when the gate passes.",
-        "- The only user-approval boundary is commit → push. If DPAA/SBADR fails, autonomously repair vague/ambiguous sentences and retry workflow_approve — only ask the user for genuine business decisions that cannot be inferred from context.",
+        "- Required now: run workflow_approve; DPAA/SBADR advances to implement only when it passes.",
+        "- On a gate failure, repair the plan and retry; ask only for a genuine business decision that context cannot resolve.",
       );
       break;
     case "implement":
       lines.push(
-        "- Transition mode: automatic after implementation is complete.",
-        "- Required now: implement the approved scope, run the narrowest useful verification, and summarize changed files.",
-        "- If the approved scope is already satisfied, record concrete evidence, state that no new tests are needed when applicable, run useful verification, then proceed to code_review.",
-        "- Decide test necessity autonomously; do not ask whether to write or skip tests. Behavior, guard, and runtime changes need regression tests; prompt changes need static tests; docs-only changes usually do not.",
-        "- Context budget: keep main as controller. Use artifacts, file-only subagent output, and short summaries for large logs, diffs, or delegated analysis.",
-        "- Goal lock: use the active EPIC task title, scope, acceptance criteria, and verification cues; Next action = choose one next action and avoid scope drift.",
-        "- TDD: for behavior changes, write/update the failing test first, then complete the test-first cycle: implement, pass, and refactor.",
-        "- Static analysis: follow project conventions; fix violations silently and rerun the narrow check.",
+        "- Required now: implement the approved scope, use a test-first cycle for behavior changes, run the narrowest useful verification, and summarize changed files.",
+        "- Transition: automatically advance to code_review after implementation is complete.",
       );
       break;
     case "code_review":
       lines.push(
-        "- Transition mode: mechanical review gate, not a simple user-approval boundary.",
-        "- Required now: run main self-review, independent reviewer/subagent review, and quality gates.",
-        "- Prefer async subagent review for independent review so foreground timeouts do not block the main workflow; incorporate the completed async result into submit_review_package.",
-        "- Call submit_review_package; stay in code_review for review/fix cycles until the package and all gates pass.",
+        "- Required now: run self-review, independent review, and quality gates, then call submit_review_package.",
+        "- Transition: remain in code_review for review/fix cycles until the package and all gates pass.",
       );
       break;
     case "review_approved":
-      lines.push(
-        "- Transition mode: automatic documentation/commit-preparation chain.",
-        "- Required now: ensure review findings are closed/accepted, then continue to document/commit preparation.",
-        "- Do not ask user approval before document or commit preparation; user approval is required at the commit → push boundary only.",
-      );
+      lines.push("- Required now: ensure review findings are closed/accepted; automatically continue through documentation and commit preparation.");
       break;
     case "document":
-      lines.push(
-        "- Transition mode: automatic toward commit preparation.",
-        "- Required now: update required docs or state why docs are not applicable, then continue to commit preparation.",
-        "- Do not ask user approval before commit preparation.",
-      );
+      lines.push("- Required now: update required docs or state why they are not applicable; automatically continue to commit preparation.");
       break;
     case "commit":
       lines.push(
-        "- Transition mode: user approval boundary before push.",
-        "- Required now: provide a concise diff summary, risk/verification summary, and a proposed commit message. Create the git commit after the user approves the message.",
-        "- When ready for push, workflow_approve runs the policy scan and shows the user a yes/no dialog.",
+        "- Required now: provide the diff, risk/verification summaries, and proposed commit message; create the commit after approval.",
+        "- Transition: workflow_approve runs the policy scan and shows the commit → push dialog.",
       );
       break;
     case "push":
       lines.push(
-        "- Transition mode: guarded execution phase.",
-        "- Required now: run workflow_run_command with commandId 'git-push' immediately in this turn — the extension detects the successful push and auto-advances to done.",
-        "- Do NOT call workflow_approve in push phase; it cannot advance push → done and will block.",
-        "- If push execution guard is already satisfied (commit → push approval already recorded), run workflow_run_command({ commandId: 'git-push' }) right now without calling workflow_approve again.",
+        "- Required now: run workflow_run_command with commandId 'git-push'; a successful push auto-advances to done.",
+        "- Do not call workflow_approve in push; it cannot advance push → done.",
       );
       break;
     case "done":
-      lines.push(
-        "- Transition mode: complete.",
-        "- Required now: do not continue procedural work unless the user starts a new workflow.",
-      );
+      lines.push("- Required now: do not continue procedural work unless the user starts a new workflow.");
       break;
   }
 
-  if (next && isSharedAutoAdvancePhase(workflow.phase)) {
-    lines.push("- Normal advancement: call workflow_approve as an internal transition tool; it must not show a user dialog for this automatic transition.");
-  } else if (workflow.phase === "code_review") {
-    lines.push("- Normal advancement command: submit_review_package after review evidence is ready.");
-  } else if (next) {
-    lines.push("- Normal advancement: workflow_approve shows a yes/no dialog only at this approval boundary; do not ask the user to type /workflow approve.");
-  }
-
   lines.push(
+    "- User approval is required only at commit → push.",
     "- When you have enough information to act, act. Give a recommendation instead of listing options you will not pursue.",
     "- Do not re-litigate established decisions; use current artifacts, guard evidence, and Run Ledger state as the source of truth.",
     "- workflow_state tool or /workflow state <phase> is manual recovery only (one step at a time); never use for normal advancement.",
@@ -206,28 +171,19 @@ export function formatWorkflowPrompt(workflow: WorkflowInstance | null): string 
       "• For procedural work, suggest /workflow start <goal> to the user.",
     ].join("\n");
   }
-  const next = getNextPhase(workflow.phase);
   const workspace = validateWorkflowWorkspace(workflow);
   const lines = [
-    `• Workflow phase: ${workflow.phase}`,
-    `• Next phase: ${next ?? "none"}`,
     `• Workflow branch: ${workflow.branch}`,
     `• Workflow cwd: ${workflow.cwd}`,
-    "• Work only on the current phase; follow the LLM workflow action block for automatic vs approval-required transitions.",
-    "• At approval boundaries, use workflow_approve to show a yes/no dialog; do not ask the user to type /workflow approve.",
     formatWorkflowAction(workflow),
-    "• Phase changes always create workspace checkpoints; during implement/code_review/review_approved/document/commit/push, dirty workspace user requests may prompt for an extra checkpoint.",
-    "• /workflow undo, redo, and restore recover tracked/staged/untracked git workspace changes from checkpoints.",
     formatHardRules(),
-    formatContextStrategy(workflow.phase),
-    phaseGuidance(workflow.phase),
   ];
   if (!workspace.ok) lines.push(formatWorkspaceMismatch(workspace));
   return lines.join("\n");
 }
 
 function formatHardRules(): string {
-  const rules = sharedHardRules();
+  const rules = sharedHardRules().filter((rule) => !rule.startsWith("User approval is required"));
   return rules.length > 0 ? ["[WORKFLOW HARD RULES]", ...rules.map((rule) => `- ${rule}`), "[/WORKFLOW HARD RULES]"].join("\n") : "";
 }
 

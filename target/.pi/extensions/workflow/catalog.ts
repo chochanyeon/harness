@@ -142,11 +142,14 @@ export function detectBuildSystem(root: string): BuildSystemInfo {
 
   // Go
   if (exists("go.mod")) {
+    const hasGolangciLint = commandOk("golangci-lint --version");
     return {
       type: "go",
       testCommand: { executable: "go", args: ["test", "./..."] },
       buildCommand: { executable: "go", args: ["build", "./..."] },
-      qualityCommand: { executable: "go", args: ["vet", "./..."] },
+      qualityCommand: hasGolangciLint
+        ? { executable: "golangci-lint", args: ["run", "./..."] }
+        : { executable: "go", args: ["vet", "./..."] },
     };
   }
 

@@ -143,6 +143,58 @@ def test_production_class_policy_handles_relative_and_absolute_paths(tmp_path):
     assert data["classWithCoverage"] == "allow"
 
 
+def test_production_go_policy_handles_paths_and_test_coverage(tmp_path):
+    project = tmp_path / "go-project"
+    user_file = project / "internal" / "service" / "user.go"
+    user_test_file = project / "internal" / "service" / "user_test.go"
+    order_file = project / "internal" / "service" / "order.go"
+    vendor_file = project / "vendor" / "pkg" / "lib.go"
+    user_file.parent.mkdir(parents=True)
+    vendor_file.parent.mkdir(parents=True)
+    user_file.write_text("package service\n", encoding="utf-8")
+    order_file.write_text("package service\n", encoding="utf-8")
+    vendor_file.write_text("package pkg\n", encoding="utf-8")
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ isProductionGoPath, expectedProductionGoTestPath, hasProductionGoTestCoverage, decideProductionGoTddGate, productionGoFileKeyFromTestPath }} = jiti(path.resolve('target/.pi/extensions/workflow/domain/production-class-policy.ts'));
+        const gitRoot = {json.dumps(str(project))};
+        const fs = require('fs');
+        const beforeTestFile = hasProductionGoTestCoverage('internal/service/user.go', gitRoot);
+        fs.writeFileSync({json.dumps(str(user_test_file))}, 'package service\n');
+        const afterTestFile = hasProductionGoTestCoverage('internal/service/user.go', gitRoot);
+        console.log(JSON.stringify({{
+          userIsProduction: isProductionGoPath('internal/service/user.go', gitRoot),
+          testFileExcluded: isProductionGoPath('internal/service/user_test.go', gitRoot),
+          vendorExcluded: isProductionGoPath('vendor/pkg/lib.go', gitRoot),
+          expectedTestPath: expectedProductionGoTestPath('internal/service/user.go', gitRoot).replace(/\\/g, '/'),
+          beforeTestFile,
+          afterTestFile,
+          missingRelatedTest: hasProductionGoTestCoverage('internal/service/order.go', gitRoot),
+          newFileWithoutTest: decideProductionGoTddGate({{ className: 'order', testPath: 'order_test.go', isNewFile: true, hasTestCoverage: false }}).action,
+          fileWithCoverage: decideProductionGoTddGate({{ className: 'user', testPath: 'user_test.go', isNewFile: false, hasTestCoverage: true }}).action,
+          keyFromTestPath: productionGoFileKeyFromTestPath('internal/service/user_test.go', gitRoot).replace(/\\/g, '/'),
+          keyFromNonTestPath: productionGoFileKeyFromTestPath('internal/service/user.go', gitRoot),
+        }}));
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["userIsProduction"] is True
+    assert data["testFileExcluded"] is False
+    assert data["vendorExcluded"] is False
+    assert data["expectedTestPath"].endswith("internal/service/user_test.go")
+    assert data["beforeTestFile"] is False
+    assert data["afterTestFile"] is True
+    assert data["missingRelatedTest"] is False
+    assert data["newFileWithoutTest"] == "block"
+    assert data["fileWithCoverage"] == "allow"
+    assert data["keyFromTestPath"] == "internal/service/user.go"
+    assert data["keyFromNonTestPath"] is None
+
+
 def test_tdd_transition_skips_stale_snapshot_when_no_production_java_changes(tmp_path):
     project = tmp_path / "clean-java-project"
     service = project / "src" / "main" / "java" / "com" / "example" / "FooService.java"
@@ -246,6 +298,60 @@ def test_tdd_transition_blocks_when_production_java_changes_add_untested_class(t
     assert len(data["steers"]) == 1
 
 
+def test_tdd_transition_blocks_when_production_go_changes_add_untested_file(tmp_path):
+    project = tmp_path / "dirty-go-project"
+    service = project / "internal" / "service" / "user.go"
+    service.parent.mkdir(parents=True)
+    (project / "go.mod").write_text("module example.com/dirtygo\n\ngo 1.21\n", encoding="utf-8")
+    service.write_text("package service\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=project, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=project, check=True)
+    subprocess.run(["git", "add", "."], cwd=project, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    service.write_text("package service\n\nfunc Changed() int { return 1 }\n", encoding="utf-8")
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ createWorkflowRuntimeState }} = jiti(path.resolve('target/.pi/extensions/workflow/runtime-state.ts'));
+        const {{ executeWorkflowApproval }} = jiti(path.resolve('target/.pi/extensions/workflow/transitions.ts'));
+        const gitRoot = {json.dumps(str(project))};
+        const state = createWorkflowRuntimeState();
+        state.workflow = {{
+          id: 'wf-dirty-go-tdd', title: 'Dirty Go TDD snapshot', phase: 'implement', cwd: gitRoot, gitRoot,
+          branch: 'main', history: [], undone: [], startedAt: Date.now(), updatedAt: Date.now(),
+          untestedClassesSnapshot: [],
+        }};
+        const steers = [];
+        const deps = {{
+          precheckPlanReviewBeforeApproval: async () => ({{ ok: true }}),
+          confirmPushPolicyForPushPhase: async () => true,
+          steerLlm: async (message) => steers.push(message),
+          refreshBoard: () => {{}},
+          refreshStatus: () => {{}},
+          persistGuardToken: () => {{}},
+          clearPendingWorkflowSteersForPhase: () => {{}},
+          clearPendingWorkflowSteersExceptCurrent: () => {{}},
+          clearActiveWorkflowAfterCompletion: () => {{}},
+          applyPhaseToolPolicy: () => {{}},
+        }};
+        const ctx = {{ hasUI: false, ui: {{ notify: () => {{}}, confirm: async () => false }} }};
+        (async () => {{
+          const result = await executeWorkflowApproval(state, 'production Go changed', ctx, deps);
+          console.log(JSON.stringify({{ ok: result.details.ok, reason: result.details.reason || null, classes: result.details.classes || [], steers }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["ok"] is False
+    assert data["reason"] == "tdd-violation"
+    assert data["classes"] == ["internal/service/user.go"]
+    assert len(data["steers"]) == 1
+
+
 def test_tdd_preflight_blocks_production_edit_until_related_test_evidence(tmp_path):
     project = tmp_path / "project"
     service = project / "src" / "main" / "java" / "com" / "example" / "FooService.java"
@@ -299,6 +405,63 @@ def test_tdd_preflight_blocks_production_edit_until_related_test_evidence(tmp_pa
     assert data["testAllowed"] is True
     assert data["secondAllowed"] is True
     assert data["dtoAllowed"] is True
+    assert data["evidence"]
+
+
+def test_tdd_preflight_blocks_production_go_edit_until_related_test_evidence(tmp_path):
+    project = tmp_path / "go-project"
+    service = project / "internal" / "service" / "user.go"
+    service.parent.mkdir(parents=True)
+    (project / "go.mod").write_text("module example.com/goproject\n\ngo 1.21\n", encoding="utf-8")
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ createWorkflowRuntimeState }} = jiti(path.resolve('target/.pi/extensions/workflow/runtime-state.ts'));
+        const {{ handleWorkflowToolCall, handleWorkflowToolResult }} = jiti(path.resolve('target/.pi/extensions/workflow/application/tool-call-gate.ts'));
+        const gitRoot = {json.dumps(str(project))};
+        const state = createWorkflowRuntimeState();
+        state.workflow = {{ id: 'wf-go-tdd', title: 'Go TDD preflight', phase: 'implement', cwd: gitRoot, gitRoot, branch: 'main', history: [], undone: [], startedAt: Date.now(), updatedAt: Date.now() }};
+        const steers = [];
+        const deps = {{ steerLlm: async (message, deliverAs) => steers.push({{ message, deliverAs }}) }};
+        const ctx = {{ hasUI: false, ui: {{ confirm: async () => false }} }};
+
+        (async () => {{
+          const firstProduction = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'internal/service/user.go', content: 'package service' }} }}, ctx, deps);
+          const failedTestCall = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'internal/service/user_test.go', content: 'package service' }} }}, ctx, deps);
+          await handleWorkflowToolResult(state, {{ toolName: 'write', input: {{ path: 'internal/service/user_test.go' }}, isError: true }});
+          const stillBlocked = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'internal/service/user.go', content: 'package service' }} }}, ctx, deps);
+          const testWrite = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'internal/service/user_test.go', content: 'package service' }} }}, ctx, deps);
+          await handleWorkflowToolResult(state, {{ toolName: 'write', input: {{ path: 'internal/service/user_test.go' }}, isError: false }});
+          const secondProduction = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'internal/service/user.go', content: 'package service' }} }}, ctx, deps);
+          const vendorWrite = await handleWorkflowToolCall(state, {{ toolName: 'write', input: {{ path: 'vendor/pkg/lib.go', content: 'package pkg' }} }}, ctx, deps);
+          console.log(JSON.stringify({{
+            firstBlocked: Boolean(firstProduction && firstProduction.block),
+            firstReason: firstProduction ? firstProduction.reason : '',
+            failedTestAllowed: failedTestCall === undefined,
+            stillBlockedAfterFailedTest: Boolean(stillBlocked && stillBlocked.block),
+            testAllowed: testWrite === undefined,
+            secondAllowed: secondProduction === undefined,
+            vendorAllowed: vendorWrite === undefined,
+            evidence: state.tddTestEvidence,
+            steers,
+          }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["firstBlocked"] is True
+    assert "do not ask" in data["firstReason"]
+    assert "pre-approved" in data["firstReason"]
+    assert "not scope expansion" in data["firstReason"]
+    assert "Next action" in data["firstReason"]
+    assert data["failedTestAllowed"] is True
+    assert data["stillBlockedAfterFailedTest"] is True
+    assert data["testAllowed"] is True
+    assert data["secondAllowed"] is True
+    assert data["vendorAllowed"] is True
     assert data["evidence"]
 
 

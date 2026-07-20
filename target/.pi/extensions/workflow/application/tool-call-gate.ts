@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import type { WorkflowRuntimeState } from "../runtime-state";
 import { ensureExtensionMutationApproved } from "./extension-mutation-approval";
-import { decideProductionClassTddGate, expectedProductionTestPath, hasProductionClassTestCoverage, isProductionClassPath, productionClassKey, productionClassKeyFromTestPath } from "../domain/production-class-policy";
+import { decideProductionClassTddGate, expectedProductionTestPath, hasProductionClassTestCoverage, isProductionClassPath, productionClassKey, productionClassKeyFromTestPath, decideProductionGoTddGate, expectedProductionGoTestPath, hasProductionGoTestCoverage, isProductionGoPath, productionGoFileKey, productionGoFileKeyFromTestPath } from "../domain/production-class-policy";
 import { consumeSkipToken, formatGateBlocked, formatPushPolicyScanBlocked, pushPolicySignature, scanPushPolicy, validateWorkflowWorkspace } from "../gates";
 import { getGitRoot, hasGitDashC, isGitPush } from "../git";
 import { formatWorkspaceMismatch } from "../format";
@@ -79,6 +79,19 @@ function handleWriteToolPolicy(
       if (tddDecision.action === "steer") {
         void deps.steerLlm(tddDecision.message, "steer");
       }
+    } else if (gitRoot && isProductionGoPath(filePath, gitRoot)) {
+      const className = path.basename(filePath, ".go");
+      const testPath = expectedProductionGoTestPath(filePath, gitRoot);
+      const isNewFile = !fs.existsSync(path.isAbsolute(filePath) ? filePath : path.resolve(gitRoot, filePath));
+      const testExists = hasProductionGoTestCoverage(filePath, gitRoot);
+      const phaseTestEvidence = hasTddTestEvidence(state, productionGoFileKey(filePath, gitRoot));
+      const tddDecision = decideProductionGoTddGate({ className, testPath, isNewFile, hasTestCoverage: testExists || phaseTestEvidence });
+      if (tddDecision.action === "block") {
+        return { block: true, reason: tddDecision.reasonLines.join("\n") };
+      }
+      if (tddDecision.action === "steer") {
+        void deps.steerLlm(tddDecision.message, "steer");
+      }
     }
   }
 
@@ -135,7 +148,7 @@ export function handleWorkflowToolResult(state: WorkflowRuntimeState, event: Wor
 
 function recordTddTestEvidence(state: WorkflowRuntimeState, filePath: string, gitRoot: string): void {
   if (!state.workflow || state.workflow.phase !== "implement") return;
-  const productionKey = productionClassKeyFromTestPath(filePath, gitRoot);
+  const productionKey = productionClassKeyFromTestPath(filePath, gitRoot) ?? productionGoFileKeyFromTestPath(filePath, gitRoot);
   if (!productionKey) return;
   const current = state.tddTestEvidence?.workflowId === state.workflow.id
     ? state.tddTestEvidence

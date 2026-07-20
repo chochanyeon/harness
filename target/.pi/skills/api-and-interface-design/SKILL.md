@@ -1,6 +1,6 @@
 ---
 name: api-and-interface-design
-description: ALWAYS use for Spring REST endpoints, DTOs, entity relationships, or public API contracts; triggers include API/endpoint/contract/interface. Preserve backward compatibility.
+description: ALWAYS use for Spring or Go REST endpoints, DTOs, entity relationships, or public API contracts; triggers include API/endpoint/contract/interface. Preserve backward compatibility.
 ---
 
 # API and Interface Design (DevCenter)
@@ -175,6 +175,43 @@ public record CreateTaskRequest(
 ## Spring Boot REST Patterns
 
 For detailed REST endpoint patterns (Resource Design, Sub-resources, Pagination, Filtering, Partial Updates), use the Read tool to load `references/spring-boot-rest-patterns.md`.
+
+## Go HTTP Handler Patterns
+
+Separate request/response structs from domain types, return errors explicitly, and pass `context.Context` as the first argument:
+
+```go
+type CreateTaskRequest struct {
+    Title    string `json:"title"`
+    Priority string `json:"priority"`
+}
+
+type CreateTaskResponse struct {
+    ID        string `json:"id"`
+    CreatedAt string `json:"createdAt"`
+}
+
+// ctx is always the first parameter; the function returns an explicit error
+// instead of panicking, so callers can decide how to react.
+func (s *TaskService) CreateTask(ctx context.Context, req CreateTaskRequest) (CreateTaskResponse, error) {
+    if req.Title == "" {
+        return CreateTaskResponse{}, fmt.Errorf("create task: %w", ErrTitleRequired)
+    }
+    // ...
+}
+
+// Callers distinguish error causes with errors.Is / errors.As instead of
+// string-matching the error message.
+if err := svc.CreateTask(ctx, req); errors.Is(err, ErrTitleRequired) {
+    http.Error(w, "title is required", http.StatusBadRequest)
+    return
+}
+```
+
+**Rules:**
+- Never expose a domain/persistence struct directly as a handler response; define a dedicated response struct, mirroring the DTO/Entity separation used for Spring Boot.
+- `context.Context` is always the first parameter of a function that can block, call downstream services, or be cancelled.
+- Wrap errors with `fmt.Errorf("...: %w", err)` so `errors.Is`/`errors.As` can match the original cause; do not discard the original error.
 
 ## JPA Entity Relationship Design
 

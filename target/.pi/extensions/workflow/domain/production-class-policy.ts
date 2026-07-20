@@ -105,6 +105,58 @@ function isRelatedTestFile(fileName: string, className: string): boolean {
   return new RegExp(`^${escapeRegExp(className)}(Test|Tests|IT|IntegrationTest)\\.java$`).test(fileName);
 }
 
+/**
+ * Returns true for Go production files that should be covered by the TDD gate.
+ * Test files (_test.go) and vendored dependencies (vendor/) are excluded because
+ * they are not first-party production code.
+ */
+export function isProductionGoPath(filePath: string, gitRoot: string): boolean {
+  const normalized = repoRelativePath(filePath, gitRoot);
+  if (!normalized.endsWith(".go")) return false;
+  if (normalized.endsWith("_test.go")) return false;
+  if (/(^|\/)vendor\//.test(normalized)) return false;
+  return true;
+}
+
+export function decideProductionGoTddGate(input: ProductionClassTddInput): ProductionClassTddDecision {
+  if (input.hasTestCoverage) return { action: "allow" };
+  return {
+    action: "block",
+    reasonLines: [
+      `🧪 TDD: ${input.className}_test.go를 먼저 작성하세요.`,
+      input.isNewFile
+        ? "새 파일을 작성하기 전에 테스트를 먼저 작성하세요."
+        : "기존 production behavior 파일을 수정하기 전에 관련 테스트를 먼저 작성하거나 갱신하세요.",
+      `예상 테스트 경로: ${input.testPath}`,
+      ...TDD_TEST_FIRST_INSTRUCTIONS,
+    ],
+  };
+}
+
+export function expectedProductionGoTestPath(filePath: string, gitRoot: string): string {
+  const normalized = repoRelativePath(filePath, gitRoot);
+  return path.join(gitRoot, normalized.replace(/\.go$/, "_test.go"));
+}
+
+export function productionGoFileKey(filePath: string, gitRoot: string): string {
+  return repoRelativePath(filePath, gitRoot);
+}
+
+export function isProductionGoTestPath(filePath: string, gitRoot: string): boolean {
+  return repoRelativePath(filePath, gitRoot).endsWith("_test.go");
+}
+
+export function productionGoFileKeyFromTestPath(filePath: string, gitRoot: string): string | null {
+  const normalized = repoRelativePath(filePath, gitRoot);
+  if (!normalized.endsWith("_test.go")) return null;
+  return normalized.replace(/_test\.go$/, ".go");
+}
+
+export function hasProductionGoTestCoverage(filePath: string, gitRoot: string): boolean {
+  const testPath = expectedProductionGoTestPath(filePath, gitRoot);
+  return fs.existsSync(testPath);
+}
+
 function repoRelativePath(filePath: string, gitRoot: string): string {
   const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(gitRoot, filePath);
   return path.relative(gitRoot, absolutePath).replace(/\\/g, "/");

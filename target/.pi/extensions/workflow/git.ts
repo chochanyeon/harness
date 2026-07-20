@@ -119,8 +119,49 @@ export function getUntestedClasses(root: string): string[] {
         untested.push(className);
       }
     }
-    return untested;
+    return [...untested, ...collectUntestedGoFiles(root)];
   } catch {
     return [];
   }
+}
+
+/**
+ * 테스트 없는 production Go 파일의 저장소-루트 상대 경로 목록 반환.
+ * go.mod가 저장소 루트에 없으면 빈 배열을 반환한다 (Go 프로젝트가 아님).
+ * vendor/ 디렉터리와 _test.go 파일 자신은 탐색 대상에서 제외한다.
+ */
+function collectUntestedGoFiles(root: string): string[] {
+  if (!fs.existsSync(path.join(root, "go.mod"))) return [];
+  const SKIP_DIRS = new Set((["node_modules", ".git", "build", "target", ".gradle", ".idea", ".vscode", "vendor"]));
+
+  function collectGoFiles(dir: string, depth: number): string[] {
+    if (depth > 12) return [];
+    const results: string[] = [];
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        results.push(...collectGoFiles(fullPath, depth + 1));
+      } else if (entry.isFile() && entry.name.endsWith(".go") && !entry.name.endsWith("_test.go")) {
+        results.push(fullPath);
+      }
+    }
+    return results;
+  }
+
+  const untested: string[] = [];
+  for (const goFile of collectGoFiles(root, 0)) {
+    const testFile = goFile.replace(/\.go$/, "_test.go");
+    if (!fs.existsSync(testFile)) {
+      untested.push(path.relative(root, goFile).split(path.sep).join("/"));
+    }
+  }
+  return untested;
 }

@@ -1,6 +1,6 @@
 ---
 name: test-driven-development
-description: ALWAYS use for Java/Spring logic, bugs, behavior changes, methods, or classes. Write failing JUnit5 test before production; skip pure config/docs/boilerplate/no-behavior-change.
+description: ALWAYS use for Java/Spring or Go logic, bugs, behavior changes, methods, or classes. Write failing JUnit5 test before production; skip pure config/docs/boilerplate/no-behavior-change.
 ---
 
 # Test-Driven Development (DevCenter)
@@ -173,6 +173,35 @@ public Task completeTask(Long id) {
 ## Spring Boot Test Patterns
 
 For detailed test patterns (unit, slice, integration), use the Read tool to load `references/spring-test-patterns.md`.
+
+## Go Test Patterns
+
+Write table-driven tests as the default shape for Go unit tests:
+
+```go
+// RED: this test fails because CalculateDiscount doesn't exist yet
+func TestCalculateDiscount(t *testing.T) {
+    cases := []struct {
+        name     string
+        price    float64
+        quantity int
+        want     float64
+    }{
+        {"no discount below threshold", 10.0, 1, 10.0},
+        {"bulk discount at threshold", 10.0, 10, 90.0},
+    }
+    for _, tc := range cases {
+        t.Run(tc.name, func(t *testing.T) {
+            got := CalculateDiscount(tc.price, tc.quantity)
+            if got != tc.want {
+                t.Errorf("CalculateDiscount(%v, %v) = %v, want %v", tc.price, tc.quantity, got, tc.want)
+            }
+        })
+    }
+}
+```
+
+Each `t.Run` subtest is independently reportable and independently skippable, which keeps RED → GREEN → REFACTOR feedback granular even as cases grow.
 
 ## Writing Good Tests
 

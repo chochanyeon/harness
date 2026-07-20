@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Use for Java/Spring code review when user asks review/readiness, says 코드 리뷰/리뷰해줘/푸시 전에 봐줘/이거 괜찮아, or during `code_review`. Even simple changes benefit. Output Korean.
+description: Use for Java/Spring or Go code review when user asks review/readiness, says 코드 리뷰/리뷰해줘/푸시 전에 봐줘/이거 괜찮아, or during `code_review`. Even simple changes benefit. Output Korean.
 ---
 
 # Code Review Skill
@@ -92,6 +92,10 @@ Follow this workflow for every code review request:
 **Java/Spring Boot (DevCenter):**
 - Read `references/java-checklist.md` before analysis — it has DevCenter-specific patterns (ADR-0001 rules, reflection-used fields, framework conventions) that generic review misses
 - Without it: Jackson/JPA fields get flagged as "unused", ADR-0001 layer violations go undetected, project scoring criteria are ignored
+
+**Go:**
+- Read `references/go-checklist.md` before analysis — it covers Go-specific review targets (error wrapping, goroutine/channel safety, `defer` resource cleanup) that a generic review misses
+- Without it: missing error wrapping, leaked goroutines, and unreleased `defer`-managed resources go undetected
 
 ## Specialized Review Perspectives
 

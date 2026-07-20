@@ -156,6 +156,18 @@ def test_tdd_gate_checks_write_and_edit_calls_in_implement_phase():
     assert "TDD:" in src
 
 
+def test_tdd_gate_checks_go_files_in_implement_phase():
+    gate_src = TOOL_CALL_GATE.read_text(encoding="utf-8")
+    policy_src = PRODUCTION_CLASS_POLICY.read_text(encoding="utf-8")
+    assert "isProductionGoPath" in gate_src
+    assert "decideProductionGoTddGate" in gate_src
+    assert "expectedProductionGoTestPath" in gate_src
+    assert "hasProductionGoTestCoverage" in gate_src
+    assert "productionGoFileKeyFromTestPath" in gate_src
+    assert "export function isProductionGoPath" in policy_src
+    assert "export function decideProductionGoTddGate" in policy_src
+
+
 def test_tdd_messages_make_test_creation_preapproved_not_scope_expansion():
     src = (
         TOOL_CALL_GATE.read_text(encoding="utf-8")

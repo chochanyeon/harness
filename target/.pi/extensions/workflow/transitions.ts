@@ -34,7 +34,7 @@ export type WorkflowApprovalState = {
   gateFailures: Map<WorkflowGate, number>;
 };
 
-function hasRelevantProductionJavaChanges(root: string): boolean {
+function hasRelevantProductionChanges(root: string): boolean {
   try {
     const status = execFileSync("git", ["-C", root, "status", "--porcelain=v1", "-z"], {
       encoding: "utf-8",
@@ -48,7 +48,9 @@ function hasRelevantProductionJavaChanges(root: string): boolean {
       .some((entry) => {
         const filePath = entry.slice(3).split(" -> ").pop() ?? "";
         const normalized = filePath.split(path.sep).join("/");
-        return normalized.includes("src/main/java/") && normalized.endsWith(".java");
+        const isJavaProduction = normalized.includes("src/main/java/") && normalized.endsWith(".java");
+        const isGoProduction = normalized.endsWith(".go") && !normalized.endsWith("_test.go") && !normalized.includes("vendor/");
+        return isJavaProduction || isGoProduction;
       });
   } catch {
     return true;
@@ -162,7 +164,7 @@ export async function executeWorkflowApproval(
   if (state.workflow.phase === "implement") {
     const tddRoot = state.workflow.gitRoot ?? getGitRoot();
     const snapshot = state.workflow.untestedClassesSnapshot;
-    if (tddRoot && snapshot && hasRelevantProductionJavaChanges(tddRoot)) {
+    if (tddRoot && snapshot && hasRelevantProductionChanges(tddRoot)) {
       const currentUntested = getUntestedClasses(tddRoot);
       const newlyUntested = currentUntested.filter((cls) => !snapshot.includes(cls));
       if (newlyUntested.length > 0) {

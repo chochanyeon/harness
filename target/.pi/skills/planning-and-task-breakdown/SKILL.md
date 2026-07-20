@@ -1,6 +1,6 @@
 ---
 name: planning-and-task-breakdown
-description: ALWAYS use to order Java/Spring tasks for specs, multi-step/non-trivial requests, feature work, planning/steps, or uncertain order. Covers Spring layers/JPA/Gradle.
+description: ALWAYS use to order Java/Spring or Go tasks for specs, multi-step/non-trivial requests, feature work, planning/steps, or uncertain order. Covers Spring layers/JPA/Gradle and Go package layering.
 ---
 
 # Planning and Task Breakdown (DevCenter)
@@ -200,6 +200,27 @@ For a full plan template with phased tasks, checkpoints, risks, and open questio
 ```
 
 **Never skip layers:** Controller must call Service, Service must call Repository. No Controller → Repository direct access.
+
+## Go Package Layering Rules
+
+**Directory roles:**
+
+- `cmd/<binary>/main.go` — entry point only; wires dependencies and starts the process.
+- `internal/` — private application code (handlers, services, repository implementations); not importable by other modules.
+- `pkg/` — code intended for import by other modules; keep this directory small and stable.
+
+**Bottom-up dependency order:**
+
+```
+1. Repository interface   (defined next to the service that uses it)
+2. Repository impl        (internal/repository/*.go)
+3. Service                (internal/service/*.go, depends on the repository interface)
+4. Handler                (internal/handler/*.go, depends on the service)
+5. Wiring                 (cmd/<binary>/main.go)
+6. Tests                  (table-driven unit tests next to each package)
+```
+
+**Never skip layers:** a handler must call a service, not a repository implementation directly. Define the repository as an interface owned by the service package so the service can be tested with a fake.
 
 ## Test Strategy per Task
 

@@ -68,6 +68,7 @@ export default function (pi: ExtensionAPI) {
       dynamicBlockHash: string;
       matchedReasons: Record<string, string[]>;
     },
+    llmPromotionCount: 0,
   };
 
   pi.registerTool({
@@ -93,6 +94,79 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: formatSavedMemoryToolResult(saved.entry) }],
         details: { ok: true, memoryId: saved.entry.memoryId, status: saved.entry.status, path: entriesFile() },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "memory_use_candidate",
+    label: "Use candidate memory this turn",
+    description: [
+      "Pull one candidate (unverified) memory's full content into the current turn without changing its status.",
+      "Call this only when the candidate shortlist looks directly relevant to what you are doing right now.",
+    ].join(" "),
+    parameters: Type.Object({
+      memoryId: Type.String({ description: "memoryId of a candidate-status memory from the candidate shortlist." }),
+      relevanceReason: Type.String({ description: "Brief reason this candidate is relevant to the current turn." }),
+    }),
+    async execute(_toolCallId, params) {
+      const memoryId = String(params.memoryId ?? "");
+      const relevanceReason = String(params.relevanceReason ?? "");
+      const entry = findEntry(memoryId);
+      if (!entry) {
+        return { content: [{ type: "text", text: "Memory not used: no memory with this id exists." }], details: { ok: false, reason: "memory-not-found" } };
+      }
+      if (entry.status !== "candidate") {
+        return { content: [{ type: "text", text: "Memory not used: this memory is not in candidate status." }], details: { ok: false, reason: "not-a-candidate" } };
+      }
+      recordCandidateUse(entry, relevanceReason);
+      const text = entry.content.details ? `${entry.content.summary}\n${entry.content.details}` : entry.content.summary;
+      return { content: [{ type: "text", text }], details: { ok: true, memoryId: entry.memoryId, status: entry.status } };
+    },
+  });
+
+  pi.registerTool({
+    name: "memory_promote_candidate",
+    label: "Promote candidate memory to active",
+    description: [
+      "Promote a candidate (unverified) memory to active status using your own real-time judgment of a trigger signal.",
+      "Use only when the user explicitly confirmed the fact, the same fact was repeated and confirmed again, or a task that relied on the fact just succeeded.",
+      "Evidence must describe the concrete signal; this is capped per session and audited.",
+    ].join(" "),
+    parameters: Type.Object({
+      memoryId: Type.String({ description: "memoryId of the candidate memory to promote." }),
+      triggerKind: Type.Union([Type.Literal("explicit-confirmation"), Type.Literal("repeated-confirmation"), Type.Literal("task-success")], { description: "Which concrete trigger signal justifies this promotion." }),
+      evidence: Type.String({ description: "Concrete description of the trigger signal (at least 15 characters)." }),
+    }),
+    async execute(_toolCallId, params) {
+      const memoryId = String(params.memoryId ?? "");
+      const triggerKind = String(params.triggerKind ?? "");
+      const evidence = String(params.evidence ?? "");
+      const entry = findEntry(memoryId);
+      if (!entry) {
+        return { content: [{ type: "text", text: "Memory not promoted: no memory with this id exists." }], details: { ok: false, reason: "memory-not-found" } };
+      }
+      if (!canPromoteMemory(entry)) {
+        return { content: [{ type: "text", text: `Memory not promoted: entry is not promotable (status=${entry.status}).` }], details: { ok: false, reason: "not-promotable" } };
+      }
+      const evidenceProblem = checkLlmPromotionEvidence(evidence);
+      if (evidenceProblem) {
+        return { content: [{ type: "text", text: evidenceProblem }], details: { ok: false, reason: "insufficient-evidence" } };
+      }
+      if (state.llmPromotionCount >= 5) {
+        return {
+          content: [{ type: "text", text: "Memory not promoted: session cap of 5 LLM-initiated promotions reached. Use /memory feedback <id> helpful instead." }],
+          details: { ok: false, reason: "session-cap-reached" },
+        };
+      }
+      const promoted = promoteMemory(memoryId, triggerKind, "llm-judgment", evidence);
+      if (!promoted) {
+        return { content: [{ type: "text", text: "Memory not promoted: entry is not promotable." }], details: { ok: false, reason: "not-promotable" } };
+      }
+      state.llmPromotionCount += 1;
+      return {
+        content: [{ type: "text", text: `Memory promoted to active: ${promoted.memoryId}` }],
+        details: { ok: true, memoryId: promoted.memoryId, status: "active", sessionPromotionCount: state.llmPromotionCount },
       };
     },
   });
@@ -210,7 +284,9 @@ export default function (pi: ExtensionAPI) {
     state.lastInjection = injection;
     writeJson(injectionStateFile(), injection);
     appendMetric(metricFromMatches("inject", request, matches, selected, dynamic));
-    return { systemPrompt: event.systemPrompt + MEMORY_POLICY + dynamic };
+    const candidateMatches = request ? searchCandidateMemory(request, currentPhase, 5) : [];
+    const candidateBlock = renderCandidateShortlist(candidateMatches);
+    return { systemPrompt: event.systemPrompt + MEMORY_POLICY + dynamic + candidateBlock };
   });
 }
 
@@ -307,25 +383,53 @@ function updateEntry(id: string, updater: (entry: MemoryEntry) => MemoryEntry): 
   return entries[index];
 }
 
-function promoteMemory(id: string, reason: string, source: string): MemoryEntry | null {
+function promoteMemory(id: string, reason: string, source: string, evidence?: string): MemoryEntry | null {
   const existing = findEntry(id);
   if (!existing || !canPromoteMemory(existing)) {
     appendMetric({ operation: "auto-promote", selectedMemoryIds: [id], reason, source, blocked: "not-promotable" });
     return null;
   }
+  const evidenceSummary = evidence ? `Promoted by Memory Autopilot (${reason}): ${evidence}` : `Promoted by Memory Autopilot (${reason}).`;
   const promoted = updateEntry(id, (entry) => ({
     ...entry,
     status: "active",
     updatedAt: nowIso(),
     confidence: entry.confidence === "explicit" ? "explicit" : "high",
-    provenance: { ...entry.provenance, updatedBy: "agent", evidence: [...(entry.provenance.evidence ?? []), { kind: "autopilot", summary: `Promoted by Memory Autopilot (${reason}).` }] },
+    provenance: { ...entry.provenance, updatedBy: "agent", evidence: [...(entry.provenance.evidence ?? []), { kind: "autopilot", summary: evidenceSummary }] },
     governance: { ...entry.governance, autoInject: "when-relevant" },
   }));
   if (promoted) {
-    appendAudit("auto-promote", id, { reason, source, status: "active" });
+    appendAudit("auto-promote", id, { reason, source, status: "active", evidence });
     appendMetric({ operation: "auto-promote", selectedMemoryIds: [id], selectedRenderHashes: [promoted.rendering.stableRenderHash], reason, source });
   }
   return promoted;
+}
+
+function searchCandidateMemory(request: string, currentPhase: string | undefined, limit: number): MemoryMatch[] {
+  return searchMemory(request, { includeDisabled: true, limit, currentPhase }).filter((match) => match.entry.status === "candidate");
+}
+
+function renderCandidateShortlist(matches: MemoryMatch[]): string {
+  if (matches.length === 0) return "";
+  return [
+    "",
+    "[Candidate Memory Shortlist v1]",
+    "Unverified memory. Call memory_use_candidate before treating any line below as fact. Call memory_promote_candidate only when a concrete trigger signal is present.",
+    ...matches.map((match) => `- ${match.entry.memoryId}: ${match.entry.content.summary.slice(0, 80)}`),
+    "[/Candidate Memory Shortlist]",
+  ].join("\n");
+}
+
+function checkLlmPromotionEvidence(evidence: string): string | null {
+  const normalized = normalizeWhitespace(evidence);
+  if (normalized.length < 15) return "Evidence must describe the concrete trigger signal in at least 15 characters.";
+  return null;
+}
+
+function recordCandidateUse(entry: MemoryEntry, relevanceReason: string): void {
+  appendAudit("llm-use-candidate", entry.memoryId, { relevanceReason });
+  appendMetric({ operation: "llm-use-candidate", selectedMemoryIds: [entry.memoryId], relevanceReason });
+  updateEntry(entry.memoryId, (current) => ({ ...current, lastAccessedAt: nowIso(), retrieval: { ...current.retrieval, useCount: (current.retrieval?.useCount ?? 0) + 1 } }));
 }
 
 function canPromoteMemory(entry: MemoryEntry): boolean {

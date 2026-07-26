@@ -306,3 +306,217 @@ def test_memory_autopilot_scores_phase_promotes_and_demotes(tmp_path):
     assert any(item.get("operation") == "auto-promote" for item in data["metrics"])
     assert any(item.get("action") == "auto-promote" for item in data["audit"])
     assert any("score=" in text for text in data["notifications"] if "Memory explain" in text)
+
+
+def test_memory_candidate_shortlist_visible_in_system_prompt(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-candidate-shortlist-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const longCandidateText = '아니야, zeta-shortlist-candidate memory는 ' + 'extra-detail-padding '.repeat(20) + 'workflow 관련 확인 필요';
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: longCandidateText });
+          await pi.tools.memory_remember.execute('active-1', { text: '결정: zeta-shortlist-active memory는 active여야 해' }, undefined, undefined, ctx);
+
+          const prompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-shortlist-candidate zeta-shortlist-active 관련 작업' });
+
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const candidate = entries.find((e) => e.content.summary.includes('zeta-shortlist-candidate'));
+          const active = entries.find((e) => e.content.summary.includes('zeta-shortlist-active'));
+          console.log(JSON.stringify({
+            prompt: prompt.systemPrompt,
+            candidateId: candidate.memoryId,
+            activeId: active.memoryId,
+            candidateSummary: candidate.content.summary,
+            candidateStatus: candidate.status,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert data["candidateStatus"] == "candidate"
+    assert "[Candidate Memory Shortlist v1]" in data["prompt"]
+    assert data["candidateId"] in data["prompt"]
+    assert "[External Memory Context v1]" in data["prompt"]
+    assert data["activeId"] in data["prompt"]
+
+    summary = data["candidateSummary"]
+    assert len(summary) > 80
+    assert summary[:80] in data["prompt"]
+    assert summary[80:] not in data["prompt"]
+
+
+def test_memory_use_candidate_tool_returns_content_without_promoting(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-use-candidate-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        (async () => {
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: '아니야, zeta-use-candidate memory는 workflow 관련 candidate여야 해' });
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entriesFile = path.join(root, '.project-memory', 'memory', 'entries.jsonl');
+          let entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const candidate = entries.find((e) => e.content.summary.includes('zeta-use-candidate'));
+
+          const used = await pi.tools.memory_use_candidate.execute('call-1', { memoryId: candidate.memoryId, relevanceReason: 'User just confirmed this exact topic again in this turn.' });
+          const missing = await pi.tools.memory_use_candidate.execute('call-2', { memoryId: 'mem_does_not_exist_00000', relevanceReason: 'Testing the missing-id path explicitly here.' });
+
+          entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const afterUse = entries.find((e) => e.memoryId === candidate.memoryId);
+          const audit = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'audit.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+
+          console.log(JSON.stringify({
+            usedText: used.content[0].text,
+            usedDetails: used.details,
+            missingDetails: missing.details,
+            statusAfterUse: afterUse.status,
+            useCountAfterUse: afterUse.retrieval.useCount,
+            audit,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert "zeta-use-candidate" in data["usedText"]
+    assert data["usedDetails"]["ok"] is True
+    assert data["statusAfterUse"] == "candidate"
+    assert data["useCountAfterUse"] == 1
+    assert data["missingDetails"]["ok"] is False
+    assert data["missingDetails"]["reason"] == "memory-not-found"
+
+    audit_entries = data["audit"]
+    assert audit_entries[-1]["action"] == "llm-use-candidate"
+    assert audit_entries[-1]["memoryId"] == data["usedDetails"]["memoryId"]
+
+
+def test_memory_promote_candidate_promotes_and_blocks_bad_input(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-promote-candidate-basic-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const root = process.env.HARNESS_MEMORY_ROOT;
+        const entriesFile = path.join(root, '.project-memory', 'memory', 'entries.jsonl');
+
+        async function makeCandidate(marker) {
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: `아니야, ${marker} memory는 workflow 관련 candidate여야 해` });
+          const entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          return entries.find((e) => e.content.summary.includes(marker));
+        }
+
+        (async () => {
+          const cand1 = await makeCandidate('zeta-promote-success');
+          const promote1 = await pi.tools.memory_promote_candidate.execute('call-1', { memoryId: cand1.memoryId, triggerKind: 'explicit-confirmation', evidence: 'User explicitly said yes that is exactly correct, confirmed.' });
+
+          const cand2 = await makeCandidate('zeta-promote-shortevidence');
+          const promote2 = await pi.tools.memory_promote_candidate.execute('call-2', { memoryId: cand2.memoryId, triggerKind: 'explicit-confirmation', evidence: 'ok' });
+
+          const promote3 = await pi.tools.memory_promote_candidate.execute('call-3', { memoryId: cand1.memoryId, triggerKind: 'task-success', evidence: 'Second promotion attempt after already active status should fail now.' });
+
+          const entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const cand1After = entries.find((e) => e.memoryId === cand1.memoryId);
+          const cand2After = entries.find((e) => e.memoryId === cand2.memoryId);
+          const audit = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'audit.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const promoteAudit = audit.find((a) => a.memoryId === cand1.memoryId && a.action === 'auto-promote');
+
+          console.log(JSON.stringify({
+            promote1Details: promote1.details,
+            promote2Details: promote2.details,
+            promote3Details: promote3.details,
+            cand1StatusAfter: cand1After.status,
+            cand2StatusAfter: cand2After.status,
+            promoteAudit,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert data["promote1Details"]["ok"] is True
+    assert data["cand1StatusAfter"] == "active"
+    assert data["promoteAudit"]["action"] == "auto-promote"
+    assert data["promoteAudit"]["reason"] == "explicit-confirmation"
+    assert "User explicitly said yes" in data["promoteAudit"]["evidence"]
+
+    assert data["promote2Details"]["ok"] is False
+    assert data["promote2Details"]["reason"] == "insufficient-evidence"
+    assert data["cand2StatusAfter"] == "candidate"
+
+    assert data["promote3Details"]["ok"] is False
+    assert data["promote3Details"]["reason"] == "not-promotable"
+
+
+def test_memory_promote_candidate_enforces_session_cap(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-promote-candidate-cap-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const root = process.env.HARNESS_MEMORY_ROOT;
+        const entriesFile = path.join(root, '.project-memory', 'memory', 'entries.jsonl');
+
+        async function makeCandidate(marker) {
+          await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: `아니야, ${marker} memory는 workflow 관련 candidate여야 해` });
+          const entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          return entries.find((e) => e.content.summary.includes(marker));
+        }
+
+        (async () => {
+          const results = [];
+          for (let i = 1; i <= 6; i += 1) {
+            const marker = `zeta-promote-cap-${i}`;
+            const cand = await makeCandidate(marker);
+            const result = await pi.tools.memory_promote_candidate.execute(`call-${i}`, { memoryId: cand.memoryId, triggerKind: 'explicit-confirmation', evidence: `User explicitly confirmed candidate number ${i} just now in conversation.` });
+            results.push({ marker, memoryId: cand.memoryId, details: result.details });
+          }
+
+          const entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const sixth = entries.find((e) => e.memoryId === results[5].memoryId);
+
+          console.log(JSON.stringify({ results, sixthStatus: sixth.status }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    results = data["results"]
+    assert len(results) == 6
+    for result in results[:5]:
+        assert result["details"]["ok"] is True
+
+    assert results[5]["details"]["ok"] is False
+    assert results[5]["details"]["reason"] == "session-cap-reached"
+    assert data["sixthStatus"] == "candidate"
+

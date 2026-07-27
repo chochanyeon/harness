@@ -52,7 +52,7 @@ interview
 | 영역 | 위치 | 역할 |
 |---|---|---|
 | Workflow runtime | `target/.pi/extensions/workflow.ts`, `target/.pi/extensions/workflow/` | phase, guard, command policy, reminders, ledger |
-| Memory runtime | `target/.pi/extensions/memory.ts` | durable memory, candidate memory shortlist, LLM-judgment 실시간 승격/사용, AGENTS.md 반영 제안 추적, feedback-aware relevance scoring |
+| Memory runtime | `target/.pi/extensions/memory.ts` | durable memory, candidate memory shortlist, LLM-judgment 실시간 승격/사용, AGENTS.md 반영 제안 추적, feedback-aware relevance scoring, supersede/merge lifecycle 명령 |
 | Skills/personas | `target/.pi/skills/`, `target/.pi/personas/` | review, trace, TDD, documentation, continuation safety 등 |
 | Policies/schemas | `target/.harness/`, `target/.pi/schemas/` | workflow hard rules, field log/memory schema |
 | TUI helpers/theme | `target/.pi/themes/`, `target/.pi/extensions/assistant-markdown-box.ts` | workflow console theme, boxed markdown rendering |
@@ -184,6 +184,8 @@ memory_remember({ text })
 /memory stats
 /memory feedback <id> helpful|irrelevant|wrong|stale
 /memory missed <description>
+/memory supersede <oldId> <newId>       # oldId를 superseded 상태로 바꿔 검색/주입에서 제외, newId의 supersedes에 기록
+/memory merge <survivorId> <id2> [<id3> ...]  # survivor는 그대로 두고 나머지를 모두 survivor로 supersede(내용 합치기 없음)
 memory_use_candidate({ memoryId, relevanceReason })       # candidate 요약 목록에서 관련 있는 항목을 상태 변경 없이 현재 턴에 사용
 memory_promote_candidate({ memoryId, triggerKind, evidence })  # 명시적 확인/반복 확인/작업 성공 신호가 있을 때만 candidate→active 승격, 세션당 5건 상한, 근거 필수
 memory_propose_agents_promotion({ memoryId, proposedText })    # useCount·helpful feedback 기준을 넘은 memory를 AGENTS.md 반영 후보로 사용자에게 제안했음을 기록 (실제 파일 수정은 하지 않음)

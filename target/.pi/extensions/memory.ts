@@ -240,7 +240,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("memory", {
     description: "Manage external memory used for task-specific LLM context.",
     getArgumentCompletions: (prefix) => [
-      "list", "search", "show", "remember", "disable", "enable", "delete", "explain", "doctor", "stats", "feedback", "missed",
+      "list", "search", "show", "remember", "disable", "enable", "delete", "explain", "doctor", "stats", "feedback", "missed", "supersede", "merge",
     ].filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value })),
     handler: async (args, ctx) => {
       const trimmed = args.trim();
@@ -292,6 +292,36 @@ export default function (pi: ExtensionAPI) {
         appendAudit(command, id, { status });
         if (command !== "enable" && wasRecentlyInjected(id)) appendFeedback(id, command === "delete" ? "wrong" : "irrelevant", "inferred from immediate user action after injection");
         return ctx.ui.notify(`Memory ${id} ${command === "delete" ? "deprecated" : status}.`, "info");
+      }
+
+      if (command === "supersede") {
+        const oldId = rest[0];
+        const newId = rest[1];
+        if (!oldId || !newId) return ctx.ui.notify("Usage: /memory supersede <oldId> <newId>", "warning");
+        const result = supersedeMemory(oldId, newId);
+        if (!result.ok) {
+          const message = result.reason === "self-supersede"
+            ? "Cannot supersede a memory with itself."
+            : result.reason === "old-not-found"
+              ? `Memory not found: ${oldId}`
+              : `Memory not found: ${newId}`;
+          return ctx.ui.notify(message, "warning");
+        }
+        return ctx.ui.notify(`Memory ${oldId} superseded by ${newId}.`, "info");
+      }
+
+      if (command === "merge") {
+        const survivorId = rest[0];
+        const mergedIds = rest.slice(1);
+        if (!survivorId) return ctx.ui.notify("Usage: /memory merge <survivorId> <id2> [<id3> ...]", "warning");
+        if (mergedIds.length === 0) return ctx.ui.notify("Usage: /memory merge <survivorId> <id2> [<id3> ...]", "warning");
+        if (!findEntry(survivorId)) return ctx.ui.notify(`Memory not found: ${survivorId}`, "warning");
+        for (const id of mergedIds) {
+          if (id === survivorId) return ctx.ui.notify(`Cannot merge a memory with itself: ${id}`, "warning");
+          if (!findEntry(id)) return ctx.ui.notify(`Memory not found: ${id}`, "warning");
+        }
+        for (const id of mergedIds) supersedeMemory(id, survivorId);
+        return ctx.ui.notify(`Merged ${mergedIds.join(", ")} into ${survivorId}.`, "info");
       }
 
       if (command === "feedback") {
@@ -539,6 +569,25 @@ function canPromoteMemory(entry: MemoryEntry): boolean {
   if (entry.privacy.containsSecrets || entry.privacy.sensitivity === "secret") return false;
   if (entry.governance.supersededBy) return false;
   return true;
+}
+
+function supersedeMemory(oldId: string, newId: string): { ok: true } | { ok: false; reason: "self-supersede" | "old-not-found" | "new-not-found" } {
+  if (oldId === newId) return { ok: false, reason: "self-supersede" };
+  if (!findEntry(oldId)) return { ok: false, reason: "old-not-found" };
+  if (!findEntry(newId)) return { ok: false, reason: "new-not-found" };
+  updateEntry(oldId, (entry) => ({
+    ...entry,
+    status: "superseded",
+    updatedAt: nowIso(),
+    governance: { ...entry.governance, supersededBy: newId, autoInject: "never" },
+  }));
+  updateEntry(newId, (entry) => ({
+    ...entry,
+    updatedAt: nowIso(),
+    governance: { ...entry.governance, supersedes: Array.from(new Set([...(entry.governance.supersedes ?? []), oldId])) },
+  }));
+  appendAudit("supersede", oldId, { supersededBy: newId });
+  return { ok: true };
 }
 
 function autoExtractMemory(request: string): void {

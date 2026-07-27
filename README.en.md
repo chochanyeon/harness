@@ -52,7 +52,7 @@ interview
 | Area | Path | Purpose |
 |---|---|---|
 | Workflow runtime | `target/.pi/extensions/workflow.ts`, `target/.pi/extensions/workflow/` | phases, guards, command policy, reminders, ledger |
-| Memory runtime | `target/.pi/extensions/memory.ts` | durable memory, candidate memory shortlist, real-time LLM-judgment promotion/use, AGENTS.md promotion-proposal tracking, feedback-aware relevance scoring |
+| Memory runtime | `target/.pi/extensions/memory.ts` | durable memory, candidate memory shortlist, real-time LLM-judgment promotion/use, AGENTS.md promotion-proposal tracking, feedback-aware relevance scoring, supersede/merge lifecycle commands |
 | Skills/personas | `target/.pi/skills/`, `target/.pi/personas/` | review, trace, TDD, documentation, continuation safety, etc. |
 | Policies/schemas | `target/.harness/`, `target/.pi/schemas/` | workflow hard rules, field log and memory schemas |
 | TUI helpers/theme | `target/.pi/themes/`, `target/.pi/extensions/assistant-markdown-box.ts` | workflow console theme and boxed markdown rendering |
@@ -184,6 +184,8 @@ memory_remember({ text })
 /memory stats
 /memory feedback <id> helpful|irrelevant|wrong|stale
 /memory missed <description>
+/memory supersede <oldId> <newId>       # marks oldId superseded (excluded from search/injection), records it in newId's supersedes
+/memory merge <survivorId> <id2> [<id3> ...]  # survivor's content stays unchanged, every other id is superseded by survivor (no content combining)
 memory_use_candidate({ memoryId, relevanceReason })            # pull a candidate shortlist item into this turn without changing its status
 memory_promote_candidate({ memoryId, triggerKind, evidence })  # promote candidate→active only on explicit/repeated confirmation or task success, capped at 5/session, evidence required
 memory_propose_agents_promotion({ memoryId, proposedText })    # record that a repeatedly used + helpful-feedback memory is being suggested as an AGENTS.md addition (never edits the file itself)

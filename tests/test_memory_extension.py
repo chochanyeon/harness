@@ -850,4 +850,259 @@ def test_memory_feedback_adjustment_clamps_score_change_to_four(tmp_path):
     assert 0 < boosted_score - control_score <= 4
 
 
+def test_memory_supersede_command_sets_status_and_links(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-supersede-basic-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const oldOne = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-supersede-old memory는 대체될 결정이었다' }, undefined, undefined, ctx);
+          const newOne = await pi.tools.memory_remember.execute('call-2', { text: '결정: zeta-supersede-new memory는 새로운 결정이다' }, undefined, undefined, ctx);
+          const oldId = oldOne.details.memoryId;
+          const newId = newOne.details.memoryId;
+
+          await pi.commands.memory.handler(`supersede ${oldId} ${newId}`, ctx);
+
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const oldAfter = entries.find((e) => e.memoryId === oldId);
+          const newAfter = entries.find((e) => e.memoryId === newId);
+          const audit = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'audit.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+
+          console.log(JSON.stringify({
+            oldStatus: oldAfter.status,
+            oldSupersededBy: oldAfter.governance.supersededBy,
+            newSupersedes: newAfter.governance.supersedes,
+            auditLast: audit[audit.length - 1],
+            oldId,
+            newId,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert data["oldStatus"] == "superseded"
+    assert data["oldSupersededBy"] == data["newId"]
+    assert data["newSupersedes"] == [data["oldId"]]
+    assert data["auditLast"]["action"] == "supersede"
+    assert data["auditLast"]["memoryId"] == data["oldId"]
+
+
+def test_memory_supersede_blocks_self_and_missing_id(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-supersede-guard-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const saved = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-supersede-guard memory는 가드 테스트용' }, undefined, undefined, ctx);
+          const id = saved.details.memoryId;
+
+          await pi.commands.memory.handler(`supersede ${id} ${id}`, ctx);
+          const selfNotification = notifications[notifications.length - 1].text;
+
+          await pi.commands.memory.handler('supersede mem_does_not_exist_00000 ' + id, ctx);
+          const missingNotification = notifications[notifications.length - 1].text;
+
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const after = entries.find((e) => e.memoryId === id);
+
+          console.log(JSON.stringify({ selfNotification, missingNotification, statusAfter: after.status }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert "self" in data["selfNotification"].lower()
+    assert "not found" in data["missingNotification"].lower()
+    assert data["statusAfter"] == "active"
+
+
+def test_memory_supersede_excludes_memory_from_search(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-supersede-search-exclude-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const outdated = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-supersede-excluded memory는 검색에서 사라져야 한다' }, undefined, undefined, ctx);
+          const outdatedId = outdated.details.memoryId;
+          await pi.commands.memory.handler(`feedback ${outdatedId} helpful`, ctx);
+          await pi.commands.memory.handler(`feedback ${outdatedId} helpful`, ctx);
+          await pi.commands.memory.handler(`feedback ${outdatedId} helpful`, ctx);
+
+          const replacement = await pi.tools.memory_remember.execute('call-2', { text: '결정: zeta-supersede-replacement memory는 새 결정이다' }, undefined, undefined, ctx);
+          const replacementId = replacement.details.memoryId;
+
+          await pi.commands.memory.handler(`supersede ${outdatedId} ${replacementId}`, ctx);
+
+          await pi.commands.memory.handler('search zeta-supersede', ctx);
+          const notification = notifications[notifications.length - 1].text;
+
+          console.log(JSON.stringify({ notification, outdatedId }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert data["outdatedId"] not in data["notification"]
+
+
+def test_memory_merge_supersedes_all_and_keeps_survivor_unchanged(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-merge-basic-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const survivor = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-merge-survivor memory는 살아남는다' }, undefined, undefined, ctx);
+          const dup1 = await pi.tools.memory_remember.execute('call-2', { text: '결정: zeta-merge-dup1 memory는 중복이다' }, undefined, undefined, ctx);
+          const dup2 = await pi.tools.memory_remember.execute('call-3', { text: '결정: zeta-merge-dup2 memory는 중복이다' }, undefined, undefined, ctx);
+          const survivorId = survivor.details.memoryId;
+          const dup1Id = dup1.details.memoryId;
+          const dup2Id = dup2.details.memoryId;
+          const survivorSummaryBefore = '결정: zeta-merge-survivor memory는 살아남는다';
+
+          await pi.commands.memory.handler(`merge ${survivorId} ${dup1Id} ${dup2Id}`, ctx);
+
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const survivorAfter = entries.find((e) => e.memoryId === survivorId);
+          const dup1After = entries.find((e) => e.memoryId === dup1Id);
+          const dup2After = entries.find((e) => e.memoryId === dup2Id);
+
+          console.log(JSON.stringify({
+            dup1Status: dup1After.status,
+            dup2Status: dup2After.status,
+            dup1SupersededBy: dup1After.governance.supersededBy,
+            dup2SupersededBy: dup2After.governance.supersededBy,
+            survivorSummaryAfter: survivorAfter.content.summary,
+            survivorSummaryBefore,
+            survivorId,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert data["dup1Status"] == "superseded"
+    assert data["dup2Status"] == "superseded"
+    assert data["dup1SupersededBy"] == data["survivorId"]
+    assert data["dup2SupersededBy"] == data["survivorId"]
+    assert data["survivorSummaryAfter"] == data["survivorSummaryBefore"]
+
+
+def test_memory_merge_blocks_self_merge(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-merge-self-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const survivor = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-merge-selfblock memory는 테스트용' }, undefined, undefined, ctx);
+          const survivorId = survivor.details.memoryId;
+
+          await pi.commands.memory.handler(`merge ${survivorId} ${survivorId}`, ctx);
+          const notification = notifications[notifications.length - 1].text;
+
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const after = entries.find((e) => e.memoryId === survivorId);
+
+          console.log(JSON.stringify({ notification, statusAfter: after.status }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert "self" in data["notification"].lower()
+    assert data["statusAfter"] == "active"
+
+
+def test_memory_merge_is_atomic_when_a_later_id_is_invalid(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-merge-atomic-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const survivor = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-merge-atomic-survivor memory는 테스트용' }, undefined, undefined, ctx);
+          const validTarget = await pi.tools.memory_remember.execute('call-2', { text: '결정: zeta-merge-atomic-valid memory는 테스트용' }, undefined, undefined, ctx);
+          const survivorId = survivor.details.memoryId;
+          const validId = validTarget.details.memoryId;
+
+          await pi.commands.memory.handler(`merge ${survivorId} ${validId} mem_does_not_exist_00000`, ctx);
+          const notification = notifications[notifications.length - 1].text;
+
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entries = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'entries.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const validAfter = entries.find((e) => e.memoryId === validId);
+
+          console.log(JSON.stringify({ notification, validStatusAfter: validAfter.status }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert "not found" in data["notification"].lower()
+    assert data["validStatusAfter"] == "active"
+
+
 

@@ -6,6 +6,7 @@ import { formatWorkspaceMismatch, runPreTransitionGate, validateWorkflowWorkspac
 import { getBranch, getGitRoot } from "./git";
 import { getWorkflowStatePath, getWorkflowStateDir } from "./storage";
 import { isSharedAutoAdvancePhase, isSharedTransitionAllowed, isSharedWorkflowPhase, sharedNextPhase } from "./policy-core";
+import type { PhaseTemplateName } from "./domain/phase-template-policy";
 import { safeWriteWorkflowLedgerSnapshot } from "./ledger";
 
 export function createWorkflow(title: string): WorkflowInstance {
@@ -27,8 +28,8 @@ export function createWorkflow(title: string): WorkflowInstance {
 
 export type WorkflowAdvanceTransition = { from: WorkflowPhase; to: WorkflowPhase; message: string; planSha256?: string };
 
-export function getNextPhase(phase: WorkflowPhase): WorkflowPhase | null {
-  return sharedNextPhase(phase);
+export function getNextPhase(phase: WorkflowPhase, phaseTemplate?: PhaseTemplateName): WorkflowPhase | null {
+  return sharedNextPhase(phase, phaseTemplate);
 }
 
 export function transitionWorkflow(workflow: WorkflowInstance, to: WorkflowPhase, reason: string): void {
@@ -63,13 +64,13 @@ export async function advanceWorkflow(
     if (from === "push") {
       return { ok: false, message: "Push phase requires an observed successful git push. Run git push; the workflow will advance to done only after the push succeeds." };
     }
-    const next = getNextPhase(from);
+    const next = getNextPhase(from, workflow.phaseTemplate);
     if (!next) {
       if (transitions.length === 0) return { ok: false, message: `이미 마지막 단계입니다: ${workflow.phase}` };
       break;
     }
 
-    if (!isSharedTransitionAllowed(from, next)) {
+    if (!isSharedTransitionAllowed(from, next, workflow.phaseTemplate)) {
       return { ok: false, message: `Workflow transition blocked by policy: ${from} → ${next}` };
     }
 

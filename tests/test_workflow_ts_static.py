@@ -178,6 +178,67 @@ class TestAmbiguityGatePolicy:
         assert "DPAA advisory skipped: no plan required" in src
 
 
+class TestPhaseTemplatePolicy:
+    def test_phase_template_policy_module_exists_with_expected_exports(self):
+        src = (EXT_DIR / "domain" / "phase-template-policy.ts").read_text(encoding="utf-8")
+        assert '"full" | "light"' in src
+        assert "export function parsePhaseTemplateMetadata" in src
+        assert "export function getPhaseTemplatePhases" in src
+        assert "phase\\s*template" in src
+        # basePhases is passed in by the caller, not imported from policy-core.ts,
+        # to avoid a circular import between the two modules.
+        assert 'from "../policy-core"' not in src
+
+    def test_workflow_instance_declares_optional_phase_template_field(self):
+        src = _src("types.ts")
+        assert "phaseTemplate?:" in src
+
+    def test_policy_core_shared_next_phase_accepts_phase_template(self):
+        src = _src("policy-core.ts")
+        assert "export function sharedNextPhase(phase: WorkflowPhase, phaseTemplate?: PhaseTemplateName)" in src
+        assert "getPhaseTemplatePhases(phaseTemplate, sharedWorkflowPhases())" in src
+
+    def test_policy_core_is_shared_transition_allowed_accepts_phase_template(self):
+        src = _src("policy-core.ts")
+        assert "export function isSharedTransitionAllowed(from: WorkflowPhase, to: WorkflowPhase, phaseTemplate?: PhaseTemplateName)" in src
+        assert "sharedNextPhase(from, phaseTemplate)" in src
+
+    def test_state_get_next_phase_accepts_and_forwards_phase_template(self):
+        src = _src("state.ts")
+        assert "export function getNextPhase(phase: WorkflowPhase, phaseTemplate?: PhaseTemplateName)" in src
+        assert "sharedNextPhase(phase, phaseTemplate)" in src
+
+    def test_advance_workflow_passes_workflow_phase_template_to_next_phase_lookups(self):
+        src = _src("state.ts")
+        assert "getNextPhase(from, workflow.phaseTemplate)" in src
+        assert "isSharedTransitionAllowed(from, next, workflow.phaseTemplate)" in src
+
+    def test_dpaa_gate_locks_phase_template_once_from_plan_metadata(self):
+        src = _src("gates.ts")
+        assert "parsePhaseTemplateMetadata" in src
+        assert "workflow.phaseTemplate !== undefined) return" in src
+        assert 'parsePhaseTemplateMetadata(planTextForPolicy) ?? "full"' in src
+
+    def test_dpaa_gate_locks_phase_template_before_skip_token_check(self):
+        """lockPhaseTemplateFromPlanIfUnset must run before consumeSkipToken('dpaa'), so an
+        explicit `Phase Template: light` declaration is honored even when the user skips
+        the DPAA check itself via /workflow skip dpaa."""
+        src = _src("gates.ts")
+        assert "function lockPhaseTemplateFromPlanIfUnset(workflow: WorkflowInstance): void" in src
+        gate_body = src[src.index("export function runDpaaGate("):]
+        lock_call_index = gate_body.index("lockPhaseTemplateFromPlanIfUnset(workflow)")
+        skip_check_index = gate_body.index('consumeSkipToken("dpaa")')
+        assert lock_call_index < skip_check_index, "phaseTemplate lock must run before the DPAA skip-token check"
+
+    def test_no_single_argument_get_next_phase_calls_remain(self):
+        """Every getNextPhase(...) call site must pass a second phaseTemplate argument
+        so a light-template workflow's next-phase text/logic is never silently wrong."""
+        for relative_path in ["format.ts", "runtime-ui.ts", "transitions.ts", "application/workflow-command-router.ts"]:
+            src = (EXT_DIR / relative_path).read_text(encoding="utf-8")
+            single_arg_calls = re.findall(r"getNextPhase\(([^,()]+)\)", src)
+            assert single_arg_calls == [], f"{relative_path} has single-argument getNextPhase(...) call(s): {single_arg_calls}"
+
+
 class TestWorkflowTsShadowing:
     def test_no_const_path_shadowing_node_path(self):
         """No block-level 'const path' that shadows the node:path import."""

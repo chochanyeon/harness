@@ -381,7 +381,7 @@ pi.registerCommand("workflow", {
         ].join("\n"), "warning");
         return;
       }
-      const nextPhase = state.workflow ? getNextPhase(state.workflow.phase) : null;
+      const nextPhase = state.workflow ? getNextPhase(state.workflow.phase, state.workflow.phaseTemplate) : null;
       const requiresUserApproval = Boolean(state.workflow && nextPhase && isSharedApprovalBoundary(state.workflow.phase, nextPhase));
       if (state.workflow && requiresUserApproval && !ctx.hasUI) {
         ctx.ui.notify("승인 대화상자를 표시하려면 대화형 UI가 필요합니다. UI 세션에서 다시 시도하세요.", "warning");

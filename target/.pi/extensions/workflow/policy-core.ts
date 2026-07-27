@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { WorkflowPhase } from "./types";
 import { WORKFLOW_PHASES } from "./types";
+import type { PhaseTemplateName } from "./domain/phase-template-policy";
+import { getPhaseTemplatePhases } from "./domain/phase-template-policy";
 
 const PROJECT_ROOT = path.resolve(__dirname, "../../..");
 const POLICY_FILE = path.join(PROJECT_ROOT, ".harness", "workflow-policy.json");
@@ -161,8 +163,8 @@ export function isSharedWorkflowPhase(phase: string): phase is WorkflowPhase {
   return sharedWorkflowPhases().includes(phase as WorkflowPhase);
 }
 
-export function sharedNextPhase(phase: WorkflowPhase): WorkflowPhase | null {
-  const phases = sharedWorkflowPhases();
+export function sharedNextPhase(phase: WorkflowPhase, phaseTemplate?: PhaseTemplateName): WorkflowPhase | null {
+  const phases = getPhaseTemplatePhases(phaseTemplate, sharedWorkflowPhases());
   const index = phases.indexOf(phase);
   return index >= 0 ? phases[index + 1] ?? null : null;
 }
@@ -179,9 +181,9 @@ export function isSharedApprovalBoundary(from: WorkflowPhase, to: WorkflowPhase)
   return loadSharedWorkflowPolicy().approvalBoundaries.includes(sharedTransitionKey(from, to));
 }
 
-export function isSharedTransitionAllowed(from: WorkflowPhase, to: WorkflowPhase): boolean {
+export function isSharedTransitionAllowed(from: WorkflowPhase, to: WorkflowPhase, phaseTemplate?: PhaseTemplateName): boolean {
   const policy = loadSharedWorkflowPolicy().transitionPolicy;
-  if (policy.strictNextPhaseOnly || policy.forbidSkippedPhases) return sharedNextPhase(from) === to;
+  if (policy.strictNextPhaseOnly || policy.forbidSkippedPhases) return sharedNextPhase(from, phaseTemplate) === to;
   return isSharedWorkflowPhase(from) && isSharedWorkflowPhase(to);
 }
 

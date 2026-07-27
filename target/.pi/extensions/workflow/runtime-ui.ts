@@ -98,7 +98,7 @@ export function refreshWorkflowStatus(state: WorkflowRuntimeState, ctx: Workflow
     const quality = state.codeQualityGuardSatisfiedToken?.workflowId === workflowId ? "✅" : (state.gateFailures.get("code-quality") ?? 0) > 0 ? "❌" : "⏳";
     const review  = state.reviewPackageToken?.workflowId === workflowId ? "✅" : "⏳";
     const push    = state.pushExecutionGuardSatisfiedToken?.workflowId === workflowId ? "✅" : "⏳";
-    const nextPhase = getNextPhase(wf.phase);
+    const nextPhase = getNextPhase(wf.phase, wf.phaseTemplate);
     const phaseIndex = Math.max(0, WORKFLOW_PHASES.indexOf(wf.phase)) + 1;
     const phaseTotal = WORKFLOW_PHASES.length;
     const title = truncateToWidth(wf.title || "workflow", 32);

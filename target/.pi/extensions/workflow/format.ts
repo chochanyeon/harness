@@ -13,7 +13,7 @@ export function formatWorkflowStatus(workflow: WorkflowInstance | null): string 
       "시작: /workflow start <목표>",
     ].join("\n");
   }
-  const next = getNextPhase(workflow.phase);
+  const next = getNextPhase(workflow.phase, workflow.phaseTemplate);
   const ws = validateWorkflowWorkspace(workflow);
   return [
     banner("🧭 Workflow 상태"),
@@ -33,7 +33,7 @@ export function formatWorkflowStatus(workflow: WorkflowInstance | null): string 
 
 /** User-facing phase summary — no LLM instruction tags. */
 export function formatPhaseGuidanceForUser(workflow: WorkflowInstance): string {
-  const next = getNextPhase(workflow.phase);
+  const next = getNextPhase(workflow.phase, workflow.phaseTemplate);
   const lines: string[] = [];
   switch (workflow.phase) {
     case "interview":    lines.push("요구사항 정리 중. 완료 후 plan → plan_review 로 자동 진행됩니다."); break;
@@ -63,7 +63,7 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
     ].join("\n");
   }
 
-  const next = getNextPhase(workflow.phase);
+  const next = getNextPhase(workflow.phase, workflow.phaseTemplate);
   const displayNext = workflow.phase === "code_review" && next === "review_approved" ? "review-approved (after review package and gates)" : next ?? "none";
   const lines = [
     "[LLM WORKFLOW ACTION]",
@@ -252,7 +252,7 @@ export function formatWorkflowBoard(s: WorkflowBoardState): string[] {
   }
 
   const wf = s.workflow;
-  const next = getNextPhase(wf.phase);
+  const next = getNextPhase(wf.phase, wf.phaseTemplate);
 
   // Gate status indicators — only show gates relevant to the current phase
   const dpaa    = s.dpaaGuardSatisfied       ? "✅" : (s.gateFailures.get("dpaa") ?? 0) > 0         ? "❌" : "⏳";

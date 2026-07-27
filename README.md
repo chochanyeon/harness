@@ -40,6 +40,7 @@ interview
 - long-running workflow에서는 heartbeat와 `workflow_run_command` 증거를 남겨 context pollution을 줄입니다.
 - runtime workflow prompt는 현재 phase의 행동·전이·필수 guard 증거만 주입해 context noise를 줄입니다.
 - Pre-code_review 단계의 누락된 검증은 `code_review → review_approved` 전에 드러나며, 나중에 처리할 개선은 명시적으로 deferred로 남깁니다.
+- plan.md에 `Phase Template: light`를 선언하면 해당 workflow만 `document` phase를 건너뜁니다. 선언이 없으면 지금과 같은 10-phase 순서(full)가 적용됩니다.
 
 ## What gets installed
 

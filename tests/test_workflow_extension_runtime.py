@@ -2739,3 +2739,78 @@ def test_commit_to_push_blocked_when_uncommitted_changes_exist(tmp_path):
     assert data["resultReason"] == "policy-declined"
     assert any("uncommitted" in n.lower() or "커밋" in n for n in data["notifications"]), data["notifications"]
     assert "Current phase: commit" in data["statusText"], data["statusText"]
+
+
+def test_phase_template_policy_parses_metadata_and_filters_phases_runtime(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        const { parsePhaseTemplateMetadata, getPhaseTemplatePhases } = jiti(path.resolve('target/.pi/extensions/workflow/domain/phase-template-policy.ts'));
+        const basePhases = ['interview', 'plan', 'plan_review', 'implement', 'code_review', 'review_approved', 'document', 'commit', 'push', 'done'];
+
+        console.log(JSON.stringify({
+          lightMetadata: parsePhaseTemplateMetadata('Phase Template: light\n# Plan') ?? null,
+          noMetadata: parsePhaseTemplateMetadata('# Plan\n- Some content.') ?? null,
+          fullMetadata: parsePhaseTemplateMetadata('Phase Template: full\n# Plan') ?? null,
+          lightPhasesHasDocument: getPhaseTemplatePhases('light', basePhases).includes('document'),
+          fullPhasesHasDocument: getPhaseTemplatePhases(undefined, basePhases).includes('document'),
+          lightPhasesHasCommit: getPhaseTemplatePhases('light', basePhases).includes('commit'),
+        }));
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["lightMetadata"] == "light"
+    assert data["noMetadata"] is None
+    assert data["fullMetadata"] == "full"
+    assert data["lightPhasesHasDocument"] is False
+    assert data["fullPhasesHasDocument"] is True
+    assert data["lightPhasesHasCommit"] is True
+
+
+def test_shared_next_phase_and_transition_allowed_respect_phase_template_runtime(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        const { sharedNextPhase, isSharedTransitionAllowed } = jiti(path.resolve('target/.pi/extensions/workflow/policy-core.ts'));
+
+        console.log(JSON.stringify({
+          lightNext: sharedNextPhase('review_approved', 'light'),
+          fullNext: sharedNextPhase('review_approved', undefined),
+          lightAllowed: isSharedTransitionAllowed('review_approved', 'commit', 'light'),
+          fullAllowed: isSharedTransitionAllowed('review_approved', 'commit', undefined),
+        }));
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["lightNext"] == "commit"
+    assert data["fullNext"] == "document"
+    assert data["lightAllowed"] is True
+    assert data["fullAllowed"] is False
+
+
+def test_get_next_phase_respects_phase_template_runtime(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const { createJiti } = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), { interopDefault: false });
+        const { getNextPhase } = jiti(path.resolve('target/.pi/extensions/workflow/state.ts'));
+
+        console.log(JSON.stringify({
+          lightNext: getNextPhase('review_approved', 'light'),
+          fullNext: getNextPhase('review_approved', undefined),
+          fullNextOmitted: getNextPhase('review_approved'),
+        }));
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["lightNext"] == "commit"
+    assert data["fullNext"] == "document"
+    assert data["fullNextOmitted"] == "document"

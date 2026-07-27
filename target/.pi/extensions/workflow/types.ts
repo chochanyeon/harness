@@ -1,4 +1,5 @@
 import type { ArtifactDescriptor } from "./artifact-descriptor";
+import type { PhaseTemplateName } from "./domain/phase-template-policy";
 
 export type WorkflowPhase =
   | "interview"
@@ -68,6 +69,8 @@ export type WorkflowInstance = {
   taskQueue?: WorkflowTaskQueue;
   /** implement 시작 시점의 미테스트 클래스 목록. implement→code_review 전환 시 TDD 첨종 여부 판단에 사용. */
   untestedClassesSnapshot?: string[];
+  /** plan.md의 `Phase Template:` 줄에서 확정된 phase 순서 template. undefined는 full(기존 10-phase 순서)을 의미한다. */
+  phaseTemplate?: PhaseTemplateName;
 };
 
 export type DpaaReport = {

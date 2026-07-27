@@ -10,6 +10,7 @@ import { sha256File } from "./storage";
 import { banner, table } from "./ui";
 import { writeFieldLogEvent } from "./field-log";
 import { classifyAmbiguityGatePolicy, formatAmbiguityGatePolicy } from "./domain/ambiguity-gate-policy";
+import { parsePhaseTemplateMetadata } from "./domain/phase-template-policy";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow/gates.ts
 const HARNESS_ROOT = path.resolve(__dirname, "../../..");
@@ -708,7 +709,21 @@ export function runCodeQualityGate(workflow: WorkflowInstance): { ok: boolean; m
   };
 }
 
+/**
+ * Locks workflow.phaseTemplate exactly once, from plan.md's `Phase Template:`
+ * metadata line if present, defaulting to "full" otherwise. Runs before the
+ * DPAA skip-token check too, so an explicit "Phase Template: light"
+ * declaration is honored even when the user skips the DPAA check itself.
+ */
+function lockPhaseTemplateFromPlanIfUnset(workflow: WorkflowInstance): void {
+  if (workflow.phaseTemplate !== undefined) return;
+  const planPath = findPlanForDpaa();
+  const planTextForPolicy = planPath && fs.existsSync(planPath) ? fs.readFileSync(planPath, "utf-8") : "";
+  workflow.phaseTemplate = parsePhaseTemplateMetadata(planTextForPolicy) ?? "full";
+}
+
 export function runDpaaGate(workflow: WorkflowInstance, from: WorkflowPhase, to: WorkflowPhase): { ok: boolean; message: string; planSha256?: string } {
+  lockPhaseTemplateFromPlanIfUnset(workflow);
   const skip = consumeSkipToken("dpaa");
   if (skip) {
     writeFieldLogEvent({

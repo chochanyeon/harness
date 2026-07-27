@@ -94,7 +94,7 @@ export async function executeWorkflowApproval(
   if (!state.workflow) {
     return { content: [{ type: "text", text: "No active workflow. Start one with /workflow start." }], details: { ok: false } };
   }
-  const nextPhase = getNextPhase(state.workflow.phase);
+  const nextPhase = getNextPhase(state.workflow.phase, state.workflow.phaseTemplate);
   const requiresUserApproval = Boolean(nextPhase && isSharedApprovalBoundary(state.workflow.phase, nextPhase));
   if (!ctx.hasUI && requiresUserApproval) {
     return { content: [{ type: "text", text: "Interactive UI is required for this approval boundary. Re-run from a UI session so the yes/no dialog can be shown." }], details: { ok: false, reason: "no-ui" } };

@@ -32,7 +32,7 @@ type MemoryEntry = {
   content: { summary: string; details?: string; do?: string[]; dont?: string[] };
   index: { topics: string[]; files: string[]; symbols?: string[]; appliesToPhases: string[]; language?: string[] };
   provenance: { source: string; createdBy: string; updatedBy?: string; evidence?: Array<{ kind: string; summary: string; ref?: string }> };
-  governance: { userEditable: boolean; userDeletable: boolean; autoInject: "never" | "when-relevant" | "always"; requiresApprovalBeforeActive?: boolean; expiresAt?: string; supersedes?: string[]; supersededBy?: string };
+  governance: { userEditable: boolean; userDeletable: boolean; autoInject: "never" | "when-relevant" | "always"; requiresApprovalBeforeActive?: boolean; expiresAt?: string; supersedes?: string[]; supersededBy?: string; agentsMdProposalStatus?: "none" | "proposed" | "accepted" | "declined" };
   privacy: { sensitivity: "public" | "internal" | "confidential" | "secret"; redactionLevel: "none" | "paths-only" | "paths-and-identifiers" | "full-summary-only"; exportable: boolean; containsSecrets?: boolean; notes?: string };
   retrieval?: { useCount?: number; lastScore?: number; lastMatchedReason?: string };
   lifecycle: { lastVerifiedAt?: string; validUntil?: string; staleness: "fresh" | "aging" | "stale"; conflictsWith: string[]; mergeGroup?: string };
@@ -171,6 +171,72 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerTool({
+    name: "memory_propose_agents_promotion",
+    label: "Propose promoting memory into AGENTS.md",
+    description: [
+      "Record that you are presenting an AGENTS.md addition suggestion to the user for a repeatedly validated memory.",
+      "Call this only when you actually present the suggestion to the user in this reply. Never edit AGENTS.md before the user explicitly approves.",
+    ].join(" "),
+    parameters: Type.Object({
+      memoryId: Type.String({ description: "memoryId of the AGENTS.md promotion candidate." }),
+      proposedText: Type.String({ description: "Exact wording you are suggesting to add to AGENTS.md." }),
+    }),
+    async execute(_toolCallId, params) {
+      const memoryId = String(params.memoryId ?? "");
+      const proposedText = String(params.proposedText ?? "");
+      const entry = findEntry(memoryId);
+      if (!entry) {
+        return { content: [{ type: "text", text: "Not proposed: no memory with this id exists." }], details: { ok: false, reason: "memory-not-found" } };
+      }
+      const currentStatus = agentsMdStatus(entry);
+      if (currentStatus !== "none") {
+        return { content: [{ type: "text", text: `Not proposed: this memory's AGENTS.md proposal status is already '${currentStatus}'.` }], details: { ok: false, reason: "already-processed" } };
+      }
+      updateEntry(memoryId, (current) => ({ ...current, governance: { ...current.governance, agentsMdProposalStatus: "proposed" } }));
+      appendAudit("agents-md-proposed", memoryId, { proposedText });
+      appendMetric({ operation: "agents-md-proposed", selectedMemoryIds: [memoryId] });
+      return {
+        content: [{ type: "text", text: `Marked as proposed for AGENTS.md: ${memoryId}` }],
+        details: { ok: true, memoryId, status: "proposed" },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "memory_record_agents_decision",
+    label: "Record AGENTS.md promotion decision",
+    description: [
+      "Record the user's accept or decline decision after you presented an AGENTS.md addition suggestion.",
+      "Call this only after the user has explicitly answered in conversation. This does not edit AGENTS.md itself.",
+    ].join(" "),
+    parameters: Type.Object({
+      memoryId: Type.String({ description: "memoryId of the memory that was proposed." }),
+      decision: Type.Union([Type.Literal("accepted"), Type.Literal("declined")], { description: "The user's decision." }),
+      note: Type.String({ description: "Brief note about the decision context." }),
+    }),
+    async execute(_toolCallId, params) {
+      const memoryId = String(params.memoryId ?? "");
+      const decision = String(params.decision ?? "") as "accepted" | "declined";
+      const note = String(params.note ?? "");
+      const entry = findEntry(memoryId);
+      if (!entry) {
+        return { content: [{ type: "text", text: "Not recorded: no memory with this id exists." }], details: { ok: false, reason: "memory-not-found" } };
+      }
+      const currentStatus = agentsMdStatus(entry);
+      if (currentStatus !== "proposed") {
+        return { content: [{ type: "text", text: `Not recorded: this memory's AGENTS.md proposal status is '${currentStatus}', not 'proposed'.` }], details: { ok: false, reason: "not-proposed" } };
+      }
+      updateEntry(memoryId, (current) => ({ ...current, governance: { ...current.governance, agentsMdProposalStatus: decision } }));
+      appendAudit("agents-md-decision", memoryId, { decision, note });
+      appendMetric({ operation: "agents-md-decision", selectedMemoryIds: [memoryId], decision });
+      return {
+        content: [{ type: "text", text: `AGENTS.md proposal decision recorded: ${memoryId} -> ${decision}` }],
+        details: { ok: true, memoryId, status: decision },
+      };
+    },
+  });
+
   pi.registerCommand("memory", {
     description: "Manage external memory used for task-specific LLM context.",
     getArgumentCompletions: (prefix) => [
@@ -286,7 +352,9 @@ export default function (pi: ExtensionAPI) {
     appendMetric(metricFromMatches("inject", request, matches, selected, dynamic));
     const candidateMatches = request ? searchCandidateMemory(request, currentPhase, 5) : [];
     const candidateBlock = renderCandidateShortlist(candidateMatches);
-    return { systemPrompt: event.systemPrompt + MEMORY_POLICY + dynamic + candidateBlock };
+    const agentsMdCandidates = searchAgentsMdPromotionCandidates(5);
+    const agentsMdBlock = renderAgentsMdPromotionShortlist(agentsMdCandidates);
+    return { systemPrompt: event.systemPrompt + MEMORY_POLICY + dynamic + candidateBlock + agentsMdBlock };
   });
 }
 
@@ -424,6 +492,38 @@ function checkLlmPromotionEvidence(evidence: string): string | null {
   const normalized = normalizeWhitespace(evidence);
   if (normalized.length < 15) return "Evidence must describe the concrete trigger signal in at least 15 characters.";
   return null;
+}
+
+function agentsMdStatus(entry: MemoryEntry): "none" | "proposed" | "accepted" | "declined" {
+  return entry.governance.agentsMdProposalStatus ?? "none";
+}
+
+function isAgentsMdPromotionCandidate(entry: MemoryEntry, feedbackEntries: any[], useCountThreshold: number): boolean {
+  if (entry.status !== "active") return false;
+  if ((entry.retrieval?.useCount ?? 0) < useCountThreshold) return false;
+  const hasHelpfulFeedback = feedbackEntries.some((item) => item.memoryId === entry.memoryId && item.kind === "helpful");
+  if (!hasHelpfulFeedback) return false;
+  if (agentsMdStatus(entry) !== "none") return false;
+  return true;
+}
+
+function searchAgentsMdPromotionCandidates(limit: number): MemoryEntry[] {
+  const feedbackEntries = readJsonl(feedbackFile());
+  return readEntries()
+    .filter((entry) => isAgentsMdPromotionCandidate(entry, feedbackEntries, 5))
+    .sort((a, b) => (b.retrieval?.useCount ?? 0) - (a.retrieval?.useCount ?? 0) || a.memoryId.localeCompare(b.memoryId))
+    .slice(0, limit);
+}
+
+function renderAgentsMdPromotionShortlist(entries: MemoryEntry[]): string {
+  if (entries.length === 0) return "";
+  return [
+    "",
+    "[AGENTS.md Promotion Candidates v1]",
+    "Repeatedly validated project memory. Call memory_propose_agents_promotion only when you actually present this suggestion to the user in this reply. Never edit AGENTS.md before the user explicitly approves.",
+    ...entries.map((entry) => `- ${entry.memoryId}: ${entry.content.summary.slice(0, 80)} (useCount=${entry.retrieval?.useCount ?? 0})`),
+    "[/AGENTS.md Promotion Candidates]",
+  ].join("\n");
 }
 
 function recordCandidateUse(entry: MemoryEntry, relevanceReason: string): void {

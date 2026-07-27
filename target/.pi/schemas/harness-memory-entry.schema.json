@@ -227,6 +227,11 @@
         "supersededBy": {
           "type": "string",
           "pattern": "^mem_[0-9A-Za-z_-]+$"
+        },
+        "agentsMdProposalStatus": {
+          "type": "string",
+          "enum": ["none", "proposed", "accepted", "declined"],
+          "description": "Whether this memory has been proposed, accepted, or declined as an AGENTS.md addition."
         }
       }
     },

@@ -41,6 +41,14 @@ def test_memory_schema_supports_lifecycle_rendering_tracking():
     assert "conflictsWith" in schema["properties"]["lifecycle"]["properties"]
 
 
+def test_memory_schema_supports_agents_md_promotion_status():
+    schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    governance = schema["properties"]["governance"]
+
+    assert governance["properties"]["agentsMdProposalStatus"]["enum"] == ["none", "proposed", "accepted", "declined"]
+    assert "agentsMdProposalStatus" not in governance["required"]
+
+
 def test_memory_extension_exposes_tracking_and_cache_aware_terms():
     text = MEMORY_EXTENSION.read_text(encoding="utf-8")
 
@@ -519,4 +527,199 @@ def test_memory_promote_candidate_enforces_session_cap(tmp_path):
     assert results[5]["details"]["ok"] is False
     assert results[5]["details"]["reason"] == "session-cap-reached"
     assert data["sixthStatus"] == "candidate"
+
+
+_SET_USE_COUNT_HELPER = r'''
+        function setUseCount(entriesFile, memoryId, count) {
+          const entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const updated = entries.map((entry) => (entry.memoryId === memoryId ? { ...entry, retrieval: { ...entry.retrieval, useCount: count } } : entry));
+          fs.writeFileSync(entriesFile, updated.map((entry) => JSON.stringify(entry)).join('\n') + '\n', 'utf8');
+        }
+'''
+
+
+def test_memory_agents_md_shortlist_appears_with_usecount_and_helpful_feedback(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-agents-md-shortlist-yes-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        ''' + _SET_USE_COUNT_HELPER + r'''
+
+        (async () => {
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entriesFile = path.join(root, '.project-memory', 'memory', 'entries.jsonl');
+
+          const saved = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-agents-promote-yes memory는 AGENTS.md 후보여야 해' }, undefined, undefined, ctx);
+          const memoryId = saved.details.memoryId;
+          setUseCount(entriesFile, memoryId, 5);
+          await pi.commands.memory.handler(`feedback ${memoryId} helpful`, ctx);
+
+          const prompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-agents-promote-yes 관련 작업' });
+          console.log(JSON.stringify({ prompt: prompt.systemPrompt, memoryId }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert "[AGENTS.md Promotion Candidates v1]" in data["prompt"]
+    assert data["memoryId"] in data["prompt"]
+
+
+def test_memory_agents_md_shortlist_absent_without_helpful_feedback(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-agents-md-shortlist-no-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        ''' + _SET_USE_COUNT_HELPER + r'''
+
+        (async () => {
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entriesFile = path.join(root, '.project-memory', 'memory', 'entries.jsonl');
+
+          const saved = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-agents-promote-no memory는 AGENTS.md 후보가 아니어야 해' }, undefined, undefined, ctx);
+          const memoryId = saved.details.memoryId;
+          setUseCount(entriesFile, memoryId, 5);
+
+          const prompt = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-agents-promote-no 관련 작업' });
+          console.log(JSON.stringify({ prompt: prompt.systemPrompt, memoryId }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert "[AGENTS.md Promotion Candidates v1]" not in data["prompt"]
+
+
+def test_memory_propose_agents_promotion_marks_proposed_and_blocks_reproposal(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-propose-agents-promotion-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        ''' + _SET_USE_COUNT_HELPER + r'''
+
+        (async () => {
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entriesFile = path.join(root, '.project-memory', 'memory', 'entries.jsonl');
+
+          const saved = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-agents-propose memory는 AGENTS.md 후보여야 해' }, undefined, undefined, ctx);
+          const memoryId = saved.details.memoryId;
+          setUseCount(entriesFile, memoryId, 5);
+          await pi.commands.memory.handler(`feedback ${memoryId} helpful`, ctx);
+
+          const propose1 = await pi.tools.memory_propose_agents_promotion.execute('call-2', { memoryId, proposedText: 'Add zeta-agents-propose as a documented convention in AGENTS.md.' });
+
+          let entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const afterPropose = entries.find((e) => e.memoryId === memoryId);
+          const audit = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'audit.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+
+          const promptAfter = await pi.events.before_agent_start({ systemPrompt: 'base', userPrompt: 'zeta-agents-propose 관련 작업' });
+          const propose2 = await pi.tools.memory_propose_agents_promotion.execute('call-3', { memoryId, proposedText: 'Second proposal attempt should fail now.' });
+
+          console.log(JSON.stringify({
+            propose1Details: propose1.details,
+            statusAfterPropose: afterPropose.governance.agentsMdProposalStatus,
+            auditLast: audit[audit.length - 1],
+            promptAfter: promptAfter.systemPrompt,
+            propose2Details: propose2.details,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert data["propose1Details"]["ok"] is True
+    assert data["statusAfterPropose"] == "proposed"
+    assert data["auditLast"]["action"] == "agents-md-proposed"
+    assert data["auditLast"]["proposedText"] == "Add zeta-agents-propose as a documented convention in AGENTS.md."
+    assert "[AGENTS.md Promotion Candidates v1]" not in data["promptAfter"]
+
+    assert data["propose2Details"]["ok"] is False
+    assert data["propose2Details"]["reason"] == "already-processed"
+
+
+def test_memory_record_agents_decision_accepts_and_rejects_non_proposed(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-record-agents-decision-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        ''' + _SET_USE_COUNT_HELPER + r'''
+
+        (async () => {
+          const root = process.env.HARNESS_MEMORY_ROOT;
+          const entriesFile = path.join(root, '.project-memory', 'memory', 'entries.jsonl');
+
+          const proposed = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-agents-decision-accept memory는 AGENTS.md 후보여야 해' }, undefined, undefined, ctx);
+          const proposedId = proposed.details.memoryId;
+          setUseCount(entriesFile, proposedId, 5);
+          await pi.commands.memory.handler(`feedback ${proposedId} helpful`, ctx);
+          await pi.tools.memory_propose_agents_promotion.execute('call-2', { memoryId: proposedId, proposedText: 'Add zeta-agents-decision-accept as a convention.' });
+
+          const decision1 = await pi.tools.memory_record_agents_decision.execute('call-3', { memoryId: proposedId, decision: 'accepted', note: 'User approved this in conversation.' });
+
+          const entries = fs.readFileSync(entriesFile, 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+          const afterDecision = entries.find((e) => e.memoryId === proposedId);
+          const audit = fs.readFileSync(path.join(root, '.project-memory', 'memory', 'audit.jsonl'), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
+
+          const neverProposed = await pi.tools.memory_remember.execute('call-4', { text: '결정: zeta-agents-decision-unproposed memory는 아직 제안된 적이 없어' }, undefined, undefined, ctx);
+          const decision2 = await pi.tools.memory_record_agents_decision.execute('call-5', { memoryId: neverProposed.details.memoryId, decision: 'accepted', note: 'Should fail, never proposed.' });
+
+          console.log(JSON.stringify({
+            decision1Details: decision1.details,
+            statusAfterDecision: afterDecision.governance.agentsMdProposalStatus,
+            auditLast: audit[audit.length - 1],
+            decision2Details: decision2.details,
+          }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    assert data["decision1Details"]["ok"] is True
+    assert data["statusAfterDecision"] == "accepted"
+    assert data["auditLast"]["action"] == "agents-md-decision"
+    assert data["auditLast"]["decision"] == "accepted"
+
+    assert data["decision2Details"]["ok"] is False
+    assert data["decision2Details"]["reason"] == "not-proposed"
+
 

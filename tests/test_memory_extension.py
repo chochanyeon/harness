@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import textwrap
 from pathlib import Path
@@ -9,6 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 PI_NODE_MODULES = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@earendil-works" / "pi-coding-agent" / "node_modules"
 SCHEMA = ROOT / "target" / ".pi" / "schemas" / "harness-memory-entry.schema.json"
 MEMORY_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "memory.ts"
+
+
+def _extract_memory_block(notification_text: str, memory_id: str) -> str:
+    marker = f"- {memory_id} |"
+    start = notification_text.index(marker)
+    rest = notification_text[start:]
+    next_marker_pos = rest.find("\n- mem_", 1)
+    return rest if next_marker_pos == -1 else rest[:next_marker_pos]
 
 
 def _run_node_memory(script: str, tmp_path: Path) -> dict:
@@ -721,5 +730,124 @@ def test_memory_record_agents_decision_accepts_and_rejects_non_proposed(tmp_path
 
     assert data["decision2Details"]["ok"] is False
     assert data["decision2Details"]["reason"] == "not-proposed"
+
+
+def test_memory_feedback_adjustment_boosts_score_above_minimum_threshold(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-feedback-boost-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const boosted = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-fb-boost-case memory는 테스트용' }, undefined, undefined, ctx);
+          const boostedId = boosted.details.memoryId;
+          await pi.commands.memory.handler(`feedback ${boostedId} helpful`, ctx);
+          await pi.commands.memory.handler(`feedback ${boostedId} helpful`, ctx);
+          await pi.commands.memory.handler(`feedback ${boostedId} helpful`, ctx);
+
+          const belowThreshold = await pi.tools.memory_remember.execute('call-2', { text: '결정: zeta-fb-nothreshold-case memory는 테스트용' }, undefined, undefined, ctx);
+          const belowThresholdId = belowThreshold.details.memoryId;
+          await pi.commands.memory.handler(`feedback ${belowThresholdId} helpful`, ctx);
+
+          await pi.commands.memory.handler('search zeta-fb', ctx);
+          const notification = notifications[notifications.length - 1].text;
+
+          console.log(JSON.stringify({ notification, boostedId, belowThresholdId }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    boosted_block = _extract_memory_block(data["notification"], data["boostedId"])
+    below_threshold_block = _extract_memory_block(data["notification"], data["belowThresholdId"])
+
+    assert "feedback-boost" in boosted_block
+    assert "feedback-boost" not in below_threshold_block
+
+
+def test_memory_feedback_adjustment_penalizes_score_with_irrelevant_feedback(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-feedback-penalty-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const penalized = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-fb-penalty-case memory는 테스트용' }, undefined, undefined, ctx);
+          const penalizedId = penalized.details.memoryId;
+          await pi.commands.memory.handler(`feedback ${penalizedId} irrelevant`, ctx);
+          await pi.commands.memory.handler(`feedback ${penalizedId} irrelevant`, ctx);
+          await pi.commands.memory.handler(`feedback ${penalizedId} irrelevant`, ctx);
+          await pi.commands.memory.handler('search zeta-fb-penalty-case', ctx);
+          const notification = notifications[notifications.length - 1].text;
+
+          console.log(JSON.stringify({ notification, penalizedId }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    penalized_block = _extract_memory_block(data["notification"], data["penalizedId"])
+    assert "feedback-penalty" in penalized_block
+
+
+def test_memory_feedback_adjustment_clamps_score_change_to_four(tmp_path):
+    script = textwrap.dedent(
+        r'''
+        const path = require('path');
+        const fs = require('fs');
+        const { createJiti } = require('jiti');
+        process.chdir('target');
+
+        const pi = { events: {}, commands: {}, tools: {}, on(name, fn) { this.events[name] = fn; }, registerCommand(name, spec) { this.commands[name] = spec; }, registerTool(spec) { this.tools[spec.name] = spec; } };
+        const jiti = createJiti(path.resolve('memory-feedback-clamp-test.js'), { interopDefault: false });
+        jiti(path.resolve('.pi/extensions/memory.ts')).default(pi);
+
+        const notifications = [];
+        const ctx = { hasUI: true, ui: { notify: (text, level) => notifications.push({ text, level }), confirm: async () => true } };
+
+        (async () => {
+          const control = await pi.tools.memory_remember.execute('call-1', { text: '결정: zeta-fb-clamp-control memory는 테스트용' }, undefined, undefined, ctx);
+          const controlId = control.details.memoryId;
+
+          const boosted = await pi.tools.memory_remember.execute('call-2', { text: '결정: zeta-fb-clamp-boosted memory는 테스트용' }, undefined, undefined, ctx);
+          const boostedId = boosted.details.memoryId;
+          for (let i = 0; i < 5; i += 1) {
+            await pi.commands.memory.handler(`feedback ${boostedId} helpful`, ctx);
+          }
+
+          await pi.commands.memory.handler('search zeta-fb-clamp', ctx);
+          const notification = notifications[notifications.length - 1].text;
+
+          console.log(JSON.stringify({ notification, controlId, boostedId }));
+        })().catch((error) => { console.error(error.stack || String(error)); process.exit(1); });
+        '''
+    )
+    data = _run_node_memory(script, tmp_path)
+
+    control_block = _extract_memory_block(data["notification"], data["controlId"])
+    boosted_block = _extract_memory_block(data["notification"], data["boostedId"])
+    control_score = int(re.search(r"score=(\d+)", control_block).group(1))
+    boosted_score = int(re.search(r"score=(\d+)", boosted_block).group(1))
+
+    assert 0 < boosted_score - control_score <= 4
+
 
 

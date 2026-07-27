@@ -52,7 +52,7 @@ interview
 | 영역 | 위치 | 역할 |
 |---|---|---|
 | Workflow runtime | `target/.pi/extensions/workflow.ts`, `target/.pi/extensions/workflow/` | phase, guard, command policy, reminders, ledger |
-| Memory runtime | `target/.pi/extensions/memory.ts` | durable memory, candidate memory shortlist, LLM-judgment 실시간 승격/사용, AGENTS.md 반영 제안 추적, feedback, relevance scoring |
+| Memory runtime | `target/.pi/extensions/memory.ts` | durable memory, candidate memory shortlist, LLM-judgment 실시간 승격/사용, AGENTS.md 반영 제안 추적, feedback-aware relevance scoring |
 | Skills/personas | `target/.pi/skills/`, `target/.pi/personas/` | review, trace, TDD, documentation, continuation safety 등 |
 | Policies/schemas | `target/.harness/`, `target/.pi/schemas/` | workflow hard rules, field log/memory schema |
 | TUI helpers/theme | `target/.pi/themes/`, `target/.pi/extensions/assistant-markdown-box.ts` | workflow console theme, boxed markdown rendering |

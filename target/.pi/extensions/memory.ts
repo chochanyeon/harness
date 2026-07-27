@@ -44,7 +44,7 @@ type SaveMemoryResult = { ok: true; entry: MemoryEntry } | { ok: false; message:
 type MemoryFileHealth = { label: string; file: string; exists: boolean; ok: boolean; count?: number; error?: string };
 type CreateMemoryOptions = { status?: MemoryStatus; source?: string; createdBy?: string; evidenceSummary?: string; autoInject?: "never" | "when-relevant" | "always"; confidence?: MemoryEntry["confidence"] };
 type ExtractedMemory = { text: string; status: MemoryStatus; source: string; reason: string };
-type ScoringContext = { currentPhase?: string };
+type ScoringContext = { currentPhase?: string; feedbackEntries?: any[] };
 type SearchOptions = { includeDisabled: boolean; limit: number; currentPhase?: string };
 
 const MEMORY_POLICY = [
@@ -668,7 +668,8 @@ function enableBlockers(entry: MemoryEntry): string[] {
 
 function searchMemory(query: string, options: SearchOptions): MemoryMatch[] {
   const queryTokens = tokenize(query);
-  const context: ScoringContext = { currentPhase: options.currentPhase };
+  const feedbackEntries = readJsonl(feedbackFile());
+  const context: ScoringContext = { currentPhase: options.currentPhase, feedbackEntries };
   const entries = readEntries().filter((entry) => {
     if (entry.lifecycle?.staleness === "stale") return false;
     if (["rejected", "deprecated", "superseded"].includes(entry.status)) return false;
@@ -696,7 +697,20 @@ function scoreEntry(entry: MemoryEntry, queryTokens: string[], rawQuery: string,
   if (entry.confidence === "explicit") { score += 2; reasons.push("explicit"); }
   else if (entry.confidence === "high") { score += 1; reasons.push("high-confidence"); }
   if (entry.lifecycle.staleness === "aging") { score -= 1; reasons.push("aging"); }
+  const feedbackAdjustment = computeFeedbackAdjustment(entry.memoryId, context.feedbackEntries ?? []);
+  score += feedbackAdjustment;
+  if (feedbackAdjustment > 0) reasons.push("feedback-boost");
+  if (feedbackAdjustment < 0) reasons.push("feedback-penalty");
   return { entry, score, matchedReasons: reasons, renderHash: entry.rendering.stableRenderHash };
+}
+
+function computeFeedbackAdjustment(memoryId: string, feedbackEntries: any[]): number {
+  const helpfulCount = feedbackEntries.filter((item) => item.memoryId === memoryId && item.kind === "helpful").length;
+  const irrelevantCount = feedbackEntries.filter((item) => item.memoryId === memoryId && item.kind === "irrelevant").length;
+  const helpfulComponent = helpfulCount >= 2 ? helpfulCount : 0;
+  const irrelevantComponent = irrelevantCount >= 2 ? irrelevantCount : 0;
+  const rawAdjustment = helpfulComponent - irrelevantComponent;
+  return Math.max(-4, Math.min(4, rawAdjustment));
 }
 
 function selectMemories(request: string, matches: MemoryMatch[], limit: number): MemoryMatch[] {

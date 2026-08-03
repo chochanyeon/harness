@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 
 import { writeTextArtifact, type ArtifactDescriptor } from "./artifact-descriptor";
 import { safeWriteWorkflowLedgerSnapshot } from "./ledger";
@@ -25,6 +26,25 @@ const GIT_PUSH_NO_UPSTREAM_MARKER = "has no upstream branch";
 // depend on the caller's locale (git translates its own messages via gettext
 // when LC_ALL/LANG/LANGUAGE select a non-English locale).
 const GIT_PUSH_ENGLISH_LOCALE_ENV = { LC_ALL: "C", LANG: "C", LANGUAGE: "C" };
+
+/**
+ * Creates a mechanical, extension-driven local git checkpoint commit inside the
+ * implement phase, after a project-test/code-quality run succeeds. Stages every
+ * change and commits with a fixed, clearly-internal message. Does nothing when
+ * there is nothing to stage. Never throws: a checkpoint failure must never block
+ * the calling command's own result from reaching the user.
+ */
+export function createImplementCheckpointCommit(gitRoot: string, commandId: string): void {
+  try {
+    const status = execFileSync("git", ["status", "--porcelain"], { cwd: gitRoot, encoding: "utf-8" });
+    if (!status.trim()) return;
+    execFileSync("git", ["add", "-A"], { cwd: gitRoot });
+    execFileSync("git", ["commit", "-m", `chore(checkpoint): ${commandId} passed`], { cwd: gitRoot });
+  } catch {
+    // Checkpoint commit failures are non-fatal; the calling command's own
+    // result must still reach the user.
+  }
+}
 
 export type WorkflowCatalogCommandState = {
   workflow: WorkflowInstance | null;
@@ -89,6 +109,43 @@ export async function executeWorkflowCatalogCommand(
   }
 
   const gitRoot = getGitRoot();
+
+  if (spec.id === "git-reset-soft-to-checkpoint-base") {
+    const baseCommit = state.workflow?.implementCheckpointBaseCommit;
+    if (!baseCommit) {
+      return {
+        content: [{ type: "text", text: "git-reset-soft-to-checkpoint-base failed: no implementCheckpointBaseCommit recorded for this workflow." }],
+        details: { ok: false, reason: "no-checkpoint-base", commandId: spec.id },
+      };
+    }
+    userArgs = [baseCommit];
+  }
+
+  if (spec.id === "git-reset-hard-to-checkpoint") {
+    const target = userArgs[0];
+    const baseCommit = state.workflow?.implementCheckpointBaseCommit;
+    if (!target || !baseCommit) {
+      return {
+        content: [{ type: "text", text: "git-reset-hard-to-checkpoint failed: supply a target hash via args, and ensure implementCheckpointBaseCommit is recorded for this workflow." }],
+        details: { ok: false, reason: "missing-target-or-checkpoint-base", commandId: spec.id },
+      };
+    }
+    try {
+      execFileSync("git", ["merge-base", "--is-ancestor", target, "HEAD"], { cwd: gitRoot ?? undefined });
+      execFileSync("git", ["merge-base", "--is-ancestor", baseCommit, target], { cwd: gitRoot ?? undefined });
+    } catch {
+      return {
+        content: [{ type: "text", text: `git-reset-hard-to-checkpoint rejected: ${target} is not a descendant of this workflow's recorded checkpoint base ${baseCommit}.` }],
+        details: { ok: false, reason: "not-a-checkpoint-ancestor", commandId: spec.id },
+      };
+    }
+    // Defense in depth: only the validated target reaches the actual reset,
+    // mirroring git-reset-soft-to-checkpoint-base's explicit array narrowing.
+    // Without this, any extra caller-supplied args past userArgs[0] would
+    // still reach the real `git reset --hard` call unvalidated.
+    userArgs = [target];
+  }
+
   const onHeartbeat = ({ commandId, elapsedMs }: { commandId: string; elapsedMs: number }) => {
     if (!ctx.hasUI || typeof ctx.ui?.notify !== "function") return;
     ctx.ui.notify(`workflow_run_command ${commandId} still running (${Math.floor(elapsedMs / 1000)}s elapsed)`, "info");
@@ -113,6 +170,9 @@ export async function executeWorkflowCatalogCommand(
   if (["code-quality", "project-test"].includes(spec.id)) {
     state.recentVerificationCommands.push({ command: spec.id, timestamp: Date.now(), phase: phase ?? undefined });
     if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
+    if (result.ok && phase === "implement" && state.workflow?.implementCheckpointBaseCommit && gitRoot) {
+      createImplementCheckpointCommit(gitRoot, spec.id);
+    }
   }
   safeWriteWorkflowLedgerSnapshot(state.workflow, gitRoot ?? undefined, {
     verification: {

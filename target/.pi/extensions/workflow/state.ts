@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import type { WorkflowInstance, WorkflowPhase, WorkflowGate } from "./types";
 import { LEGACY_WORKFLOW_PHASE_ALIASES } from "./types";
 import { createWorkspaceCheckpoint, restoreWorkspaceCheckpoint } from "./checkpoints";
@@ -82,6 +83,16 @@ export async function advanceWorkflow(
 
     transitionWorkflow(workflow, next, reason);
     transitions.push({ from, to: next, message: gate.message, planSha256: gate.planSha256 });
+
+    if (next === "implement" && workflow.implementCheckpointBaseCommit === undefined) {
+      try {
+        const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: workflow.gitRoot ?? undefined, encoding: "utf-8" }).trim();
+        workflow.implementCheckpointBaseCommit = head;
+      } catch {
+        // Git unavailable or no commits yet; leave implementCheckpointBaseCommit
+        // undefined so downstream checkpoint/squash logic skips gracefully.
+      }
+    }
 
     // Preparation/review phases advance automatically from explicitly configured
     // source phases. Do not continue merely because the destination phase can

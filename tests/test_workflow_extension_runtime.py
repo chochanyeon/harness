@@ -2814,3 +2814,139 @@ def test_get_next_phase_respects_phase_template_runtime(tmp_path):
     assert data["lightNext"] == "commit"
     assert data["fullNext"] == "document"
     assert data["fullNextOmitted"] == "document"
+
+
+def _init_checkpoint_test_repo(project: Path) -> str:
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "a.txt").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=project, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=project, check=True)
+    subprocess.run(["git", "add", "."], cwd=project, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=project, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=project, check=True, capture_output=True, encoding="utf-8").stdout.strip()
+
+
+def test_create_implement_checkpoint_commit_creates_and_skips_correctly_runtime(tmp_path):
+    project = tmp_path / "checkpoint-commit-project"
+    base_commit = _init_checkpoint_test_repo(project)
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const fs = require('fs');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ createImplementCheckpointCommit }} = jiti(path.resolve('target/.pi/extensions/workflow/command-policy.ts'));
+        const gitRoot = {json.dumps(str(project))};
+        const {{ execFileSync }} = require('child_process');
+
+        const headBefore = execFileSync('git', ['rev-parse', 'HEAD'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+        createImplementCheckpointCommit(gitRoot, 'project-test');
+        const headAfterNoop = execFileSync('git', ['rev-parse', 'HEAD'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+
+        fs.writeFileSync(path.join(gitRoot, 'b.txt'), 'change');
+        createImplementCheckpointCommit(gitRoot, 'project-test');
+        const headAfterChange = execFileSync('git', ['rev-parse', 'HEAD'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+        const message = execFileSync('git', ['log', '-1', '--format=%s'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+
+        console.log(JSON.stringify({{ headBefore, headAfterNoop, headAfterChange, message }}));
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["headBefore"] == base_commit
+    assert data["headAfterNoop"] == base_commit, "a checkpoint attempt with nothing to stage must not create a commit"
+    assert data["headAfterChange"] != base_commit, "a checkpoint attempt with a real change must create a new commit"
+    assert data["message"] == "chore(checkpoint): project-test passed"
+
+
+def test_git_reset_hard_to_checkpoint_accepts_valid_and_rejects_invalid_runtime(tmp_path):
+    project = tmp_path / "reset-hard-project"
+    base_commit = _init_checkpoint_test_repo(project)
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const fs = require('fs');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ createImplementCheckpointCommit }} = jiti(path.resolve('target/.pi/extensions/workflow/command-policy.ts'));
+        const {{ executeWorkflowCatalogCommand }} = jiti(path.resolve('target/.pi/extensions/workflow/command-policy.ts'));
+        const {{ execFileSync }} = require('child_process');
+        const gitRoot = {json.dumps(str(project))};
+        process.chdir(gitRoot);
+
+        fs.writeFileSync(path.join(gitRoot, 'b.txt'), 'checkpoint-1');
+        createImplementCheckpointCommit(gitRoot, 'project-test');
+        const checkpoint1 = execFileSync('git', ['rev-parse', 'HEAD'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+
+        fs.writeFileSync(path.join(gitRoot, 'c.txt'), 'checkpoint-2');
+        createImplementCheckpointCommit(gitRoot, 'project-test');
+        const checkpoint2 = execFileSync('git', ['rev-parse', 'HEAD'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+
+        const state = {{ workflow: {{ phase: 'implement', implementCheckpointBaseCommit: {json.dumps(base_commit)} }}, recentVerificationCommands: [] }};
+        const ctx = {{ hasUI: false, ui: {{ notify: () => {{}}, confirm: async () => true }} }};
+
+        (async () => {{
+          const rejected = await executeWorkflowCatalogCommand(state, 'git-reset-hard-to-checkpoint', ctx, ['0000000000000000000000000000000000000000']);
+          const headAfterRejected = execFileSync('git', ['rev-parse', 'HEAD'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+
+          const accepted = await executeWorkflowCatalogCommand(state, 'git-reset-hard-to-checkpoint', ctx, [checkpoint1]);
+          const headAfterAccepted = execFileSync('git', ['rev-parse', 'HEAD'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+          const cTxtExists = fs.existsSync(path.join(gitRoot, 'c.txt'));
+
+          console.log(JSON.stringify({{
+            rejectedOk: rejected.details.ok, headAfterRejected, checkpoint2,
+            acceptedOk: accepted.details.ok, headAfterAccepted, checkpoint1, cTxtExists,
+          }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["rejectedOk"] is False, "an unrelated hash must be rejected"
+    assert data["headAfterRejected"] == data["checkpoint2"], "a rejected reset must not move HEAD"
+    assert data["acceptedOk"] is True, "a genuine checkpoint hash must be accepted"
+    assert data["headAfterAccepted"] == data["checkpoint1"]
+    assert data["cTxtExists"] is False, "rolling back to checkpoint1 must discard c.txt added after it"
+
+
+def test_git_reset_soft_to_checkpoint_base_squashes_and_errors_when_unset_runtime(tmp_path):
+    project = tmp_path / "reset-soft-project"
+    base_commit = _init_checkpoint_test_repo(project)
+    script = textwrap.dedent(
+        rf'''
+        const path = require('path');
+        const fs = require('fs');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const {{ createImplementCheckpointCommit, executeWorkflowCatalogCommand }} = jiti(path.resolve('target/.pi/extensions/workflow/command-policy.ts'));
+        const {{ execFileSync }} = require('child_process');
+        const gitRoot = {json.dumps(str(project))};
+        process.chdir(gitRoot);
+
+        fs.writeFileSync(path.join(gitRoot, 'b.txt'), 'checkpoint-1');
+        createImplementCheckpointCommit(gitRoot, 'project-test');
+        fs.writeFileSync(path.join(gitRoot, 'c.txt'), 'checkpoint-2');
+        createImplementCheckpointCommit(gitRoot, 'project-test');
+
+        const ctx = {{ hasUI: false, ui: {{ notify: () => {{}}, confirm: async () => true }} }};
+
+        (async () => {{
+          const unsetState = {{ workflow: {{ phase: 'commit' }}, recentVerificationCommands: [] }};
+          const errored = await executeWorkflowCatalogCommand(unsetState, 'git-reset-soft-to-checkpoint-base', ctx, []);
+
+          const state = {{ workflow: {{ phase: 'commit', implementCheckpointBaseCommit: {json.dumps(base_commit)} }}, recentVerificationCommands: [] }};
+          const result = await executeWorkflowCatalogCommand(state, 'git-reset-soft-to-checkpoint-base', ctx, []);
+          const headAfter = execFileSync('git', ['rev-parse', 'HEAD'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim();
+          const staged = execFileSync('git', ['diff', '--cached', '--name-only'], {{ cwd: gitRoot, encoding: 'utf-8' }}).trim().split('\n').filter(Boolean).sort();
+
+          console.log(JSON.stringify({{ erroredOk: errored.details.ok, resultOk: result.details.ok, headAfter, baseCommit: {json.dumps(base_commit)}, staged }}));
+        }})().catch((error) => {{ console.error(error.stack || String(error)); process.exit(1); }});
+        '''
+    )
+    data = _run_node_runtime(script, tmp_path)
+
+    assert data["erroredOk"] is False, "resetting with no recorded checkpoint base must error, not run a bare reset"
+    assert data["resultOk"] is True
+    assert data["headAfter"] == data["baseCommit"], "the soft reset must move HEAD back to the checkpoint base"
+    assert data["staged"] == ["b.txt", "c.txt"], "both accumulated changes must stay staged for the final commit"

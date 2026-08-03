@@ -728,7 +728,7 @@ pi.registerCommand("workflow", {
         interview: "초기 interview 단계로 복구합니다. guard evidence는 복구하지 않습니다.",
         plan: "plan 단계로 복구합니다. guard evidence는 복구하지 않습니다.",
         plan_review: "plan_review 단계로 복구합니다. DPAA는 통과한 것으로 간주하지 않습니다.",
-        implement: "implement 단계로 복구하지만 DPAA transition evidence는 복구하지 않습니다.",
+        implement: "implement 단계로 복구하지만 DPAA transition evidence는 복구하지 않습니다. 이 경로는 implementCheckpointBaseCommit도 기록하지 않습니다 — 기계적 체크포인트 커밋 생성/rollback 기능이 이 workflow에서는 계속 비활성 상태로 남고, 두 관련 명령은 명확한 에러로 안전하게 거부됩니다.",
         code_review: "code_review 단계로 복구하지만 DPAA/code quality/code review evidence는 복구하지 않습니다.",
         review_approved: "review_approved 단계로 복구하지만 code quality/review evidence는 복구하지 않습니다.",
         document: "document 단계로 복구하지만 review evidence는 복구하지 않습니다.",

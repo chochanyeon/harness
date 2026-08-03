@@ -41,6 +41,7 @@ interview
 - Runtime workflow prompts inject only the current phase action, transition, and required guard evidence to reduce context noise.
 - Missing Pre-code_review verification is surfaced before `code_review → review_approved`; later improvements are recorded as deferred instead of hidden.
 - Declaring `Phase Template: light` in plan.md makes that one workflow skip the `document` phase. Without the declaration, the same 10-phase sequence (full) applies as today.
+- Inside the `implement` phase, a successful `project-test`/`code-quality` run mechanically creates a local git checkpoint commit. `git-reset-hard-to-checkpoint <hash>` rolls back to an earlier checkpoint. The `commit` phase's `git-reset-soft-to-checkpoint-base` squashes everything back into one clean commit before push.
 
 ## What gets installed
 

@@ -239,6 +239,76 @@ class TestPhaseTemplatePolicy:
             assert single_arg_calls == [], f"{relative_path} has single-argument getNextPhase(...) call(s): {single_arg_calls}"
 
 
+class TestGitCheckpoint:
+    def test_workflow_instance_declares_optional_implement_checkpoint_base_commit_field(self):
+        src = _src("types.ts")
+        assert "implementCheckpointBaseCommit?:" in src
+
+    def test_advance_workflow_locks_checkpoint_base_commit_once_on_implement_entry(self):
+        src = _src("state.ts")
+        assert 'next === "implement"' in src
+        assert "implementCheckpointBaseCommit === undefined" in src
+
+    def test_advance_workflow_captures_head_via_rev_parse(self):
+        src = _src("state.ts")
+        assert '"rev-parse"' in src
+        assert '"HEAD"' in src
+
+    def test_command_policy_checks_git_status_before_checkpoint_commit(self):
+        src = _src("command-policy.ts")
+        assert "git status --porcelain" in src or '"status", "--porcelain"' in src
+        verification_block = src[src.index('["code-quality", "project-test"].includes(spec.id)'):]
+        assert "implementCheckpointBaseCommit" in verification_block
+
+    def test_command_policy_uses_checkpoint_commit_message(self):
+        src = _src("command-policy.ts")
+        assert "chore(checkpoint):" in src
+
+    def test_catalog_declares_git_reset_soft_to_checkpoint_base(self):
+        src = _src("catalog.ts")
+        assert 'id: "git-reset-soft-to-checkpoint-base"' in src
+        entry = src[src.index('id: "git-reset-soft-to-checkpoint-base"'):]
+        assert 'allowedPhases: ["commit"]' in entry[:400]
+        assert '"--soft"' in entry[:400]
+
+    def test_command_policy_special_cases_reset_soft_to_checkpoint_base(self):
+        src = _src("command-policy.ts")
+        assert "git-reset-soft-to-checkpoint-base" in src
+        assert "implementCheckpointBaseCommit" in src
+        special_case_index = src.index('"git-reset-soft-to-checkpoint-base"')
+        run_call_index = src.index("await runCatalogCommandAsync(")
+        assert special_case_index < run_call_index, "checkpoint-base validation must run before runCatalogCommandAsync"
+
+    def test_catalog_declares_git_reset_hard_to_checkpoint(self):
+        src = _src("catalog.ts")
+        assert 'id: "git-reset-hard-to-checkpoint"' in src
+        entry = src[src.index('id: "git-reset-hard-to-checkpoint"'):]
+        assert 'allowedPhases: ["implement"]' in entry[:400]
+        assert "allowUserArgs: true" in entry[:400]
+        assert '"--hard"' in entry[:400]
+
+    def test_command_policy_validates_ancestry_before_reset_hard(self):
+        src = _src("command-policy.ts")
+        assert "git-reset-hard-to-checkpoint" in src
+        special_case = src[src.index('"git-reset-hard-to-checkpoint"'):]
+        merge_base_index = special_case.index("merge-base")
+        is_ancestor_index = special_case.index("--is-ancestor")
+        run_call_index = special_case.index("await runCatalogCommandAsync(")
+        assert merge_base_index < run_call_index, "merge-base check must run before runCatalogCommandAsync executes the reset"
+        assert is_ancestor_index < run_call_index, "--is-ancestor check must run before runCatalogCommandAsync executes the reset"
+
+    def test_reset_hard_narrows_user_args_to_validated_target_only(self):
+        """Defense in depth: after ancestry validation passes, only the validated target
+        must reach runCatalogCommandAsync, mirroring git-reset-soft-to-checkpoint-base's
+        explicit userArgs narrowing. Otherwise extra caller-supplied args past userArgs[0]
+        would reach the real `git reset --hard` call unvalidated."""
+        src = _src("command-policy.ts")
+        special_case = src[src.index('"git-reset-hard-to-checkpoint"'):]
+        narrow_index = special_case.index("userArgs = [target]")
+        run_call_index = special_case.index("await runCatalogCommandAsync(")
+        assert narrow_index < run_call_index, "userArgs must be narrowed to [target] before runCatalogCommandAsync runs"
+
+
 class TestWorkflowTsShadowing:
     def test_no_const_path_shadowing_node_path(self):
         """No block-level 'const path' that shadows the node:path import."""

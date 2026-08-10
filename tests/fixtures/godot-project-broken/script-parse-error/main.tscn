@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/parse_error.gd" id="1_parse"]
+
+[node name="ScriptParseError" type="Node"]
+script = ExtResource("1_parse")

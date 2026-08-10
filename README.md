@@ -49,6 +49,54 @@ interview
 
 `target/`는 이 저장소의 배포 템플릿입니다. 다른 프로젝트에 설치하면 `target/.pi/` 내용이 해당 프로젝트의 `.pi/`로 배치됩니다.
 
+## Godot 4.x 프로젝트 지원
+
+루트에 `project.godot`가 있는 프로젝트는 일반 빌드 파일보다 먼저 Godot 프로젝트로 감지됩니다(하네스 저장소 자체의 특수 감지는 항상 우선합니다). workflow 컴포넌트를 설치하고 Godot **4.x headless CLI**와 프로젝트에 맞는 export templates를 준비해야 합니다. 하네스는 엔진이나 export templates를 설치하지 않습니다.
+
+### Workflow 명령 매핑
+
+| 하네스 명령 | Godot adapter action | 동작 |
+|---|---|---|
+| `project-test` | `test` | 설정한 프로젝트 루트 내부 test scene 실행 |
+| `project-build` | `export` | 설정한 preset으로 export (컴파일이 아님) |
+| `code-quality` | `gate` | `quality → test → export` 순서의 review gate |
+
+`code-quality`의 `gate`는 세 단계를 고정 순서로 실행하고 앞 단계가 실패해도 뒤 단계 진단을 보존합니다. 설치 후 개발 저장소의 `target/.pi/`를 수정했다면 `bash scripts/sync-dev-harness.sh` (Windows: `powershell -File scripts\sync-dev-harness.ps1`)를 실행해 `target/.pi/`를 로컬 `.pi/`에 동기화합니다.
+
+### `.pi/local/godot.json` 계약
+
+설정 파일은 선택 사항이며 아래 일곱 키만 허용합니다. `unset`은 해당 값이 없고 adapter discovery 또는 해당 action의 필수 설정을 따른다는 뜻입니다.
+
+| 키 | 타입 | 기본값 |
+|---|---|---|
+| `godot_bin` | string | `unset` (`GODOT_BIN` → 설정값 → 플랫폼 후보 탐색) |
+| `test_scene` | string | `unset` (`test`/`gate`에 필요) |
+| `export_preset` | string | `unset` (`export`/`gate`에 필요) |
+| `export_output` | string | `unset` (`export`/`gate`에 필요) |
+| `timeout_seconds` | number | `60.0` |
+| `fail_on_warning` | boolean | `false` |
+| `overwrite_export` | boolean | `false` |
+
+예시:
+
+```json
+{
+  "godot_bin": "godot4",
+  "test_scene": "tests/test_scene.tscn",
+  "export_preset": "Linux",
+  "export_output": "build/game.pck",
+  "timeout_seconds": 60.0,
+  "fail_on_warning": false,
+  "overwrite_export": false
+}
+```
+
+Scene와 export output은 canonical project root 아래에 있어야 하며 symlink 경계를 넘을 수 없습니다. warning-only 결과는 기본적으로 `status: warning` (gate aggregate는 `pass`) 및 exit code `0`입니다. `fail_on_warning: true`이면 실패합니다. 기존 regular export 파일도 기본적으로 덮어쓰지 않으며, `overwrite_export: true`일 때만 허용됩니다(symlink와 non-regular 파일은 항상 거부).
+
+Adapter 상태는 `pass`, `warning`, `fail`, `config-error`, `tool-error`, `timeout`입니다. `pass`/`warning`은 exit code `0`, 나머지는 `1`이며, gate의 fatal 상태는 review 승인을 막습니다.
+
+지원 범위는 Godot 4.x 감지, CLI 버전 확인, headless editor/import 및 script parse/check, external resource 검사, 설정한 test scene 실행, 안전한 export, Windows/Linux argv 실행과 JSON 진단입니다. Godot 3.x, editor UI 자동화, gameplay semantics/art 품질 판단, 엔진/templates 설치, shell 문자열 실행, 임의 test argv는 지원하지 않습니다.
+
 ## Key components
 
 | 영역 | 위치 | 역할 |

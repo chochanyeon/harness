@@ -1169,3 +1169,73 @@ class TestWorkflowPromptLighteningContract:
         for phase in ["plan_review", "code_review", "commit", "push"]:
             assert f'case "{phase}":' in context_src
         assert "formatRequiredGuardEvidence(state.workflow.phase" in context_src
+
+
+class TestGodotRegressionContracts:
+    def test_catalog_preserves_harness_precedence_and_godot_precedence(self):
+        src = _src("catalog.ts")
+        harness_marker = 'type: "harness"'
+        godot_marker = 'if (exists("project.godot"))'
+        generic_marker = '// Gradle (Java/Kotlin)'
+        assert src.index(harness_marker) < src.index(godot_marker) < src.index(generic_marker)
+        assert 'type: "godot"' in src
+
+    def test_catalog_maps_godot_actions_to_the_consumer_adapter(self):
+        src = _src("catalog.ts")
+        adapter = 'path.join(root, ".pi", "skills", "godot-development", "tools", "godot_quality.py")'
+        assert adapter in src
+        for action in ['"test"', '"export"', '"gate"']:
+            assert f"resolveGodotAdapterCommand(root, {action})" in src
+        assert '"godot"' in src
+
+    def test_adapter_file_contract_is_safe_and_complete(self):
+        adapter = ROOT / "target" / ".pi" / "skills" / "godot-development" / "tools" / "godot_quality.py"
+        src = adapter.read_text(encoding="utf-8")
+        assert src.startswith("#!/usr/bin/env python3")
+        assert '"shell": False' in src
+        assert "start_new_session" in src or "CREATE_NEW_PROCESS_GROUP" in src
+        assert "_terminate_process_group" in src
+        assert "CONFIG_KEYS" in src
+        for key in ["godot_bin", "test_scene", "export_preset", "export_output", "timeout_seconds", "fail_on_warning", "overwrite_export"]:
+            assert f'"{key}"' in src
+        for status in ["pass", "warning", "fail", "config-error", "tool-error", "timeout"]:
+            assert f'"{status}"' in src or f"{status!r}" in src
+        assert "--export-release" in src
+        assert "--scene" in src
+        assert "shell=True" not in src
+        assert "arbitrary" in src.lower()
+
+    def test_godot_skill_documents_configuration_and_scope_contract(self):
+        skill = (ROOT / "target" / ".pi" / "skills" / "godot-development" / "SKILL.md").read_text(encoding="utf-8")
+        workflow = (ROOT / "target" / ".pi" / "workflows" / "godot-quality-gate.md").read_text(encoding="utf-8")
+        combined = skill + "\n" + workflow
+        for token in [
+            "Godot 4.x", "project-test", "project-build", "code-quality", "quality → test → export",
+            ".pi/local/godot.json", "fail_on_warning", "overwrite_export", "config-error", "tool-error", "timeout",
+            "Supported", "Explicitly excluded", "shell=false", "arbitrary test argv",
+        ]:
+            assert token in combined, f"Godot contract is missing: {token}"
+
+    def test_readmes_keep_the_godot_contract_in_both_languages(self):
+        readme_ko = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_en = (ROOT / "README.en.md").read_text(encoding="utf-8")
+        for token in [
+            "Godot 4.x", "project.godot", "project-test", "project-build", "code-quality",
+            ".pi/local/godot.json", "godot_bin", "test_scene", "export_preset", "export_output",
+            "timeout_seconds", "fail_on_warning", "overwrite_export", "config-error", "tool-error",
+            "timeout", "sync-dev-harness", "Godot 3.x",
+        ]:
+            assert token in readme_ko, f"Korean README is missing: {token}"
+            assert token in readme_en, f"English README is missing: {token}"
+        assert "임의 test argv" in readme_ko
+        assert "arbitrary test argv" in readme_en
+        assert "quality → test → export" in readme_ko
+        assert "quality → test → export" in readme_en
+
+    def test_feature_documentation_has_required_sections_and_index_entry(self):
+        feature = (ROOT / "docs" / "feat" / "godot-harness-integration.md").read_text(encoding="utf-8")
+        index = (ROOT / "docs" / "feat" / "INDEX.md").read_text(encoding="utf-8")
+        for heading in ["Context & Problem", "Mermaid Flow Diagram", "Decision Log", "Changed-scope Summary"]:
+            assert f"## {heading}" in feature
+        assert "```mermaid" in feature
+        assert "godot-harness-integration.md" in index

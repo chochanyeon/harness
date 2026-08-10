@@ -1,0 +1,5 @@
+{
+  "test_scene": "tests/test_scene.tscn",
+  "export_preset": "Linux",
+  "export_output": "build/game.pck"
+}

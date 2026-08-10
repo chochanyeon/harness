@@ -1,0 +1,25 @@
+{
+  "missing-resource": {
+    "project": "missing-resource",
+    "action": "quality",
+    "expected_error": "missing-resource"
+  },
+  "script-parse-error": {
+    "project": "script-parse-error",
+    "action": "quality",
+    "fake_mode": "script-parse-error",
+    "expected_error": "script-parse"
+  },
+  "test-failure": {
+    "project": "test-failure",
+    "action": "test",
+    "fake_mode": "test-failure",
+    "expected_error": "test-failure"
+  },
+  "export-failure": {
+    "project": "export-failure",
+    "action": "export",
+    "fake_mode": "export-failure",
+    "expected_error": "export-failure"
+  }
+}

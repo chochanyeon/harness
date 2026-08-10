@@ -398,14 +398,15 @@ def test_semantic_box_rendered_lines_fit_width_40():
 
 # ── Theme validation ──────────────────────────────────────────────────────────
 
-def test_workflow_console_theme_has_52_tokens():
+def test_workflow_console_theme_has_pi_token_count():
     with open(THEME, encoding="utf-8") as f:
         d = json.load(f)
-    assert len(d["colors"]) == 52, f"Expected 52 tokens, got {len(d['colors'])}"
+    expected = 53
+    assert len(d["colors"]) == expected, f"Expected {expected} tokens, got {len(d['colors'])}"
 
 
 def test_workflow_console_theme_matches_pi_dark_token_names():
-    """All 52 token names must match Pi's built-in dark theme."""
+    """All token names must match Pi's built-in dark theme."""
     if not PI_DARK_THEME.exists():
         return  # skip if Pi not installed
     with open(THEME, encoding="utf-8") as f:

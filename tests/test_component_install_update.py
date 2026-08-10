@@ -1,7 +1,10 @@
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +64,9 @@ def test_python_initializer_can_install_workflow_only(tmp_path):
     assert (tmp_path / ".pi" / "extensions" / "workflow").exists()
     assert (tmp_path / ".pi" / "schemas" / "harness-field-log-event.schema.json").exists()
     assert (tmp_path / ".pi" / "themes" / "workflow-console.json").exists()
+    assert (tmp_path / ".pi" / "skills" / "godot-development" / "SKILL.md").exists()
+    assert (tmp_path / ".pi" / "skills" / "godot-development" / "tools" / "godot_quality.py").exists()
+    assert (tmp_path / ".pi" / "workflows" / "godot-quality-gate.md").exists()
     assert (tmp_path / ".ai" / "interview").exists()
     assert not (tmp_path / ".ai" / "interview" / "feature-interview-protocol.md").exists()
     assert not (tmp_path / ".ai" / "interview" / "requirements-room-protocol.md").exists()
@@ -142,6 +148,46 @@ def test_sync_dev_harness_excludes_generated_cache_and_preserves_destination_ven
     assert not (dest / "pkg.egg-info").exists()
     assert not (dest / "old" / "__pycache__" / "stale.pyc").exists()
     assert not (dest / ".cache" / "stale.txt").exists()
+
+
+@pytest.mark.skipif(
+    shutil.which("bash") is None or os.name == "nt",
+    reason="bash and python3 are required",
+)
+def test_sync_dev_harness_shell_propagates_godot_adapter_and_workflow(tmp_path):
+    repo = tmp_path / "repo"
+    source = repo / "target" / ".pi"
+    destination = repo / ".pi"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts" / "sync-dev-harness.sh", scripts / "sync-dev-harness.sh")
+    shutil.copy2(ROOT / "scripts" / "sync-dev-harness.py", scripts / "sync-dev-harness.py")
+
+    rel_paths = [
+        Path("skills/godot-development/tools/godot_quality.py"),
+        Path("workflows/godot-quality-gate.md"),
+    ]
+    for relative in rel_paths:
+        source_path = source / relative
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / "target" / ".pi" / relative, source_path)
+    (destination / "old").mkdir(parents=True)
+    (destination / "old" / "stale.txt").write_text("stale", encoding="utf-8")
+
+    result = subprocess.run(
+        ["bash", "scripts/sync-dev-harness.sh"],
+        cwd=repo,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    for relative in rel_paths:
+        assert (destination / relative).read_bytes() == (source / relative).read_bytes()
+    assert not (destination / "old" / "stale.txt").exists()
 
 
 def test_sync_dev_harness_preserves_real_destination_venv_pip(tmp_path):

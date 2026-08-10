@@ -1,0 +1,6 @@
+config_version=5
+
+[application]
+config/name="Broken Godot Fixture - Export Failure"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+run/main_scene="res://main.tscn"

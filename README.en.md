@@ -49,6 +49,54 @@ interview
 
 `target/` is the distributable template in this source repository. Installing the harness into another project copies the relevant `target/.pi/` runtime files into that project's `.pi/` directory.
 
+## Godot 4.x project support
+
+A project with a root-level `project.godot` is detected as Godot before generic build files (the harness source repository's special detection always remains first). Install the workflow component and provide a **Godot 4.x headless CLI** plus matching export templates for the project. The harness does not install the engine or export templates.
+
+### Workflow command mapping
+
+| Harness command | Godot adapter action | Behavior |
+|---|---|---|
+| `project-test` | `test` | Run the configured test scene inside the project root |
+| `project-build` | `export` | Export with the configured preset (not compilation) |
+| `code-quality` | `gate` | Review gate in `quality → test → export` order |
+
+The `code-quality` `gate` always runs all three steps in that order and retains later-step diagnostics even when an earlier step fails. After changing `target/.pi/` in this development repository, run `bash scripts/sync-dev-harness.sh` (Windows: `powershell -File scripts\sync-dev-harness.ps1`) to synchronize `target/.pi/` into the local `.pi/`.
+
+### `.pi/local/godot.json` contract
+
+The configuration file is optional and accepts only these seven keys. `unset` means the value is absent and follows executable discovery or the action's required-setting rule.
+
+| Key | Type | Default |
+|---|---|---|
+| `godot_bin` | string | `unset` (`GODOT_BIN` → configured value → platform candidates) |
+| `test_scene` | string | `unset` (required by `test`/`gate`) |
+| `export_preset` | string | `unset` (required by `export`/`gate`) |
+| `export_output` | string | `unset` (required by `export`/`gate`) |
+| `timeout_seconds` | number | `60.0` |
+| `fail_on_warning` | boolean | `false` |
+| `overwrite_export` | boolean | `false` |
+
+Example:
+
+```json
+{
+  "godot_bin": "godot4",
+  "test_scene": "tests/test_scene.tscn",
+  "export_preset": "Linux",
+  "export_output": "build/game.pck",
+  "timeout_seconds": 60.0,
+  "fail_on_warning": false,
+  "overwrite_export": false
+}
+```
+
+Scenes and export outputs must stay below the canonical project root and may not cross symlink boundaries. Warning-only results are non-fatal by default: an action has `status: warning`, while a gate aggregate is `pass`, with process exit code `0`. `fail_on_warning: true` promotes warnings to failure. Existing regular export files are rejected by default and allowed only with `overwrite_export: true` (symlinks and non-regular files are always rejected).
+
+Adapter statuses are `pass`, `warning`, `fail`, `config-error`, `tool-error`, and `timeout`. `pass`/`warning` use process exit code `0`; every other status uses `1`, and a fatal gate status blocks review approval.
+
+Supported scope includes Godot 4.x detection, CLI version validation, headless editor/import and script parse/check, external-resource checks, configured test-scene execution, safe export, Windows/Linux argv execution, and JSON diagnostics. Godot 3.x, editor UI automation, gameplay semantics/art-quality judgment, engine/template installation, shell-string execution, and arbitrary test argv are excluded.
+
 ## Key components
 
 | Area | Path | Purpose |

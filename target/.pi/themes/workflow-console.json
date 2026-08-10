@@ -32,6 +32,7 @@
     "text": "fg0",
     "thinkingText": "fg2",
     "selectedBg": "bg3",
+    "scrollbarThumb": "bg3",
     "userMessageBg": "#172033",
     "userMessageText": "fg0",
     "customMessageBg": "#151f35",

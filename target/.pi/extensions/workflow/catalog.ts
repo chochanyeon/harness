@@ -20,6 +20,7 @@ export type BuildSystemType =
   | "go"
   | "cargo"
   | "make"
+  | "godot"
   | "harness"
   | "unknown";
 
@@ -29,6 +30,20 @@ export type BuildSystemInfo = {
   buildCommand: { executable: string; args: string[] } | null;
   qualityCommand: { executable: string; args: string[] } | null;
 };
+
+type GodotAdapterAction = "test" | "export" | "gate";
+
+/** Resolve the consumer-installed Godot adapter without shell interpolation. */
+export function resolveGodotAdapterCommand(root: string, action: GodotAdapterAction): { executable: string; args: string[] } {
+  const venvPython = process.platform === "win32"
+    ? path.join(root, ".pi", ".venv", "Scripts", "python.exe")
+    : path.join(root, ".pi", ".venv", "bin", "python");
+  const executable = fs.existsSync(venvPython)
+    ? venvPython
+    : process.platform === "win32" ? "python" : "python3";
+  const adapter = path.join(root, ".pi", "skills", "godot-development", "tools", "godot_quality.py");
+  return { executable, args: [adapter, action] };
+}
 
 function hasMakeTarget(makeRoot: string, target: string): boolean {
   for (const name of ["Makefile", "makefile", "GNUmakefile"]) {
@@ -51,6 +66,16 @@ export function detectBuildSystem(root: string): BuildSystemInfo {
       testCommand: { executable: "python", args: ["-m", "pytest", "tests"] },
       buildCommand: null,
       qualityCommand: { executable: "python", args: ["-m", "pytest", "tests"] },
+    };
+  }
+
+  // Godot — root project only, before generic build-system detection.
+  if (exists("project.godot")) {
+    return {
+      type: "godot",
+      testCommand: resolveGodotAdapterCommand(root, "test"),
+      buildCommand: resolveGodotAdapterCommand(root, "export"),
+      qualityCommand: resolveGodotAdapterCommand(root, "gate"),
     };
   }
 

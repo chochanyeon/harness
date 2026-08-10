@@ -1,0 +1,8 @@
+{
+  "test_scene": "tests/test_scene.tscn",
+  "export_preset": "Linux",
+  "export_output": "build/game.pck",
+  "timeout_seconds": 60.0,
+  "fail_on_warning": false,
+  "overwrite_export": false
+}

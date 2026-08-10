@@ -134,6 +134,9 @@ def test_update_harness_fixture_and_workflow_phase_smoke(tmp_path):
     assert (consumer / ".pi").exists()
     assert (consumer / "AGENTS.md").exists()
     assert (consumer / ".harness" / "workflow-policy.json").exists()
+    assert (consumer / ".pi" / "skills" / "godot-development" / "SKILL.md").exists()
+    assert (consumer / ".pi" / "skills" / "godot-development" / "tools" / "godot_quality.py").exists()
+    assert (consumer / ".pi" / "workflows" / "godot-quality-gate.md").exists()
 
     data = _run_node(_workflow_script(consumer), consumer, tmp_path / "workflow-log-root")
     assert "edit" not in data["toolsAfterPrepare"], data

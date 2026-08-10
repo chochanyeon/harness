@@ -59,9 +59,60 @@ def _detect_build_system_script(project: Path) -> str:
         const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
         const {{ detectBuildSystem }} = jiti(path.resolve('target/.pi/extensions/workflow/catalog.ts'));
         const bs = detectBuildSystem({json.dumps(str(project))});
-        console.log(JSON.stringify({{ qualityCommand: bs.qualityCommand }}));
+        console.log(JSON.stringify({{ type: bs.type, testCommand: bs.testCommand, buildCommand: bs.buildCommand, qualityCommand: bs.qualityCommand }}));
         '''
     )
+
+
+def test_godot_detection_precedes_generic_build_files_and_maps_adapter_actions(tmp_path):
+    project = tmp_path / "godot-project"
+    project.mkdir()
+    (project / "project.godot").write_text("[application]\nconfig/name=Test\n", encoding="utf-8")
+    (project / "package.json").write_text("{}\n", encoding="utf-8")
+    data = _run_node_catalog(_detect_build_system_script(project))
+    adapter = project / ".pi" / "skills" / "godot-development" / "tools" / "godot_quality.py"
+    assert data["type"] == "godot"
+    assert data["testCommand"]["args"] == [str(adapter), "test"]
+    assert data["buildCommand"]["args"] == [str(adapter), "export"]
+    assert data["qualityCommand"]["args"] == [str(adapter), "gate"]
+    assert data["testCommand"]["executable"] in {"python", "python3"}
+
+
+def test_harness_detection_remains_before_root_project_godot(tmp_path):
+    project = tmp_path / "harness"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("harness\n", encoding="utf-8")
+    (project / "target/.pi/extensions").mkdir(parents=True)
+    (project / "target/.pi/extensions/workflow.ts").write_text("", encoding="utf-8")
+    (project / "tests").mkdir()
+    (project / "tests/test_workflow_extension_runtime.py").write_text("", encoding="utf-8")
+    (project / "project.godot").write_text("", encoding="utf-8")
+    data = _run_node_catalog(_detect_build_system_script(project))
+    assert data["type"] == "harness"
+    assert data["testCommand"] == {"executable": "python", "args": ["-m", "pytest", "tests"]}
+
+
+def test_nested_project_godot_is_not_detected(tmp_path):
+    project = tmp_path / "nested-godot"
+    (project / "subdir").mkdir(parents=True)
+    (project / "subdir/project.godot").write_text("", encoding="utf-8")
+    data = _run_node_catalog(_detect_build_system_script(project))
+    assert data["type"] == "unknown"
+
+
+def test_godot_adapter_prefers_consumer_pi_venv_python(tmp_path):
+    project = tmp_path / "godot-venv"
+    project.mkdir()
+    (project / "project.godot").write_text("", encoding="utf-8")
+    if sys.platform == "win32":
+        python = project / ".pi/.venv/Scripts/python.exe"
+    else:
+        python = project / ".pi/.venv/bin/python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    data = _run_node_catalog(_detect_build_system_script(project))
+    assert data["type"] == "godot"
+    assert data["testCommand"]["executable"] == str(python)
 
 
 def test_go_quality_command_falls_back_to_go_vet_without_golangci_lint(tmp_path):

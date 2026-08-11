@@ -378,13 +378,19 @@ class TestGatesTsSbadr:
             f"SBADR FAIL gate message contains Korean (LLM-facing must be English): {matches}"
         )
 
-    def test_sbadr_stdio_inherits_stderr(self):
-        """CoreNLP startup progress must be visible — stderr should be inherited."""
+    def test_sbadr_stdio_is_fully_piped_not_inherited(self):
+        """Inheriting the child's stdio corrupted the interactive TUI's own
+        rendering while CoreNLP was starting up (raw output appeared at the
+        bottom of the screen). runSbadrAnalysis must fully pipe stdio instead;
+        the pre-existing console.error(...may take ~60s...) message already
+        tells the user it is not hung."""
         src = _src("gates.ts")
-        assert 'stdio: ["pipe", "pipe", "inherit"]' in src, (
-            "runSbadrAnalysis must use stdio: ['pipe','pipe','inherit'] "
-            "so CoreNLP startup progress is visible"
-        )
+        run_idx = src.index("function runSbadrAnalysis")
+        end_idx = src.index("\n}", run_idx)
+        block = src[run_idx:end_idx]
+        assert 'stdio: "pipe"' in block
+        assert '"inherit"' not in block
+        assert "may take ~60s" in src
 
     def test_sbadr_skip_uses_dpaa_gate_exception(self):
         src = _src("gates.ts")

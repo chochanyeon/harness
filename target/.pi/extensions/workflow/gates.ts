@@ -286,6 +286,7 @@ function canImportSbadr(command: string): boolean {
 
 function runSbadrAnalysis(pythonCommand: string, planPath: string): { ok: boolean; report: SbadrReport | null; error?: string } {
   const reportPath = path.join(os.tmpdir(), `sbadr-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+  let stderrOutput = "";
   try {
     execSync(
       `${quoteCommand(pythonCommand)} -m sbadr.cli analyze "${escapeForDoubleQuotedArg(planPath)}" --output "${escapeForDoubleQuotedArg(reportPath)}" --no-text`,
@@ -293,15 +294,26 @@ function runSbadrAnalysis(pythonCommand: string, planPath: string): { ok: boolea
         cwd: HARNESS_ROOT,
         encoding: "utf-8",
         env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONPATH: process.env.PYTHONPATH ? `${PI_ROOT}${path.delimiter}${process.env.PYTHONPATH}` : PI_ROOT },
-        stdio: ["pipe", "pipe", "inherit"],  // stderr inherited so CoreNLP startup progress is visible
+        // Fully piped, not inherited: a child process writing straight to the
+        // shared terminal fd corrupts the interactive TUI's own rendering while
+        // CoreNLP is starting up (raw output appears at the bottom of the screen).
+        // The "may take ~60s" console.error just before this call already tells
+        // the user it is not hung, so nothing is lost by capturing stderr instead.
+        stdio: "pipe",
       },
     );
-  } catch { /* SBADR exits non-zero on WARN/FAIL; report still written */ }
+  } catch (error) {
+    // SBADR exits non-zero on WARN/FAIL; report is still written in that case.
+    // Capture stderr so a genuine startup failure is still diagnosable even
+    // though it is no longer printed straight to the terminal.
+    stderrOutput = String((error as { stderr?: unknown })?.stderr ?? "").trim();
+  }
   try {
     const report = JSON.parse(fs.readFileSync(reportPath, "utf-8")) as SbadrReport;
     return { ok: report.verdict !== "FAIL", report };
   } catch (err) {
-    return { ok: true, report: null, error: String(err) };
+    const readError = String(err);
+    return { ok: true, report: null, error: stderrOutput ? `${readError}\n${stderrOutput}` : readError };
   } finally {
     fs.rmSync(reportPath, { force: true });
   }

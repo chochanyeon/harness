@@ -254,6 +254,7 @@ export function formatWorkflowToolsListing(phase: WorkflowPhase | null): string 
   const catalogCmds = phase ? getCatalogCommandsForPhase(phase) : COMMAND_CATALOG;
   const extensionToolNames = [
     "submit_review_package",
+    "workflow_start",
     "workflow_run_command",
     "workflow_approve",
     "workflow_skip_gate",

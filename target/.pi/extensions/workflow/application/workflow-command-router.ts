@@ -123,6 +123,103 @@ function formatConditionalProtocolHints(state: WorkflowRuntimeState): string {
   return ["Conditional protocol hints (triggered only):", ...hints].join("\n");
 }
 
+export async function ensureWorkflowPrerequisites(ctx: any): Promise<boolean> {
+  const scan = scanWorkflowPrerequisites();
+  if (!scan.ok) {
+    ctx.ui.notify([
+      formatWorkflowPrerequisiteScan(scan),
+      "",
+      "필수 workflow runtime 파일이 없어 진행할 수 없습니다.",
+    ].join("\n"), "warning");
+    return false;
+  }
+  if (scan.warnings.length === 0) return true;
+  if (!ctx.hasUI) {
+    ctx.ui.notify([
+      formatWorkflowPrerequisiteScan(scan),
+      "",
+      "경고 확인을 위한 대화형 UI가 없어 진행을 중단합니다.",
+    ].join("\n"), "warning");
+    return false;
+  }
+  return ctx.ui.confirm(
+    "Workflow prerequisite 경고 확인",
+    [
+      formatWorkflowPrerequisiteScan(scan),
+      "",
+      "위 경고가 있어도 workflow를 계속 진행하시겠습니까?",
+      "",
+      "예: 경고를 인지하고 계속 진행합니다.",
+      "아니오: workflow start/load를 중단합니다.",
+    ].join("\n"),
+  );
+}
+
+export type StartWorkflowOutcome =
+  | { ok: false; reason: "already-active" | "prerequisite-failed"; message: string }
+  | { ok: true; workflow: WorkflowInstance; marker: string; kickoffPrompt: string };
+
+/**
+ * Shared workflow-start logic used by both the `/workflow start` slash command
+ * (human-typed, kicks off the interview via a queued sendUserMessage) and the
+ * workflow_start tool (LLM-invoked mid-turn, returns the kickoff prompt directly
+ * in the tool result so the calling LLM can act on it in the same turn without
+ * queuing a new message).
+ */
+export async function startWorkflowCore(
+  pi: ExtensionAPI,
+  deps: WorkflowCommandRouterDeps,
+  ctx: any,
+  goal: string,
+): Promise<StartWorkflowOutcome> {
+  const { state, cancelWorkflowContinuationPending, workflowContinuationMarker, workflowContinuationMarkerComment, applyPhaseToolPolicy, refreshBoard, refreshStatus } = deps;
+
+  if (state.workflow && state.workflow.phase !== "done") {
+    return {
+      ok: false,
+      reason: "already-active",
+      message: `이미 진행 중인 workflow가 있습니다: ${state.workflow.phase}\n먼저 /workflow status로 확인하거나 /workflow abort로 종료하세요.`,
+    };
+  }
+
+  if (!(await ensureWorkflowPrerequisites(ctx))) {
+    return { ok: false, reason: "prerequisite-failed", message: "Workflow prerequisite 확인에 실패하여 시작할 수 없습니다." };
+  }
+
+  cancelWorkflowContinuationPending();
+  state.workflow = createWorkflow(goal);
+  state.codeReviewGuardSatisfiedToken = null;
+  state.interviewAmbiguityScoreToken = null;
+  state.policyApprovals = [];
+  state.reviewPackageToken = null;
+  state.gateFailures = new Map();
+  saveWorkflow(state.workflow);
+  applyPhaseToolPolicy(state.workflow.phase);
+  refreshBoard(ctx);
+  refreshStatus(ctx);
+  // Gap fix: name the session so /resume shows the workflow title
+  try { pi.setSessionName(`[wf] ${state.workflow.title}`); } catch { /* non-fatal */ }
+
+  const wf = state.workflow;
+  const marker = workflowContinuationMarker(wf);
+  const kickoffPrompt = [
+    `Workflow '${wf.title}'이(가) 시작되었습니다. 현재 페이즈: interview.`,
+    "",
+    formatWorkflowAction(wf),
+    "",
+    "Rules:",
+    "- Call workflow_interview_wizard first. Generate 5 baseline questions tailored to the workflow goal (scope · motivation · acceptance criteria · affected files/modules · constraints/risks). The wizard displays exactly those baseline questions, with no runtime-added scope-map or clarity-check questions. If the task needs extra confirmation about affected areas, excluded scope, or unclear criteria, include that question directly in the baseline. Later low-score follow-ups should pass round: 'follow_up' so only targeted questions are asked.",
+    "- After the wizard returns answers, treat the baseline scope and affected-files/modules answers as required spec/plan coverage and ask focused follow-up questions for the weakest remaining clarity dimension.",
+    "- For brownfield work, inspect narrow repo evidence before asking direction questions about codebase facts.",
+    "- Do not advance to plan until requirements are sufficiently understood and no clarity dimension remains low unless the user accepts the risk.",
+    "- Do not request user approval to start — starting this workflow already reflects the user's approval.",
+    "",
+    workflowContinuationMarkerComment(marker),
+  ].join("\n");
+
+  return { ok: true, workflow: wf, marker, kickoffPrompt };
+}
+
 export function registerWorkflowCommand(pi: ExtensionAPI, deps: WorkflowCommandRouterDeps): void {
   const {
     state,
@@ -204,38 +301,6 @@ pi.registerCommand("workflow", {
   handler: async (args, ctx) => {
     const { command, rest } = parseWorkflowCommand(args);
 
-    const ensurePrerequisites = async (): Promise<boolean> => {
-      const scan = scanWorkflowPrerequisites();
-      if (!scan.ok) {
-        ctx.ui.notify([
-          formatWorkflowPrerequisiteScan(scan),
-          "",
-          "필수 workflow runtime 파일이 없어 진행할 수 없습니다.",
-        ].join("\n"), "warning");
-        return false;
-      }
-      if (scan.warnings.length === 0) return true;
-      if (!ctx.hasUI) {
-        ctx.ui.notify([
-          formatWorkflowPrerequisiteScan(scan),
-          "",
-          "경고 확인을 위한 대화형 UI가 없어 진행을 중단합니다.",
-        ].join("\n"), "warning");
-        return false;
-      }
-      return ctx.ui.confirm(
-        "Workflow prerequisite 경고 확인",
-        [
-          formatWorkflowPrerequisiteScan(scan),
-          "",
-          "위 경고가 있어도 workflow를 계속 진행하시겠습니까?",
-          "",
-          "예: 경고를 인지하고 계속 진행합니다.",
-          "아니오: workflow start/load를 중단합니다.",
-        ].join("\n"),
-      );
-    };
-
     if (command === "doctor") {
       ctx.ui.notify(formatHarnessDoctor(), "info");
       return;
@@ -294,52 +359,18 @@ pi.registerCommand("workflow", {
     }
 
     if (command === "start") {
-      if (state.workflow && state.workflow.phase !== "done") {
-        ctx.ui.notify(
-          `이미 진행 중인 workflow가 있습니다: ${state.workflow.phase}\n` +
-            "먼저 /workflow status로 확인하거나 /workflow abort로 종료하세요.",
-          "warning",
-        );
+      const result = await startWorkflowCore(pi, deps, ctx, rest.join(" "));
+      if (!result.ok) {
+        ctx.ui.notify(result.message, "warning");
         return;
       }
-
-      if (!(await ensurePrerequisites())) return;
-      cancelWorkflowContinuationPending();
-      state.workflow = createWorkflow(rest.join(" "));
-      state.codeReviewGuardSatisfiedToken = null;
-      state.interviewAmbiguityScoreToken = null;
-      state.policyApprovals = [];
-      state.reviewPackageToken = null;
-      state.gateFailures = new Map();
-      saveWorkflow(state.workflow);
-      applyPhaseToolPolicy(state.workflow.phase);
-      refreshBoard(ctx);
-      refreshStatus(ctx);
-      // Gap fix: name the session so /resume shows the workflow title
-      try { pi.setSessionName(`[wf] ${state.workflow.title}`); } catch { /* non-fatal */ }
       ctx.ui.notify(formatWorkflowStatus(state.workflow), "info");
       // Kick off LLM interview automatically when the queue is clear.
       // If Pi already has pending messages, avoid sending a kick-off that would be out of order.
       if (typeof ctx.hasPendingMessages === "function" && ctx.hasPendingMessages()) return;
       try {
-        const wf = state.workflow;
-        const marker = workflowContinuationMarker(wf);
-        state.workflowContinuationPending = { workflowId: wf.id, phase: wf.phase, marker };
-        const prompt = [
-          `Workflow '${wf.title}'이(가) 시작되었습니다. 현재 페이즈: interview.`,
-          "",
-          formatWorkflowAction(wf),
-          "",
-          "Rules:",
-          "- Call workflow_interview_wizard first. Generate 5 baseline questions tailored to the workflow goal (scope · motivation · acceptance criteria · affected files/modules · constraints/risks). The wizard displays exactly those baseline questions, with no runtime-added scope-map or clarity-check questions. If the task needs extra confirmation about affected areas, excluded scope, or unclear criteria, include that question directly in the baseline. Later low-score follow-ups should pass round: 'follow_up' so only targeted questions are asked.",
-          "- After the wizard returns answers, treat the baseline scope and affected-files/modules answers as required spec/plan coverage and ask focused follow-up questions for the weakest remaining clarity dimension.",
-          "- For brownfield work, inspect narrow repo evidence before asking direction questions about codebase facts.",
-          "- Do not advance to plan until requirements are sufficiently understood and no clarity dimension remains low unless the user accepts the risk.",
-          "- Do not request user approval to start — the user already approved by running /workflow start.",
-          "",
-          workflowContinuationMarkerComment(marker),
-        ].join("\n");
-        await (pi as any).sendUserMessage(prompt);
+        state.workflowContinuationPending = { workflowId: result.workflow.id, phase: result.workflow.phase, marker: result.marker };
+        await (pi as any).sendUserMessage(result.kickoffPrompt);
       } catch (error) {
         state.workflowContinuationPending = null;
         ctx.ui.notify(`Workflow interview kick-off failed: ${error instanceof Error ? error.message : String(error)}`, "warning");

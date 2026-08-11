@@ -26,6 +26,7 @@ WORKFLOW_COMMAND_ROUTER = ROOT / "target" / ".pi" / "extensions" / "workflow" / 
 MARKDOWN_BOX = ROOT / "target" / ".pi" / "extensions" / "workflow" / "markdown-box.ts"
 ASSISTANT_MARKDOWN_BOX = ROOT / "target" / ".pi" / "extensions" / "assistant-markdown-box.ts"
 FORMAT = ROOT / "target" / ".pi" / "extensions" / "workflow" / "format.ts"
+INTERVIEW_UI = ROOT / "target" / ".pi" / "extensions" / "workflow" / "interview-ui.ts"
 THEME = ROOT / "target" / ".pi" / "themes" / "workflow-console.json"
 PI_GLOBAL_NODE_MODULES = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules"
 PI_DARK_THEME = PI_GLOBAL_NODE_MODULES / "@earendil-works" / "pi-coding-agent" / "dist" / "modes" / "interactive" / "theme" / "dark.json"
@@ -61,6 +62,135 @@ def test_pi_tui_imported():
     assert "@earendil-works/pi-tui" in src
     assert "Text" in src
     assert "truncateToWidth" in src
+
+
+# ── Interview wizard: wrap long choices instead of masking with truncation ────
+
+def _run_interview_ui(script_body: str) -> dict:
+    env = os.environ.copy()
+    env["NODE_PATH"] = str(PI_NODE_MODULES)
+    script = textwrap.dedent(f'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('interview-ui-test.js'), {{ interopDefault: false }});
+        const mod = jiti(path.resolve('target/.pi/extensions/workflow/interview-ui.ts'));
+        const {{ visibleWidth }} = require('@earendil-works/pi-tui');
+        {script_body}
+    ''')
+    result = subprocess.run(
+        ["node", "-e", script],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def test_interview_ui_wraps_instead_of_truncating():
+    """Long choice labels must be word-wrapped (wrapTextWithAnsi), not truncated
+    with an ellipsis (truncateToWidth), so users can read what they are selecting."""
+    src = INTERVIEW_UI.read_text(encoding="utf-8")
+    assert "wrapTextWithAnsi" in src
+    assert "truncateToWidth" not in src
+
+
+def test_interview_wizard_does_not_mask_long_choice_labels():
+    data = _run_interview_ui(r'''
+        let component;
+        const ctx = {
+          hasUI: true,
+          ui: {
+            custom: (factory) => new Promise((resolve) => {
+              component = factory({ requestRender: () => {} }, null, {}, (v) => resolve(v));
+            }),
+            setWidget: () => {},
+            setWorkingVisible: () => {},
+          },
+        };
+        const longLabel = "This is a very long choice label that describes something in a lot of detail so it definitely exceeds a normal terminal width for sure and keeps going even further to be extra safe about testing wrapping behavior properly.";
+        const questions = [{
+          id: "q1", title: "T1", prompt: "P1", helpText: "H1", required: true,
+          choices: [{ id: "c1", label: longLabel }],
+          allowFreeText: true, allowSkip: true,
+        }];
+        mod.launchInterviewWizard(ctx, "Test WF", questions);
+        const width = 40;
+        const lines = component.render(width);
+        const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
+        const joined = lines.map(stripAnsi).join(" ");
+        console.log(JSON.stringify({
+          maxVisibleWidth: Math.max(...lines.map((l) => visibleWidth(stripAnsi(l)))),
+          containsFullLabelTail: joined.includes("properly."),
+          containsEllipsis: joined.includes("..."),
+        }));
+    ''')
+    assert data["maxVisibleWidth"] <= 40
+    assert data["containsFullLabelTail"] is True
+    assert data["containsEllipsis"] is False
+
+
+# ── workflow_start: LLM-triggered workflow start ─────────────────────────────
+
+def _workflow_start_tool_block(src: str) -> str:
+    """workflow_start is the last registered tool in workflow.ts, so the generic
+    _tool_block() 8000-char fallback overruns into unrelated pi.on(...) handlers.
+    Bound explicitly to the next top-level handler registration instead."""
+    idx = src.index('name: "workflow_start"')
+    end = src.index('pi.on("input"', idx)
+    return src[idx:end]
+
+
+def test_workflow_start_tool_has_goal_parameter_and_uses_shared_core():
+    block = _workflow_start_tool_block(WORKFLOW.read_text(encoding="utf-8"))
+    assert "goal" in block
+    assert "Type.String" in block
+    assert "startWorkflowCore(pi, workflowCommandRouterDeps, ctx" in block
+
+
+def test_workflow_start_tool_documents_trigger_phrases():
+    block = _workflow_start_tool_block(WORKFLOW.read_text(encoding="utf-8"))
+    assert "워크플로우로 진행해보자" in block
+    assert "let's start a workflow for this" in block
+
+
+def test_workflow_start_tool_returns_kickoff_without_queuing_a_new_message():
+    """The tool call happens mid-LLM-turn, so the kick-off instructions must be
+    returned directly in the tool result content — not queued via sendUserMessage
+    or steerLlm, which are for out-of-turn re-entry (same fix pattern as the
+    workflow_state autoback bug)."""
+    block = _workflow_start_tool_block(WORKFLOW.read_text(encoding="utf-8"))
+    assert "result.kickoffPrompt" in block
+    assert "sendUserMessage" not in block
+    assert "steerLlm" not in block
+
+
+def test_workflow_start_tool_has_render_call_and_render_result():
+    block = _workflow_start_tool_block(WORKFLOW.read_text(encoding="utf-8"))
+    assert "renderCall" in block
+    assert "renderResult" in block
+
+
+def test_router_and_tool_share_start_workflow_core():
+    router_src = WORKFLOW_COMMAND_ROUTER.read_text(encoding="utf-8")
+    assert "export async function startWorkflowCore" in router_src
+    start_idx = router_src.index('if (command === "start")')
+    start_block = router_src[start_idx:start_idx + 400]
+    assert "startWorkflowCore(pi, deps, ctx" in start_block
+
+
+def test_no_active_workflow_prompts_mention_workflow_start_trigger():
+    format_src = FORMAT.read_text(encoding="utf-8")
+    assert format_src.count("call workflow_start with a concise goal") >= 2
+
+
+def test_tools_listing_includes_workflow_start():
+    policy_src = COMMAND_POLICY.read_text(encoding="utf-8")
+    idx = policy_src.index("extensionToolNames = [")
+    block = policy_src[idx: idx + 400]
+    assert '"workflow_start"' in block
 
 
 # ── renderCall/renderResult on all tools ─────────────────────────────────────

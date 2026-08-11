@@ -58,7 +58,8 @@ export function formatWorkflowAction(workflow: WorkflowInstance | null): string 
     return [
       "[LLM WORKFLOW ACTION]",
       "- No active workflow.",
-      "- For procedural work, ask whether to start one with /workflow start <goal>.",
+      "- If the user explicitly asks, in this conversation, to proceed via a workflow (e.g. \"워크플로우로 진행해보자\", \"워크플로우 시작하자\", \"let's start a workflow for this\"), call workflow_start with a concise goal.",
+      "- Otherwise, for procedural work, ask whether to start one with /workflow start <goal>.",
       "[/LLM WORKFLOW ACTION]",
     ].join("\n");
   }
@@ -168,7 +169,8 @@ export function formatWorkflowPrompt(workflow: WorkflowInstance | null): string 
   if (!workflow) {
     return [
       "• No active workflow.",
-      "• For procedural work, suggest /workflow start <goal> to the user.",
+      "• If the user explicitly asks to proceed via a workflow (e.g. \"워크플로우로 진행해보자\", \"let's start a workflow for this\"), call workflow_start with a concise goal.",
+      "• Otherwise, for procedural work, suggest /workflow start <goal> to the user.",
     ].join("\n");
   }
   const workspace = validateWorkflowWorkspace(workflow);

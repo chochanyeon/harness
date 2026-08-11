@@ -28,6 +28,77 @@ def _run_node_runtime(script: str, tmp_path: Path) -> dict:
     return json.loads(result.stdout)
 
 
+def _run_node_in_tmp_git_repo(script: str, tmp_path: Path) -> dict:
+    """Run a Node script inside a throwaway git repo so gitRoot-relative writes
+    (workflow state, .ai/interview ledger snapshots) never touch the real
+    D:/harness working tree."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for args in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "test@example.com"],
+        ["git", "config", "user.name", "test"],
+    ):
+        subprocess.run(args, cwd=repo, check=True, capture_output=True)
+    (repo / "README.md").write_text("init", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True, capture_output=True)
+
+    env = os.environ.copy()
+    env["NODE_PATH"] = str(PI_NODE_MODULES)
+    env["PI_CODING_AGENT_DIR"] = str(tmp_path / ".pi-agent")
+    result = subprocess.run(
+        ["node", "-e", script],
+        cwd=repo,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        encoding="utf-8",
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_start_workflow_core_creates_workflow_and_blocks_reentry(tmp_path):
+    router_path = str(ROOT / "target" / ".pi" / "extensions" / "workflow" / "application" / "workflow-command-router.ts").replace("\\", "/")
+    script = textwrap.dedent(f'''
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const mod = jiti(path.resolve({router_path!r}));
+
+        const state = {{ workflow: null, gateFailures: new Map() }};
+        const deps = {{
+          state,
+          cancelWorkflowContinuationPending: () => {{}},
+          workflowContinuationMarker: (wf) => `${{wf.id}}:${{wf.phase}}:${{wf.updatedAt}}`,
+          workflowContinuationMarkerComment: (m) => `<!-- marker:${{m}} -->`,
+          applyPhaseToolPolicy: () => {{}},
+          refreshBoard: () => {{}},
+          refreshStatus: () => {{}},
+        }};
+        const pi = {{ setSessionName: () => {{}} }};
+        const ctx = {{ hasUI: true, ui: {{ confirm: async () => true, notify: () => {{}} }} }};
+
+        (async () => {{
+          const first = await mod.startWorkflowCore(pi, deps, ctx, "Test goal from tool trigger");
+          const second = await mod.startWorkflowCore(pi, deps, ctx, "second goal");
+          console.log(JSON.stringify({{
+            first: {{ ok: first.ok, phase: first.workflow && first.workflow.phase, hasKickoff: !!first.kickoffPrompt, mentionsWizard: (first.kickoffPrompt || "").includes("workflow_interview_wizard") }},
+            second: {{ ok: second.ok, reason: second.reason }},
+          }}));
+        }})();
+    ''')
+    data = _run_node_in_tmp_git_repo(script, tmp_path)
+    assert data["first"]["ok"] is True
+    assert data["first"]["phase"] == "interview"
+    assert data["first"]["hasKickoff"] is True
+    assert data["first"]["mentionsWizard"] is True
+    assert data["second"]["ok"] is False
+    assert data["second"]["reason"] == "already-active"
+
+
 def test_ambiguity_gate_policy_classification_runtime(tmp_path):
     script = textwrap.dedent(
         r'''

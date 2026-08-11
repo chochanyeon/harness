@@ -42,6 +42,7 @@ interview
 - Pre-code_review 단계의 누락된 검증은 `code_review → review_approved` 전에 드러나며, 나중에 처리할 개선은 명시적으로 deferred로 남깁니다.
 - plan.md에 `Phase Template: light`를 선언하면 해당 workflow만 `document` phase를 건너뜁니다. 선언이 없으면 지금과 같은 10-phase 순서(full)가 적용됩니다.
 - `implement` phase에서 `project-test`/`code-quality`가 성공하면 익스텐션이 기계적으로 로컬 git 체크포인트 커밋을 만듭니다. `git-reset-hard-to-checkpoint <hash>`로 이전 체크포인트로 다시 돌아갈 수 있고, `commit` phase의 `git-reset-soft-to-checkpoint-base`가 최종 push되는 이력을 하나의 깨끗한 커밋으로 squash합니다.
+- `/workflow start`는 사람이 직접 입력해야 하지만, 대화 중 사용자가 "워크플로우로 진행해보자" 같은 트리거 문구로 명시적으로 요청하면 LLM이 `workflow_start` tool로 워크플로를 직접 시작할 수 있습니다. 이미 진행 중인 workflow가 있으면 거부됩니다.
 
 ## What gets installed
 
@@ -203,7 +204,7 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/up
 ### Workflow
 
 ```text
-/workflow start <title>
+/workflow start <title>   # 대화 중 트리거 문구에 따라 LLM이 workflow_start tool로 직접 호출하기도 함
 /workflow status
 /workflow approve
 /workflow doctor

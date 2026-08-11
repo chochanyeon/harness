@@ -1,4 +1,4 @@
-import { Box, Text, truncateToWidth, matchesKey, Key, decodeKittyPrintable } from "@earendil-works/pi-tui";
+import { Box, Text, wrapTextWithAnsi, matchesKey, Key, decodeKittyPrintable } from "@earendil-works/pi-tui";
 
 export type InterviewChoice = {
   id: string;
@@ -238,13 +238,13 @@ class InterviewWizard {
     if (this.error) lines.push("", this.color("error", this.error));
     lines.push("", this.color("dim", "choices focus: Enter/n 다음 • p 이전 • v 미리보기 • s 건너뛰기 • Space 선택"));
     lines.push(this.color("dim", "text focus: 일반 문자/공백 입력 • Backspace 삭제 • Enter 다음 • Tab 전환 • Esc 취소"));
-    return lines.map((line) => truncateToWidth(line, width));
+    return lines.flatMap((line) => wrapTextWithAnsi(line, width));
   }
 
   private renderPreview(width: number): string[] {
     const lines = [this.color("accent", "Interview Answer Preview"), "", ...buildAnswerSummary(this.answers, this.questions).split("\n")];
     lines.push("", this.color("dim", this.finalPreview ? "Enter 완료 • Esc 돌아가기" : "Esc/v 돌아가기"));
-    return lines.map((line) => truncateToWidth(line, width));
+    return lines.flatMap((line) => wrapTextWithAnsi(line, width));
   }
 
   private movePrevious(): void {

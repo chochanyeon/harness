@@ -34,7 +34,7 @@ def test_workflow_prerequisite_scan_checks_runtime_build_and_checkstyle_files():
 def test_workflow_start_and_load_run_prerequisite_scan_with_explicit_yes_no_warning():
     workflow = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + ROUTER.read_text(encoding="utf-8")
 
-    assert "const ensurePrerequisites = async" in workflow
+    assert "export async function ensureWorkflowPrerequisites" in workflow
     assert "scanWorkflowPrerequisites()" in workflow
     assert '"doctor"' in workflow
     assert "formatHarnessDoctor()" in workflow
@@ -42,7 +42,7 @@ def test_workflow_start_and_load_run_prerequisite_scan_with_explicit_yes_no_warn
     assert '["python", "python3"]' in gates
     assert "pythonCommand = ensureDpaaPythonCommand()" in gates
     assert ".venv" in gates
-    assert "if (!(await ensurePrerequisites())) return;" in workflow
+    assert "if (!(await ensureWorkflowPrerequisites(ctx))) {" in workflow
     assert "Workflow prerequisite 경고 확인" in workflow
     assert "예: 경고를 인지하고 계속 진행합니다." in workflow
     assert "아니오: workflow start/load를 중단합니다." in workflow

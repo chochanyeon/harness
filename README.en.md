@@ -42,6 +42,7 @@ interview
 - Missing Pre-code_review verification is surfaced before `code_review → review_approved`; later improvements are recorded as deferred instead of hidden.
 - Declaring `Phase Template: light` in plan.md makes that one workflow skip the `document` phase. Without the declaration, the same 10-phase sequence (full) applies as today.
 - Inside the `implement` phase, a successful `project-test`/`code-quality` run mechanically creates a local git checkpoint commit. `git-reset-hard-to-checkpoint <hash>` rolls back to an earlier checkpoint. The `commit` phase's `git-reset-soft-to-checkpoint-base` squashes everything back into one clean commit before push.
+- `/workflow start` normally requires a human to type it, but if the user explicitly asks mid-conversation with a trigger phrase like "let's start a workflow for this", the LLM can start the workflow directly via the `workflow_start` tool. It is rejected if a workflow is already active.
 
 ## What gets installed
 
@@ -203,7 +204,7 @@ Updates overwrite upstream-managed files only. Put project-specific customizatio
 ### Workflow
 
 ```text
-/workflow start <title>
+/workflow start <title>   # the LLM may also call the workflow_start tool directly on an explicit trigger phrase
 /workflow status
 /workflow approve
 /workflow doctor

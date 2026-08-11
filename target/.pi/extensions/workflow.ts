@@ -130,7 +130,7 @@ import {
   formatGuardMemoryStatus as formatGuardMemoryStatusForState,
 } from "./workflow/application/prompt-context";
 import { handleWorkflowToolCall, handleWorkflowToolResult } from "./workflow/application/tool-call-gate";
-import { registerWorkflowCommand } from "./workflow/application/workflow-command-router";
+import { registerWorkflowCommand, startWorkflowCore } from "./workflow/application/workflow-command-router";
 
 // This file lives at: <harness-root>/.pi/extensions/workflow.ts
 const HARNESS_ROOT = path.resolve(__dirname, "../..");
@@ -1525,7 +1525,7 @@ ${formatWorkflowAction(state.workflow)}` }],
     },
   });
 
-  registerWorkflowCommand(pi, {
+  const workflowCommandRouterDeps = {
     state,
     cancelWorkflowContinuationPending,
     workflowContinuationMarker,
@@ -1541,6 +1541,57 @@ ${formatWorkflowAction(state.workflow)}` }],
     persistGuardToken,
     clearActiveWorkflowAfterCompletion,
     formatGuardMemoryStatus,
+  };
+  registerWorkflowCommand(pi, workflowCommandRouterDeps);
+
+  // ── Tool: workflow_start — LLM-triggered workflow start from conversation ──
+  // The slash command /workflow start requires a human to type it. This tool lets the
+  // LLM start a workflow mid-conversation once the user has explicitly asked to proceed
+  // via workflow (e.g. "워크플로우로 진행해보자", "워크플로우 시작하자", "let's start a workflow for this").
+  pi.registerTool({
+    name: "workflow_start",
+    label: "Start workflow",
+    description: [
+      "Start a new advisory interview → plan → plan_review → implement → code_review → review_approved → document → commit → push → done workflow.",
+      "Call this only when the user has explicitly asked, in the current conversation, to proceed via workflow — e.g. \"워크플로우로 진행해보자\", \"워크플로우 시작하자\", \"let's start a workflow for this\", \"proceed with a workflow\".",
+      "Do not call this speculatively without that signal. Fails if a workflow is already active.",
+    ].join(" "),
+    promptSnippet: "Start a new workflow when the user explicitly asks to proceed via workflow",
+    promptGuidelines: [
+      "Call this only after the user explicitly asks, in the current conversation, to proceed via workflow (trigger phrases like \"워크플로우로 진행해보자\", \"워크플로우 시작하자\", \"let's do this as a workflow\"). Do not call it speculatively or without that signal — otherwise ask whether to start one with /workflow start <goal>.",
+      "Pass goal as a concise summary of what was just discussed so the workflow title reflects the actual request.",
+      "After this returns ok:true, immediately follow its kick-off instructions (call workflow_interview_wizard) instead of waiting for further user input.",
+    ],
+    parameters: Type.Object({
+      goal: Type.String({ description: "Concise goal/title for the new workflow, derived from the conversation" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const goal = String(params.goal ?? "").trim();
+      if (!goal) {
+        return { content: [{ type: "text", text: "goal is required to start a workflow." }], details: { ok: false, reason: "missing-goal" } };
+      }
+      const result = await startWorkflowCore(pi, workflowCommandRouterDeps, ctx, goal);
+      if (!result.ok) {
+        return { content: [{ type: "text", text: result.message }], details: { ok: false, reason: result.reason } };
+      }
+      return {
+        content: [{ type: "text", text: result.kickoffPrompt }],
+        details: { ok: true, workflowId: result.workflow.id, phase: result.workflow.phase },
+      };
+    },
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("🚀 workflow_start ")) +
+        theme.fg("dim", String(args.goal ?? "").slice(0, 60)),
+        0, 0,
+      );
+    },
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return resultBox(theme, "pending", theme.fg("warning", "Workflow 시작 중…"));
+      const d = result.details as Record<string, unknown>;
+      if (d?.ok) return resultBox(theme, "success", theme.fg("success", "✅ Workflow 시작됨"));
+      return resultBox(theme, "warning", theme.fg("warning", `⚠️ Workflow 시작 실패 (${String(d?.reason ?? "blocked")})`));
+    },
   });
 
   // ── User-input checkpoint prompt + natural approval handling ───────────────

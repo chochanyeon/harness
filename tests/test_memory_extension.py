@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PI_NODE_MODULES = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@earendil-works" / "pi-coding-agent" / "node_modules"
 SCHEMA = ROOT / "target" / ".pi" / "schemas" / "harness-memory-entry.schema.json"
 MEMORY_EXTENSION = ROOT / "target" / ".pi" / "extensions" / "memory.ts"
+MEMORY_CORE = ROOT / "target" / ".pi" / "extensions" / "memory" / "core.ts"
 
 
 def _extract_memory_block(notification_text: str, memory_id: str) -> str:
@@ -59,7 +60,7 @@ def test_memory_schema_supports_agents_md_promotion_status():
 
 
 def test_memory_extension_exposes_tracking_and_cache_aware_terms():
-    text = MEMORY_EXTENSION.read_text(encoding="utf-8")
+    text = MEMORY_EXTENSION.read_text(encoding="utf-8") + MEMORY_CORE.read_text(encoding="utf-8")
 
     assert ".project-memory" in text
     assert "metrics.jsonl" in text

@@ -1,0 +1,12 @@
+{
+  "name": "harness-dev",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Dev-only tooling for building the Claude Code adapter bundles shipped under target/.claude/hooks/. Not published, not required to use the harness itself.",
+  "scripts": {
+    "build:claude-adapter": "node scripts/build-claude-adapter.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

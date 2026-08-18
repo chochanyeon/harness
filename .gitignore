@@ -24,6 +24,9 @@ __pycache__/
 *-findings.md
 progress.md
 
+# Node
+node_modules/
+
 # pi-subagents run artifacts
 .pi-subagents/
 

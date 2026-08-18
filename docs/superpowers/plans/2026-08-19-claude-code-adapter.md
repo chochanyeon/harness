@@ -41,8 +41,8 @@ target/.claude/hooks/workflow-gate.cjs           # new — build artifact
 target/.claude/hooks/memory-cli.cjs              # new — build artifact
 target/.claude/hooks/memory-context.cjs          # new — build artifact
 target/.claude/settings.json                     # new
-target/.claude/commands/workflow/*.md            # new (10 files, see Task 7)
-target/.claude/commands/memory/*.md              # new (13 files, see Task 7)
+target/.claude/commands/workflow/*.md            # new (9 files, see Task 7)
+target/.claude/commands/memory/*.md              # new (14 files, see Task 7)
 
 scripts/init-target-harness.sh                   # modified — add claude component
 scripts/init-target-harness.ps1                  # modified
@@ -1533,7 +1533,7 @@ text instead of Pi's regex-based extractRequestText heuristic."
 **Files:**
 - Create: `target/.claude/settings.json`
 - Create: `target/.claude/commands/workflow/*.md` (9 files)
-- Create: `target/.claude/commands/memory/*.md` (13 files)
+- Create: `target/.claude/commands/memory/*.md` (14 files)
 
 **Interfaces:**
 - Consumes: nothing new (wires Tasks 4-6's CLIs).

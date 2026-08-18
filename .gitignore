@@ -26,3 +26,6 @@ progress.md
 
 # pi-subagents run artifacts
 .pi-subagents/
+
+# Subagent-driven-development scratch workspace
+.superpowers/

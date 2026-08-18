@@ -54,26 +54,29 @@ target/.pi/extensions/memory/core.ts     (new — extracted from memory.ts)
 
 target/.claude/                          (new install component)
   hooks/
-    lib/*.cjs            # compiled (esbuild) output of the pure workflow +
-                          # memory core modules this adapter needs — build
-                          # artifact, committed, not hand-written
-    workflow-cli.cjs      # thin CLI over lib/: subcommands mirror the /workflow
-                          # slash commands + the hook event handlers
-    memory-cli.cjs        # thin CLI over lib/: subcommands mirror /memory
-    workflow-gate.cjs      # hook entrypoint: PreToolUse / PostToolUse /
-                          # UserPromptSubmit / SessionStart → calls workflow-cli.cjs
-    memory-context.cjs    # hook entrypoint: SessionStart / UserPromptSubmit →
-                          # calls memory-cli.cjs
+    src/                    # new adapter-side TypeScript sources (thin —
+                             # everything with real logic is imported from
+                             # target/.pi/extensions/{workflow,memory}/**)
+      workflow-cli.ts        # subcommands mirroring the /workflow slash commands
+      workflow-gate.ts       # hook entrypoint: PreToolUse / PostToolUse /
+                             # UserPromptSubmit / SessionStart
+      memory-cli.ts          # subcommands mirroring /memory
+      memory-context.ts      # hook entrypoint: SessionStart / UserPromptSubmit
+      skip-tokens.ts          # Claude-only persisted skip-token store (§6.2 note)
+    workflow-cli.cjs         # esbuild bundle of src/workflow-cli.ts — committed,
+    workflow-gate.cjs        # not hand-written. Each entrypoint bundles its own
+    memory-cli.cjs           # copy of the imported pi-independent modules
+    memory-context.cjs       # (esbuild bundle mode), so these four files are
+                             # fully self-contained — no shared lib/ directory.
   commands/
-    workflow/*.md          # slash commands, one per subcommand (see §6.3)
+    workflow/*.md           # slash commands, one per subcommand (see §6.3)
     memory/*.md
-  settings.json             # hook wiring (see §6.2)
+  settings.json              # hook wiring (see §6.2)
 
 scripts/
-  build-claude-adapter.*    # new — esbuild bundle of the pi-independent
-                            # modules into target/.claude/hooks/lib/*.cjs;
-                            # dev-time only, output is committed like the
-                            # rest of target/
+  build-claude-adapter.*     # new — esbuild bundle, one entry point per hooks/src/*.ts
+                             # file, dev-time only; output is committed like the
+                             # rest of target/
 ```
 
 Both adapters call the *same* domain functions. `workflow.ts`/`memory.ts` (the Pi bindings) are not modified beyond the memory extraction in §6.1; the Claude side is a new, separate binding over the same core.
@@ -97,6 +100,8 @@ Hybrid enforcement, matching the answer already given:
 
 Hook scripts fail open on internal error (log to the field log, allow the tool call) except the push check itself, which fails closed (deny with an explicit message) since a broken gate must not silently turn into an unguarded push.
 
+**Known simplification (discovered during planning):** Pi's actual push guard (`application/tool-call-gate.ts`'s `handleGitPushToolCall`) additionally checks in-process, non-persisted guard tokens (`codeReviewGuardSatisfiedToken`, `pushExecutionGuardSatisfiedToken`, `policyApprovals`) that only exist for the lifetime of one Pi session and are never written to `state.json`. Claude Code hooks are separate OS processes per invocation with no such shared memory, so the Claude-side push check cannot use these tokens as-is. Instead it treats the already-disk-persisted evidence as sufficient: `workflow.phase === "push"` **and** `workflow.history` contains a `{from:"commit", to:"push"}` transition (both only reachable by having already passed the pre-transition DPAA/code-quality gates that `advanceWorkflow` runs before writing a phase transition to disk). One consequence: Pi's "policy scan previously approved with this exact signature" bypass has no persisted equivalent, so from Claude Code a flagged `scanPushPolicy()` result always hard-blocks until fixed or explicitly skipped. Skip tokens (`addSkipToken`/`consumeSkipToken` in `gates.ts`) are likewise in-memory-only in the shared code; rather than changing that shared module, the Claude adapter gets its own small persisted skip-token file (e.g. `<workflowStateDir>/claude-skip-tokens.json`), read/written only by the Claude-side hook/CLI, leaving `gates.ts` and Pi's behavior untouched.
+
 ### 6.3 Slash commands (MVP set)
 
 Each command is a short markdown file (frontmatter + instructions + an inline `!`node .claude/hooks/workflow-cli.cjs <sub> "$ARGUMENTS"`` call), same shape as the removed `b06e155` files, but calling the new CLI instead of a self-contained reimplementation.
@@ -107,12 +112,11 @@ Each command is a short markdown file (frontmatter + instructions + an inline `!
 | `/workflow status` | `status` | |
 | `/workflow approve` | `approve` | Blocks with a clear message at `commit → push` if not run interactively; everywhere else, advances like Pi's advisory approve. |
 | `/workflow doctor` | `doctor` | |
-| `/workflow list` / `load` | `list`, `load` | |
 | `/workflow state <phase>` | `state` | Manual recovery only, same caveat as today's `/workflow state`. |
-| `/workflow skip <gate> <reason>` | `skip` | |
+| `/workflow skip <gate> <reason>` | `skip` | Writes to the Claude-only persisted skip-token file described above, not `gates.ts`'s in-memory store. |
 | `/workflow abort` | `abort` | |
 | `/workflow dpaa-audit` | `dpaa-audit` | |
-| `/workflow failures [export\|report]` | `failures` | |
+| `/workflow failures [export]` | `failures`, `failures export` | `report`/`improve` deferred (§6.4) — depends on `evidence-improvement-report.ts`, out of scope for v1. |
 | `/memory remember <text>` | `remember` | |
 | `/memory list` / `search` / `show` | `list`, `search`, `show` | |
 | `/memory disable` / `enable` | `disable`, `enable` | |
@@ -127,9 +131,11 @@ LLM-autonomous operations that Pi exposes as `registerTool()` (`workflow_start`,
 
 Not ported in v1: `/workflow trace`, `undo`, `redo`, `history`, `snapshot`, `checkpoint`, `checkpoints`, `restore`, `tools`, `logs`, `submit-review-package`. These lean on Pi-specific ledger/checkpoint/TUI machinery (`ledger.ts` snapshot rendering, `checkpoint-commands.ts` git checkpoint flow tied into Pi's board) that would need real new design work, not just a binding change, to reach Claude Code. Can be picked up later if the MVP proves useful.
 
+Also dropped, for a different reason: `/workflow list` and `/workflow load`. On Pi these distinguish "the workflow currently loaded in this session's memory" from "the workflow persisted on disk," which is a meaningful distinction because a Pi session can run for a long time with its own in-memory copy. The Claude CLI bridge has no such in-memory copy — every invocation reads `state.json` fresh — so that distinction doesn't exist and `/workflow status` already always shows the current persisted state.
+
 ### 6.5 Build pipeline
 
-`target/.pi/extensions/workflow/**` and the new `memory/core.ts` are TypeScript with no npm build step today (Pi compiles/loads `.ts` itself). Claude Code hooks are plain Node with no such loader available by default. Rather than require every installed project to have a TS runner, the harness dev repo gets a small `scripts/build-claude-adapter.*` (esbuild, dev-only devDependency — first `package.json` in this repo) that bundles exactly the Pi-independent modules the Claude hooks need into `target/.claude/hooks/lib/*.cjs`. Compiled output is committed, same as everything else under `target/`. A test (mirroring `tests/test_workflow_ts_static.py`'s intent) asserts the committed bundle is up to date with its TS sources, so a source change without a rebuild fails CI instead of silently drifting.
+`target/.pi/extensions/workflow/**` and the new `memory/core.ts` are TypeScript with no npm build step today (Pi compiles/loads `.ts` itself). Claude Code hooks are plain Node with no such loader available by default. Rather than require every installed project to have a TS runner, the harness dev repo gets a small `scripts/build-claude-adapter.*` (esbuild, dev-only devDependency — first `package.json` in this repo) that bundles each of `target/.claude/hooks/src/*.ts` (§5) into its own self-contained `target/.claude/hooks/*.cjs`, pulling in whatever it imports from `target/.pi/extensions/workflow/**`/`memory/**` via esbuild's bundle mode — no separate shared runtime directory. Compiled output is committed, same as everything else under `target/`. A test (mirroring `tests/test_workflow_ts_static.py`'s intent) asserts the committed bundles are up to date with their TS sources, so a source change without a rebuild fails CI instead of silently drifting.
 
 ### 6.6 Install/update
 

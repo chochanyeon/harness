@@ -20,7 +20,7 @@ Options:
   --dest DIR   Project root to update (default: current directory)
   --ref REF    Branch or tag to clone
   --dry-run    Print planned changes without writing files
-  --component NAME Component to update: all, workflow, memory (repeatable; default: all)
+  --component NAME Component to update: all, workflow, memory, claude (repeatable; default: all)
   --keep-temp  Keep temporary clone directory
   -h, --help   Show this help
 EOF
@@ -104,6 +104,12 @@ managed_paths_for() {
         .pi/.gitignore \
         .pi/extensions/memory.ts \
         .pi/schemas/harness-memory-entry.schema.json ;;
+    claude)
+      # .claude/hooks is copied as a whole directory, e.g. .claude/hooks/workflow-gate.cjs
+      printf '%s\n' \
+        .claude/settings.json \
+        .claude/hooks \
+        .claude/commands ;;
     *) echo "Unknown component: $1" >&2; exit 2 ;;
   esac
 }

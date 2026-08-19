@@ -27,7 +27,7 @@ param(
 
     [switch]$DryRun,
 
-    [ValidateSet("all", "workflow", "memory")]
+    [ValidateSet("all", "workflow", "memory", "claude")]
     [string[]]$Component = @("all"),
 
     [switch]$KeepTemp
@@ -62,6 +62,7 @@ function Get-ComponentRoots([string]$ComponentName) {
     switch ($ComponentName) {
         "workflow" { return @("AGENTS.md", ".pi/.gitignore", ".pi/LOCAL.md", ".pi/WORKFLOW.md", ".pi/GOVERNANCE.md", ".pi/extensions/workflow.ts", ".pi/extensions/assistant-markdown-box.ts", ".pi/extensions/workflow", ".harness/workflow-policy.json", ".ai/interview", ".pi/dpaa", ".pi/workflows", ".pi/skills", ".pi/personas", ".pi/themes", ".pi/pyproject.toml", ".pi/schemas/harness-field-log-event.schema.json", ".pi/sbadr", ".pi/corenlp", ".pi/setup_corenlp.sh", ".pi/setup_corenlp.ps1") }
         "memory" { return @("AGENTS.md", ".pi/.gitignore", ".pi/LOCAL.md", ".pi/extensions/memory.ts", ".pi/schemas/harness-memory-entry.schema.json") }
+        "claude" { return @(".claude/settings.json", ".claude/hooks", ".claude/commands") }
     }
 }
 

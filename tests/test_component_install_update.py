@@ -33,6 +33,7 @@ def test_python_initializer_can_install_memory_only(tmp_path):
 
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / ".pi" / "extensions" / "memory.ts").exists()
+    assert (tmp_path / ".pi" / "extensions" / "memory" / "core.ts").exists()
     assert (tmp_path / ".pi" / "schemas" / "harness-memory-entry.schema.json").exists()
     assert not (tmp_path / ".pi" / "extensions" / "workflow.ts").exists()
     assert not (tmp_path / ".pi" / "WORKFLOW.md").exists()

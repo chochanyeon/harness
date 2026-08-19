@@ -103,6 +103,7 @@ managed_paths_for() {
       printf '%s\n' \
         .pi/.gitignore \
         .pi/extensions/memory.ts \
+        .pi/extensions/memory \
         .pi/schemas/harness-memory-entry.schema.json ;;
     claude)
       printf '%s\n' \

@@ -51,6 +51,7 @@ function Get-ManagedPaths {
                 @(
                     ".pi/.gitignore",
                     ".pi/extensions/memory.ts",
+                    ".pi/extensions/memory",
                     ".pi/schemas/harness-memory-entry.schema.json"
                 ) | ForEach-Object { $paths.Add($_) }
             }

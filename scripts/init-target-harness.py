@@ -53,6 +53,7 @@ COMPONENT_PATHS = {
         ".pi/.gitignore",
         ".pi/LOCAL.md",
         ".pi/extensions/memory.ts",
+        ".pi/extensions/memory",
         ".pi/schemas/harness-memory-entry.schema.json",
     },
     "claude": {

@@ -484,14 +484,26 @@ function main() {
   const [, , command] = process.argv;
   const input = readStdinJson();
   if (command === "session-start") {
-    const activeCount = readEntries().filter((e) => e.status === "active").length;
-    const message = activeCount > 0 ? `[External Memory] ${activeCount} active memory entr${activeCount === 1 ? "y" : "ies"} available. Use /memory list to browse or /memory search <query>.` : "";
-    emitContext("SessionStart", message);
+    try {
+      const activeCount = readEntries().filter((e) => e.status === "active").length;
+      const message = activeCount > 0 ? `[External Memory] ${activeCount} active memory entr${activeCount === 1 ? "y" : "ies"} available. Use /memory list to browse or /memory search <query>.` : "";
+      emitContext("SessionStart", message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Memory context internal error (session-start): ${message}`);
+      process.exit(0);
+    }
     return;
   }
   if (command === "user-prompt") {
-    const request = String(input.prompt ?? "").trim();
-    emitContext("UserPromptSubmit", buildInjection(request));
+    try {
+      const request = String(input.prompt ?? "").trim();
+      emitContext("UserPromptSubmit", buildInjection(request));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Memory context internal error (user-prompt): ${message}`);
+      process.exit(0);
+    }
     return;
   }
   process.exit(0);

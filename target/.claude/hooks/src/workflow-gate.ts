@@ -93,14 +93,24 @@ function main(): void {
       }
       break;
     case "session-start":
-      injectContext("SessionStart", formatWorkflowPrompt(loadPersistedWorkflow()));
-      break;
     case "user-prompt":
-      injectContext("UserPromptSubmit", formatWorkflowPrompt(loadPersistedWorkflow()));
+    case "reevaluate": {
+      const hookEventName =
+        command === "session-start" ? "SessionStart" : command === "user-prompt" ? "UserPromptSubmit" : "PostToolUse";
+      try {
+        injectContext(hookEventName, formatWorkflowPrompt(loadPersistedWorkflow()));
+      } catch (error) {
+        // Unlike check-tool-call, these three hook events are advisory-only
+        // context injections -- only check-tool-call may ever deny a tool
+        // call. An uncaught exception here would otherwise crash the process
+        // with a raw, unhandled exception instead of failing open cleanly.
+        // Log for diagnosis and allow the session/prompt to proceed silently.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Workflow gate internal error (${command}): ${message}`);
+        allow();
+      }
       break;
-    case "reevaluate":
-      injectContext("PostToolUse", formatWorkflowPrompt(loadPersistedWorkflow()));
-      break;
+    }
     default:
       allow();
   }

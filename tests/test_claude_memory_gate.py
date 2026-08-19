@@ -93,3 +93,30 @@ def test_memory_context_session_start_is_silent_with_no_memories(tmp_path):
     result = _run_memory_context("session-start", {}, repo)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "memory-context.cjs").exists(),
+    reason="memory-context.cjs not built yet",
+)
+def test_memory_context_session_start_fails_open_on_internal_error(tmp_path):
+    """Final-review fix: unlike workflow-gate.ts's check-tool-call (the one
+    hard-blocking gate, which must fail CLOSED), memory-context.ts's
+    session-start path is advisory-only context injection and must fail OPEN
+    on an internal error -- log to stderr and exit 0 with no crash and no
+    additionalContext, never propagate an uncaught exception.
+
+    This forces a real internal error deterministically: readEntries() ->
+    readJsonl(entriesFile()) does `fs.existsSync(file)` then
+    `fs.readFileSync(file, ...)` with no surrounding try/catch, so
+    pre-creating a *directory* at the exact path where entries.jsonl should
+    be makes fs.readFileSync raise EISDIR."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    entries_path = repo / ".project-memory" / "memory" / "entries.jsonl"
+    entries_path.mkdir(parents=True)
+
+    result = _run_memory_context("session-start", {}, repo)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""
+    assert "Memory context internal error" in result.stderr

@@ -98,6 +98,35 @@ Adapter statuses are `pass`, `warning`, `fail`, `config-error`, `tool-error`, an
 
 Supported scope includes Godot 4.x detection, CLI version validation, headless editor/import and script parse/check, external-resource checks, configured test-scene execution, safe export, Windows/Linux argv execution, and JSON diagnostics. Godot 3.x, editor UI automation, gameplay semantics/art-quality judgment, engine/template installation, shell-string execution, and arbitrary test argv are excluded.
 
+## Claude Code support
+
+This harness is not Pi-only. Installing the `claude` component lets the same project also be worked on with **Claude Code**. The Claude side reads and writes exactly the same `.harness/workflow-policy.json` phase model, the same workflow state file (`$PI_CODING_AGENT_DIR/workflow-state/<git-root-hash>/state.json`), and the same memory store (`.project-memory/memory/*.jsonl`) that the Pi extension already uses. There is no separate state store, so opening the same project from Pi or from Claude Code always shows the same phase and the same memory.
+
+### What gets installed
+
+| Path | Contents |
+|---|---|
+| `target/.claude/settings.json` | `SessionStart`/`UserPromptSubmit`/`PreToolUse(Bash)`/`PostToolUse` hook wiring |
+| `target/.claude/hooks/*.cjs` | `workflow-gate.cjs`, `workflow-cli.cjs`, `memory-context.cjs`, `memory-cli.cjs` — self-contained scripts that bundle the Pi extension's pure logic (`workflow/**`, `memory/core.ts`) via esbuild |
+| `target/.claude/commands/workflow/*.md`, `target/.claude/commands/memory/*.md` | 9 `/workflow` and 14 `/memory` slash commands |
+
+### What's enforced vs. advisory only
+
+Claude Code hooks cannot change which tools are even visible to the model on a given turn the way the Pi extension can (no turn-time tool-visibility control, no MCP server), so there is exactly one hard enforcement point.
+
+- **Hard gate**: a `git push` outside the `push` phase, or a `git push` during the `push` phase when policy scanning (`scanPushPolicy()`) flags an issue and there is no valid skip token, is denied outright by the `PreToolUse` hook (`Bash` matcher).
+- **Everything else is advisory**: `SessionStart`/`UserPromptSubmit` inject the current phase, next phase, hard rules, and active/candidate memory as context; `PostToolUse` refreshes state/field-log evidence after edits but never blocks anything. If a hook itself fails internally, only the push check fails closed (denies); everything else fails open (allows).
+
+### What's not supported
+
+`/memory` supports all 14 subcommands identically to Pi. `/workflow`, on the other hand, does not port the following commands, which are tied to checkpoint/ledger/TUI machinery: `trace`, `undo`, `redo`, `history`, `snapshot`, `checkpoint`, `checkpoints`, `restore`, `tools`, `logs`, `submit-review-package`, `list`, `load` (the Claude side re-reads `state.json` fresh on every invocation, so it never needs to distinguish a "loaded" workflow from a "persisted" one). See [`docs/superpowers/specs/2026-08-19-claude-code-adapter-design.md`](docs/superpowers/specs/2026-08-19-claude-code-adapter-design.md) §4 and §6.4 for the full design background.
+
+### Install command
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
+```
+
 ## Key components
 
 | Area | Path | Purpose |
@@ -159,6 +188,9 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/in
 
 # memory only
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
+
+# claude only (Claude Code adapter)
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
 ```
 
 Clean reinstall removes managed runtime files and copies them again. `AGENTS.md`, `.pi/LOCAL.md`, and `.ai/interview` artifacts are preserved.
@@ -195,41 +227,53 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/up
 
 # memory only
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/update-harness.sh | sh -s -- --component memory
+
+# claude only
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/update-harness.sh | sh -s -- --component claude
 ```
 
 Updates overwrite upstream-managed files only. Put project-specific customizations under `.pi/local/` or `.pi/config/`.
 
 ## Main runtime commands
 
+The two blocks below are the Pi baseline. Installing the `claude` component makes `/workflow` and `/memory` runnable from Claude Code too, via slash commands and hooks: a line with no `# Claude: not supported` tag behaves identically on both sides, and a tagged line is Pi-only (see [Claude Code support](#claude-code-support) above for details).
+
 ### Workflow
 
 ```text
-/workflow start <title>   # the LLM may also call the workflow_start tool directly on an explicit trigger phrase
+/workflow start <title>   # on an explicit trigger phrase the LLM may also call the workflow_start tool directly (direct tool-call: Claude not supported; slash command: supported)
 /workflow status
 /workflow approve
 /workflow doctor
 /workflow failures
 /workflow failures export
-/workflow failures report   # alias: /workflow failures improve
-/workflow list
-/workflow load <id>
-/workflow unload
+/workflow failures report   # alias: /workflow failures improve   # Claude: not supported
+/workflow list                                                    # Claude: not supported
+/workflow load <id>                                               # Claude: not supported
 /workflow state <phase>
 /workflow skip <gate> <reason>
 /workflow abort
 /workflow dpaa-audit
+/workflow trace                                                   # Claude: not supported
+/workflow undo | redo | history                                   # Claude: not supported
+/workflow snapshot | checkpoint | checkpoints | restore           # Claude: not supported
+/workflow tools | logs                                            # Claude: not supported
+submit_review_package({ ... })   # tool-call, records review evidence before code_review → review_approved   # Claude: not supported (tool-call form)
 ```
 
 ### Memory
 
+`/memory` supports every subcommand identically on both Pi and Claude Code. The `memory_*` tool-call form (Pi's `registerTool()`, invoked by the LLM directly) is Pi-only; Claude Code covers the same behavior via slash commands or by running `node .claude/hooks/memory-cli.cjs <sub>`.
+
 ```text
 /memory remember <text>
-memory_remember({ text })
+memory_remember({ text })                                          # Claude: not supported (tool-call form)
 /memory list
 /memory search <query>
 /memory show <id>
 /memory disable <id>
 /memory enable <id>
+/memory delete <id>   # marks deprecated
 /memory explain
 /memory doctor
 /memory stats
@@ -237,10 +281,10 @@ memory_remember({ text })
 /memory missed <description>
 /memory supersede <oldId> <newId>       # marks oldId superseded (excluded from search/injection), records it in newId's supersedes
 /memory merge <survivorId> <id2> [<id3> ...]  # survivor's content stays unchanged, every other id is superseded by survivor (no content combining)
-memory_use_candidate({ memoryId, relevanceReason })            # pull a candidate shortlist item into this turn without changing its status
-memory_promote_candidate({ memoryId, triggerKind, evidence })  # promote candidate→active only on explicit/repeated confirmation or task success, capped at 5/session, evidence required
-memory_propose_agents_promotion({ memoryId, proposedText })    # record that a repeatedly used + helpful-feedback memory is being suggested as an AGENTS.md addition (never edits the file itself)
-memory_record_agents_decision({ memoryId, decision, note })    # record the user's accept/decline decision for a proposed AGENTS.md addition
+memory_use_candidate({ memoryId, relevanceReason })            # pull a candidate shortlist item into this turn without changing its status   # Claude: not supported (tool-call form)
+memory_promote_candidate({ memoryId, triggerKind, evidence })  # promote candidate→active only on explicit/repeated confirmation or task success, capped at 5/session, evidence required   # Claude: not supported (tool-call form)
+memory_propose_agents_promotion({ memoryId, proposedText })    # record that a repeatedly used + helpful-feedback memory is being suggested as an AGENTS.md addition (never edits the file itself)   # Claude: not supported (tool-call form)
+memory_record_agents_decision({ memoryId, decision, note })    # record the user's accept/decline decision for a proposed AGENTS.md addition   # Claude: not supported (tool-call form)
 ```
 
 ## Preview the bundled target template

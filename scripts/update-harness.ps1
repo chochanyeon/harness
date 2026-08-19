@@ -8,7 +8,7 @@ param(
     [string]$Repo = "https://github.com/chochanyeon/harness.git",
     [string]$Dest = (Get-Location).Path,
     [string]$Ref = "",
-    [ValidateSet("all", "workflow", "memory")]
+    [ValidateSet("all", "workflow", "memory", "claude")]
     [string[]]$Component = @("all"),
     [switch]$DryRun,
     [switch]$KeepTemp
@@ -51,7 +51,15 @@ function Get-ManagedPaths {
                 @(
                     ".pi/.gitignore",
                     ".pi/extensions/memory.ts",
+                    ".pi/extensions/memory",
                     ".pi/schemas/harness-memory-entry.schema.json"
+                ) | ForEach-Object { $paths.Add($_) }
+            }
+            "claude" {
+                @(
+                    ".claude/settings.json",
+                    ".claude/hooks",
+                    ".claude/commands"
                 ) | ForEach-Object { $paths.Add($_) }
             }
         }

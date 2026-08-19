@@ -33,6 +33,7 @@ def test_python_initializer_can_install_memory_only(tmp_path):
 
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / ".pi" / "extensions" / "memory.ts").exists()
+    assert (tmp_path / ".pi" / "extensions" / "memory" / "core.ts").exists()
     assert (tmp_path / ".pi" / "schemas" / "harness-memory-entry.schema.json").exists()
     assert not (tmp_path / ".pi" / "extensions" / "workflow.ts").exists()
     assert not (tmp_path / ".pi" / "WORKFLOW.md").exists()
@@ -97,6 +98,51 @@ def test_python_initializer_rejects_removed_claude_workflow_component(tmp_path):
     assert result.returncode != 0
     assert "invalid choice: 'claude-workflow'" in result.stderr
     assert not (tmp_path / ".claude").exists()
+
+
+def test_python_initializer_can_install_claude_only(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/init-target-harness.py",
+            "--source", "target",
+            "--dest", str(tmp_path),
+            "--component", "claude",
+        ],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / ".claude" / "settings.json").exists()
+    assert (tmp_path / ".claude" / "hooks" / "workflow-gate.cjs").exists()
+    assert (tmp_path / ".claude" / "commands" / "workflow" / "start.md").exists()
+    assert (tmp_path / ".claude" / "commands" / "memory" / "remember.md").exists()
+    assert not (tmp_path / ".pi").exists()  # claude component doesn't pull in Pi files
+
+
+def test_python_initializer_default_all_does_not_install_claude(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "scripts/init-target-harness.py", "--source", "target", "--dest", str(tmp_path)],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / ".claude").exists()
+
+
+def test_update_scripts_are_component_granular_for_claude():
+    sh = (ROOT / "scripts" / "update-harness.sh").read_text(encoding="utf-8")
+    ps1 = (ROOT / "scripts" / "update-harness.ps1").read_text(encoding="utf-8")
+    assert ".claude/hooks" in sh
+    assert '".claude/hooks"' in ps1
 
 
 def test_unix_initializer_workflow_component_includes_assistant_markdown_box():

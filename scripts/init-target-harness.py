@@ -53,7 +53,13 @@ COMPONENT_PATHS = {
         ".pi/.gitignore",
         ".pi/LOCAL.md",
         ".pi/extensions/memory.ts",
+        ".pi/extensions/memory",
         ".pi/schemas/harness-memory-entry.schema.json",
+    },
+    "claude": {
+        ".claude/settings.json",
+        ".claude/hooks",
+        ".claude/commands",
     },
 }
 
@@ -171,7 +177,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--component",
         action="append",
-        choices=["all", "workflow", "memory"],
+        choices=["all", "workflow", "memory", "claude"],
         default=None,
         help="Component to initialize. Repeatable. Default: all.",
     )

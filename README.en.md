@@ -250,7 +250,6 @@ The two blocks below are the Pi baseline. Installing the `claude` component make
 /workflow failures report   # alias: /workflow failures improve   # Claude: not supported
 /workflow list                                                    # Claude: not supported
 /workflow load <id>                                               # Claude: not supported
-/workflow unload                                                  # Claude: not supported
 /workflow state <phase>
 /workflow skip <gate> <reason>
 /workflow abort

@@ -250,7 +250,6 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/up
 /workflow failures report   # alias: /workflow failures improve   # Claude 미지원
 /workflow list                                                    # Claude 미지원
 /workflow load <id>                                               # Claude 미지원
-/workflow unload                                                  # Claude 미지원
 /workflow state <phase>
 /workflow skip <gate> <reason>
 /workflow abort

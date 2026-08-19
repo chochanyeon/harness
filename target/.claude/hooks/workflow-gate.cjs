@@ -737,7 +737,12 @@ function main() {
   const input = readStdinJson();
   switch (command) {
     case "check-tool-call":
-      checkToolCall(input);
+      try {
+        checkToolCall(input);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        deny(`Workflow gate internal error: ${message}`);
+      }
       break;
     case "session-start":
       injectContext("SessionStart", formatWorkflowPrompt(loadPersistedWorkflow()));

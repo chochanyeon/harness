@@ -80,7 +80,17 @@ function main(): void {
 
   switch (command) {
     case "check-tool-call":
-      checkToolCall(input);
+      try {
+        checkToolCall(input);
+      } catch (error) {
+        // This is the only hard-blocking gate in the adapter. An uncaught
+        // exception here would exit non-zero, and Claude Code treats a
+        // failed hook as fail-open (proceeds with the tool call anyway) --
+        // so a push that should have been denied could go through. Fail
+        // closed instead: deny with a clear reason rather than crashing.
+        const message = error instanceof Error ? error.message : String(error);
+        deny(`Workflow gate internal error: ${message}`);
+      }
       break;
     case "session-start":
       injectContext("SessionStart", formatWorkflowPrompt(loadPersistedWorkflow()));

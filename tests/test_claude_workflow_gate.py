@@ -250,7 +250,7 @@ def _run_hook(subcommand, stdin_obj, repo, agent_dir):
     not (ROOT / "target" / ".claude" / "hooks" / "workflow-gate.cjs").exists(),
     reason="workflow-gate.cjs not built yet",
 )
-def test_git_push_is_allowed_when_no_workflow_is_active(tmp_path):
+def test_git_push_is_denied_when_no_workflow_is_active(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_git_repo(repo)
@@ -333,3 +333,63 @@ def test_session_start_injects_phase_context(tmp_path):
     # test's own name says "phase context", so assert on the phase, which is
     # both genuinely present and what this test is actually meant to prove.
     assert "Current phase: interview" in payload["hookSpecificOutput"]["additionalContext"]
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-gate.cjs").exists(),
+    reason="workflow-gate.cjs not built yet",
+)
+def test_check_tool_call_fails_closed_on_internal_error(tmp_path):
+    """Ledger review finding: check-tool-call's dispatch in main() must fail
+    CLOSED (deny) on an unexpected internal error, never crash with an
+    uncaught exception -- Claude Code treats a non-zero hook exit as a
+    failed/fail-open hook and proceeds with the tool call anyway, which for
+    this, the only hard-blocking gate in the adapter, would let a push that
+    should have been denied go through instead.
+
+    This forces a real internal error deterministically: a workflow parked in
+    the push phase (with a recorded commit -> push transition) but with no
+    git root, so scanPushPolicy(null) fails the policy scan and checkToolCall
+    calls consumeClaudeSkipToken(...). That function's writeTokens() always
+    runs -- even on the no-match path -- and here it's made to throw by
+    pre-creating a *directory* at the exact path where it needs to write the
+    skip-tokens file (fs.writeFileSync on a directory raises EISDIR)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    agent_dir = tmp_path / "pi-agent"
+    state_ts = ROOT / "target" / ".pi" / "extensions" / "workflow" / "state.ts"
+    storage_ts = ROOT / "target" / ".pi" / "extensions" / "workflow" / "storage.ts"
+
+    # repo is a plain (non-git) directory, so getGitRoot() returns null and
+    # createWorkflow() naturally records gitRoot: null, branch: "unknown" --
+    # exactly what's needed for scanPushPolicy(workflow.gitRoot) to hit its
+    # "No git root detected" failure path with zero extra setup.
+    setup_script = textwrap.dedent(f"""\
+        const path = require('path');
+        const {{ createJiti }} = require('jiti');
+        const jiti = createJiti(path.resolve('runtime-test.js'), {{ interopDefault: false }});
+        const stateMod = jiti(path.resolve({state_ts.as_posix()!r}));
+        const storageMod = jiti(path.resolve({storage_ts.as_posix()!r}));
+
+        const workflow = stateMod.createWorkflow('forced internal error test');
+        workflow.phase = 'push';
+        workflow.history.push({{ from: 'commit', to: 'push', reason: 'test setup', timestamp: Date.now() }});
+        stateMod.saveWorkflow(workflow);
+        console.log(JSON.stringify({{ stateDir: storageMod.getWorkflowStateDir() }}));
+    """)
+    setup = _run_node(setup_script, {"PI_CODING_AGENT_DIR": str(agent_dir)}, cwd=repo)
+    assert setup.returncode == 0, setup.stderr
+    state_dir = Path(json.loads(setup.stdout.strip().splitlines()[-1])["stateDir"])
+
+    (state_dir / "claude-skip-tokens.json").mkdir(parents=True)
+
+    result = _run_hook(
+        "check-tool-call",
+        {"tool_name": "Bash", "tool_input": {"command": "git push"}},
+        repo,
+        agent_dir,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "Workflow gate internal error" in payload["hookSpecificOutput"]["permissionDecisionReason"]

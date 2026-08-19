@@ -105,7 +105,6 @@ managed_paths_for() {
         .pi/extensions/memory.ts \
         .pi/schemas/harness-memory-entry.schema.json ;;
     claude)
-      # .claude/hooks is copied as a whole directory, e.g. .claude/hooks/workflow-gate.cjs
       printf '%s\n' \
         .claude/settings.json \
         .claude/hooks \

@@ -55,7 +55,6 @@ function Get-ManagedPaths {
                 ) | ForEach-Object { $paths.Add($_) }
             }
             "claude" {
-                # ".claude/hooks" is copied as a whole directory, e.g. ".claude/hooks/workflow-gate.cjs"
                 @(
                     ".claude/settings.json",
                     ".claude/hooks",

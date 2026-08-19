@@ -140,8 +140,8 @@ def test_python_initializer_default_all_does_not_install_claude(tmp_path):
 def test_update_scripts_are_component_granular_for_claude():
     sh = (ROOT / "scripts" / "update-harness.sh").read_text(encoding="utf-8")
     ps1 = (ROOT / "scripts" / "update-harness.ps1").read_text(encoding="utf-8")
-    assert ".claude/hooks/workflow-gate.cjs" in sh
-    assert '".claude/hooks/workflow-gate.cjs"' in ps1
+    assert ".claude/hooks" in sh
+    assert '".claude/hooks"' in ps1
 
 
 def test_unix_initializer_workflow_component_includes_assistant_markdown_box():

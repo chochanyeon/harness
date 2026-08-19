@@ -107,3 +107,126 @@ def test_skip_token_scoping_does_not_cross_workflows(tmp_path):
     # wf-2's token must survive both the bogus consume and wf-1's consume.
     assert payload["wf2Consume"] == {"reason": "reason for wf-2"}
     assert payload["wf2Second"] is None  # one-time use
+
+
+def _run_workflow_cli(args, repo, agent_dir):
+    return subprocess.run(
+        ["node", str(ROOT / "target" / ".claude" / "hooks" / "workflow-cli.cjs"), *args],
+        cwd=repo,
+        env={**os.environ, "PI_CODING_AGENT_DIR": str(agent_dir)},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+
+
+def _init_git_repo(repo: Path) -> None:
+    for args in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "test@example.com"],
+        ["git", "config", "user.name", "test"],
+    ):
+        subprocess.run(args, cwd=repo, check=True, capture_output=True)
+    (repo / "README.md").write_text("test repo\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True, capture_output=True)
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-cli.cjs").exists(),
+    reason="workflow-cli.cjs not built yet",
+)
+def test_workflow_cli_start_then_status_round_trips(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+
+    start = _run_workflow_cli(["start", "add login flow"], repo, agent_dir)
+    assert start.returncode == 0, start.stderr
+    assert "interview" in start.stdout
+
+    status = _run_workflow_cli(["status"], repo, agent_dir)
+    assert status.returncode == 0, status.stderr
+    assert "interview" in status.stdout
+    assert "add login flow" in status.stdout
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-cli.cjs").exists(),
+    reason="workflow-cli.cjs not built yet",
+)
+def test_workflow_cli_state_forces_a_phase_for_manual_recovery(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+
+    _run_workflow_cli(["start", "manual recovery test"], repo, agent_dir)
+    result = _run_workflow_cli(["state", "commit"], repo, agent_dir)
+    assert result.returncode == 0, result.stderr
+
+    status = _run_workflow_cli(["status"], repo, agent_dir)
+    assert "commit" in status.stdout
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-cli.cjs").exists(),
+    reason="workflow-cli.cjs not built yet",
+)
+def test_workflow_cli_abort_clears_persisted_state(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+
+    _run_workflow_cli(["start", "throwaway"], repo, agent_dir)
+    abort = _run_workflow_cli(["abort"], repo, agent_dir)
+    assert abort.returncode == 0, abort.stderr
+
+    status = _run_workflow_cli(["status"], repo, agent_dir)
+    assert "no" in status.stdout.lower() or "없" in status.stdout
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-cli.cjs").exists(),
+    reason="workflow-cli.cjs not built yet",
+)
+def test_pi_and_claude_adapters_share_persisted_workflow_state(tmp_path):
+    """Spec §8: a workflow written by one adapter must be readable by the other,
+    since both bind directly to target/.pi/extensions/workflow/state.ts's
+    getWorkflowStateDir() with no adapter-specific override."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+    # cwd must be `repo`, not ROOT, so getGitRoot() inside state.ts resolves to
+    # the same repo the workflow was started in.
+    state_ts = ROOT / "target" / ".pi" / "extensions" / "workflow" / "state.ts"
+
+    # Direction 1: Claude writes, Pi-side module reads.
+    start = _run_workflow_cli(["start", "cross adapter title"], repo, agent_dir)
+    assert start.returncode == 0, start.stderr
+
+    read_script = _jiti_require_ts(state_ts) + textwrap.dedent("""
+        const workflow = mod.loadPersistedWorkflow();
+        console.log(JSON.stringify({ phase: workflow && workflow.phase, title: workflow && workflow.title }));
+    """)
+    read_result = _run_node(read_script, {"PI_CODING_AGENT_DIR": str(agent_dir)}, cwd=repo)
+    assert read_result.returncode == 0, read_result.stderr
+    read_payload = json.loads(read_result.stdout.strip().splitlines()[-1])
+    assert read_payload == {"phase": "interview", "title": "cross adapter title"}
+
+    # Direction 2: Pi-side module writes (moves phase to "plan"), Claude CLI reads it back.
+    write_script = _jiti_require_ts(state_ts) + textwrap.dedent("""
+        const workflow = mod.loadPersistedWorkflow();
+        workflow.phase = 'plan';
+        mod.saveWorkflow(workflow);
+    """)
+    write_result = _run_node(write_script, {"PI_CODING_AGENT_DIR": str(agent_dir)}, cwd=repo)
+    assert write_result.returncode == 0, write_result.stderr
+
+    status = _run_workflow_cli(["status"], repo, agent_dir)
+    assert "plan" in status.stdout

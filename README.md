@@ -98,6 +98,35 @@ Adapter 상태는 `pass`, `warning`, `fail`, `config-error`, `tool-error`, `time
 
 지원 범위는 Godot 4.x 감지, CLI 버전 확인, headless editor/import 및 script parse/check, external resource 검사, 설정한 test scene 실행, 안전한 export, Windows/Linux argv 실행과 JSON 진단입니다. Godot 3.x, editor UI 자동화, gameplay semantics/art 품질 판단, 엔진/templates 설치, shell 문자열 실행, 임의 test argv는 지원하지 않습니다.
 
+## Claude Code 지원
+
+이 하네스는 Pi 전용이 아닙니다. `claude` 컴포넌트를 설치하면 같은 프로젝트를 **Claude Code**로도 작업할 수 있습니다. Claude 측은 Pi extension과 동일한 `.harness/workflow-policy.json` phase 모델, 동일한 workflow state 파일(`$PI_CODING_AGENT_DIR/workflow-state/<git-root-hash>/state.json`), 동일한 memory 저장소(`.project-memory/memory/*.jsonl`)를 그대로 읽고 씁니다. 별도 상태 저장소가 없으므로 같은 프로젝트를 Pi와 Claude Code로 번갈아 열어도 phase와 memory는 항상 하나입니다.
+
+### 설치되는 것
+
+| 위치 | 내용 |
+|---|---|
+| `target/.claude/settings.json` | `SessionStart`/`UserPromptSubmit`/`PreToolUse(Bash)`/`PostToolUse` hook 배선 |
+| `target/.claude/hooks/*.cjs` | `workflow-gate.cjs`, `workflow-cli.cjs`, `memory-context.cjs`, `memory-cli.cjs` — Pi extension의 순수 로직(`workflow/**`, `memory/core.ts`)을 esbuild로 번들한 self-contained 스크립트 |
+| `target/.claude/commands/workflow/*.md`, `target/.claude/commands/memory/*.md` | `/workflow` 9개, `/memory` 14개 slash command |
+
+### 강제되는 것과 권고에 그치는 것
+
+Claude Code hook은 Pi extension처럼 turn마다 사용 가능한 tool 자체를 바꿀 수 없으므로(turn-time tool-visibility 제어 없음, MCP server 없음), 강제 지점은 딱 하나입니다.
+
+- **하드 게이트**: `push` phase가 아닌 시점의 `git push`, 또는 `push` phase라도 policy scan(`scanPushPolicy()`)이 걸렸고 유효한 skip token이 없는 `git push`는 `PreToolUse`(`Bash` matcher)에서 그대로 차단됩니다.
+- **나머지는 전부 advisory**: `SessionStart`/`UserPromptSubmit`은 현재 phase·다음 phase·hard rule·활성/후보 memory를 컨텍스트로 주입하고, `PostToolUse`는 파일 변경 후 상태/field-log를 갱신할 뿐 아무것도 막지 않습니다. hook 자체가 내부 오류로 실패하면 push 검사만 fail-closed(차단)이고 나머지는 fail-open(허용)입니다.
+
+### 지원하지 않는 것
+
+`/memory`는 Pi와 완전히 동일하게 14개 subcommand를 모두 지원합니다. 반면 `/workflow`는 checkpoint/ledger/TUI에 묶인 다음 명령을 이식하지 않았습니다: `trace`, `undo`, `redo`, `history`, `snapshot`, `checkpoint`, `checkpoints`, `restore`, `tools`, `logs`, `submit-review-package`, `list`, `load` (Claude 쪽은 매 호출마다 `state.json`을 새로 읽으므로 "로드된 workflow"와 "저장된 workflow"를 구분할 필요가 없습니다). 전체 설계 배경과 근거는 [`docs/superpowers/specs/2026-08-19-claude-code-adapter-design.md`](docs/superpowers/specs/2026-08-19-claude-code-adapter-design.md) §4, §6.4를 참고하세요.
+
+### 설치 명령
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
+```
+
 ## Key components
 
 | 영역 | 위치 | 역할 |
@@ -159,6 +188,9 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/in
 
 # memory만 설치
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
+
+# claude만 설치 (Claude Code adapter)
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
 ```
 
 깨끗하게 재설치하려면 managed runtime을 지우고 다시 복사합니다. `AGENTS.md`, `.pi/LOCAL.md`, `.ai/interview` 산출물은 보존됩니다.
@@ -195,41 +227,54 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/up
 
 # memory만 업데이트
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/update-harness.sh | sh -s -- --component memory
+
+# claude만 업데이트
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/update-harness.sh | sh -s -- --component claude
 ```
 
 업데이트는 upstream-managed 파일만 덮어씁니다. 프로젝트별 사용자 정의는 `.pi/local/` 또는 `.pi/config/` 아래에 두세요.
 
 ## 주요 runtime 명령
 
+아래 두 블록의 명령은 Pi 기준입니다. `claude` 컴포넌트를 설치하면 `/workflow`, `/memory` slash command와 hook을 통해 Claude Code에서도 실행할 수 있는데, `# Claude 미지원` 표시가 없는 줄은 양쪽에서 동일하게 동작하고 표시가 있는 줄은 Pi 전용입니다(자세한 내용은 위 [Claude Code 지원](#claude-code-지원) 참고).
+
 ### Workflow
 
 ```text
-/workflow start <title>   # 대화 중 트리거 문구에 따라 LLM이 workflow_start tool로 직접 호출하기도 함
+/workflow start <title>   # 대화 중 트리거 문구에 따라 LLM이 workflow_start tool로 직접 호출하기도 함 (tool 직접 호출은 Claude 미지원, slash command는 지원)
 /workflow status
 /workflow approve
 /workflow doctor
 /workflow failures
 /workflow failures export
-/workflow failures report   # alias: /workflow failures improve
-/workflow list
-/workflow load <id>
-/workflow unload
+/workflow failures report   # alias: /workflow failures improve   # Claude 미지원
+/workflow list                                                    # Claude 미지원
+/workflow load <id>                                               # Claude 미지원
+/workflow unload                                                  # Claude 미지원
 /workflow state <phase>
 /workflow skip <gate> <reason>
 /workflow abort
 /workflow dpaa-audit
+/workflow trace                                                   # Claude 미지원
+/workflow undo | redo | history                                   # Claude 미지원
+/workflow snapshot | checkpoint | checkpoints | restore           # Claude 미지원
+/workflow tools | logs                                            # Claude 미지원
+submit_review_package({ ... })   # tool-call, code_review → review_approved 승인 전 리뷰 근거 기록   # Claude 미지원 (tool-call 형태)
 ```
 
 ### Memory
 
+`/memory`는 모든 subcommand가 Pi/Claude Code 양쪽에서 동일하게 지원됩니다. 단 `memory_*` tool-call 형태(LLM이 직접 호출하는 Pi `registerTool()`)는 Pi 전용이며, Claude Code에서는 동일한 동작을 slash command 또는 `node .claude/hooks/memory-cli.cjs <sub>` 실행으로 대신합니다.
+
 ```text
 /memory remember <text>
-memory_remember({ text })
+memory_remember({ text })                                          # Claude 미지원 (tool-call 형태)
 /memory list
 /memory search <query>
 /memory show <id>
 /memory disable <id>
 /memory enable <id>
+/memory delete <id>   # deprecated 처리
 /memory explain
 /memory doctor
 /memory stats
@@ -237,10 +282,10 @@ memory_remember({ text })
 /memory missed <description>
 /memory supersede <oldId> <newId>       # oldId를 superseded 상태로 바꿔 검색/주입에서 제외, newId의 supersedes에 기록
 /memory merge <survivorId> <id2> [<id3> ...]  # survivor는 그대로 두고 나머지를 모두 survivor로 supersede(내용 합치기 없음)
-memory_use_candidate({ memoryId, relevanceReason })       # candidate 요약 목록에서 관련 있는 항목을 상태 변경 없이 현재 턴에 사용
-memory_promote_candidate({ memoryId, triggerKind, evidence })  # 명시적 확인/반복 확인/작업 성공 신호가 있을 때만 candidate→active 승격, 세션당 5건 상한, 근거 필수
-memory_propose_agents_promotion({ memoryId, proposedText })    # useCount·helpful feedback 기준을 넘은 memory를 AGENTS.md 반영 후보로 사용자에게 제안했음을 기록 (실제 파일 수정은 하지 않음)
-memory_record_agents_decision({ memoryId, decision, note })    # 사용자의 AGENTS.md 반영 수락/거부 결정을 기록
+memory_use_candidate({ memoryId, relevanceReason })       # candidate 요약 목록에서 관련 있는 항목을 상태 변경 없이 현재 턴에 사용   # Claude 미지원 (tool-call 형태)
+memory_promote_candidate({ memoryId, triggerKind, evidence })  # 명시적 확인/반복 확인/작업 성공 신호가 있을 때만 candidate→active 승격, 세션당 5건 상한, 근거 필수   # Claude 미지원 (tool-call 형태)
+memory_propose_agents_promotion({ memoryId, proposedText })    # useCount·helpful feedback 기준을 넘은 memory를 AGENTS.md 반영 후보로 사용자에게 제안했음을 기록 (실제 파일 수정은 하지 않음)   # Claude 미지원 (tool-call 형태)
+memory_record_agents_decision({ memoryId, decision, note })    # 사용자의 AGENTS.md 반영 수락/거부 결정을 기록   # Claude 미지원 (tool-call 형태)
 ```
 
 ## 개발 repo에서 템플릿 미리보기

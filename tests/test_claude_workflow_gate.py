@@ -230,3 +230,106 @@ def test_pi_and_claude_adapters_share_persisted_workflow_state(tmp_path):
 
     status = _run_workflow_cli(["status"], repo, agent_dir)
     assert "plan" in status.stdout
+
+
+def _run_hook(subcommand, stdin_obj, repo, agent_dir):
+    return subprocess.run(
+        ["node", str(ROOT / "target" / ".claude" / "hooks" / "workflow-gate.cjs"), subcommand],
+        cwd=repo,
+        input=json.dumps(stdin_obj),
+        env={**os.environ, "PI_CODING_AGENT_DIR": str(agent_dir)},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-gate.cjs").exists(),
+    reason="workflow-gate.cjs not built yet",
+)
+def test_git_push_is_allowed_when_no_workflow_is_active(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+
+    result = _run_hook(
+        "check-tool-call",
+        {"tool_name": "Bash", "tool_input": {"command": "git push"}},
+        repo,
+        agent_dir,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout) if result.stdout.strip() else {}
+    assert payload.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+    assert "No active workflow" in payload["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-gate.cjs").exists(),
+    reason="workflow-gate.cjs not built yet",
+)
+def test_git_push_is_denied_outside_push_phase(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+    _run_workflow_cli(["start", "phase gate test"], repo, agent_dir)  # phase is "interview"
+
+    result = _run_hook(
+        "check-tool-call",
+        {"tool_name": "Bash", "tool_input": {"command": "git push origin main"}},
+        repo,
+        agent_dir,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "push phase" in payload["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-gate.cjs").exists(),
+    reason="workflow-gate.cjs not built yet",
+)
+def test_non_push_bash_commands_are_never_blocked(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+    _run_workflow_cli(["start", "unrelated command test"], repo, agent_dir)
+
+    result = _run_hook(
+        "check-tool-call",
+        {"tool_name": "Bash", "tool_input": {"command": "ls -la"}},
+        repo,
+        agent_dir,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""  # no output at all = plain allow
+
+
+@pytest.mark.skipif(
+    not (ROOT / "target" / ".claude" / "hooks" / "workflow-gate.cjs").exists(),
+    reason="workflow-gate.cjs not built yet",
+)
+def test_session_start_injects_phase_context(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+    _run_workflow_cli(["start", "context injection test"], repo, agent_dir)
+
+    result = _run_hook("session-start", {}, repo, agent_dir)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    # formatWorkflowPrompt (reused verbatim from Pi, matching its own
+    # before_agent_start / buildWorkflowSystemPromptInjection content) never
+    # includes the workflow *title* -- only branch/cwd/phase/hard-rules. The
+    # test's own name says "phase context", so assert on the phase, which is
+    # both genuinely present and what this test is actually meant to prove.
+    assert "Current phase: interview" in payload["hookSpecificOutput"]["additionalContext"]

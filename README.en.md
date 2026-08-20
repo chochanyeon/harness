@@ -100,7 +100,7 @@ Supported scope includes Godot 4.x detection, CLI version validation, headless e
 
 ## Claude Code support
 
-This harness is not Pi-only. Installing the `claude` component lets the same project also be worked on with **Claude Code**. The Claude side reads and writes exactly the same `.harness/workflow-policy.json` phase model, the same workflow state file (`$PI_CODING_AGENT_DIR/workflow-state/<git-root-hash>/state.json`), and the same memory store (`.project-memory/memory/*.jsonl`) that the Pi extension already uses. There is no separate state store, so opening the same project from Pi or from Claude Code always shows the same phase and the same memory.
+This harness is not Pi-only. The default install (`--component` omitted, or `all`) includes the `claude` component too, so the same project is immediately workable from **Claude Code** as well. If you don't use Claude Code, no action is needed — the hooks only do anything once Claude Code reads `.claude/settings.json`. The Claude side reads and writes exactly the same `.harness/workflow-policy.json` phase model, the same workflow state file (`$PI_CODING_AGENT_DIR/workflow-state/<git-root-hash>/state.json`), and the same memory store (`.project-memory/memory/*.jsonl`) that the Pi extension already uses. There is no separate state store, so opening the same project from Pi or from Claude Code always shows the same phase and the same memory.
 
 ### What gets installed
 
@@ -189,7 +189,7 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/in
 # memory only
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
 
-# claude only (Claude Code adapter)
+# claude only (Claude Code adapter) — already included in the default install; use this to (re)install just this component
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
 ```
 

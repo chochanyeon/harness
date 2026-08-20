@@ -92,6 +92,7 @@ component_selected() {
     if [ "$component" = "all" ]; then
       component_selected_with "workflow" "$rel" && return 0
       component_selected_with "memory" "$rel" && return 0
+      component_selected_with "claude" "$rel" && return 0
     else
       component_selected_with "$component" "$rel" && return 0
     fi
@@ -117,6 +118,7 @@ selected_component_roots() {
     if [ "$component" = "all" ]; then
       component_roots workflow
       component_roots memory
+      component_roots claude
     else
       component_roots "$component"
     fi

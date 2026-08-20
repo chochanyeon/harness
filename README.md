@@ -100,7 +100,7 @@ Adapter 상태는 `pass`, `warning`, `fail`, `config-error`, `tool-error`, `time
 
 ## Claude Code 지원
 
-이 하네스는 Pi 전용이 아닙니다. `claude` 컴포넌트를 설치하면 같은 프로젝트를 **Claude Code**로도 작업할 수 있습니다. Claude 측은 Pi extension과 동일한 `.harness/workflow-policy.json` phase 모델, 동일한 workflow state 파일(`$PI_CODING_AGENT_DIR/workflow-state/<git-root-hash>/state.json`), 동일한 memory 저장소(`.project-memory/memory/*.jsonl`)를 그대로 읽고 씁니다. 별도 상태 저장소가 없으므로 같은 프로젝트를 Pi와 Claude Code로 번갈아 열어도 phase와 memory는 항상 하나입니다.
+이 하네스는 Pi 전용이 아닙니다. 기본 설치(`--component` 생략, 또는 `all`)에 `claude` 컴포넌트가 함께 포함되어, 같은 프로젝트를 **Claude Code**로도 바로 작업할 수 있습니다. Claude Code를 쓰지 않는다면 별도 조치는 필요 없습니다 — hook은 Claude Code가 `.claude/settings.json`을 읽을 때만 동작합니다. Claude 측은 Pi extension과 동일한 `.harness/workflow-policy.json` phase 모델, 동일한 workflow state 파일(`$PI_CODING_AGENT_DIR/workflow-state/<git-root-hash>/state.json`), 동일한 memory 저장소(`.project-memory/memory/*.jsonl`)를 그대로 읽고 씁니다. 별도 상태 저장소가 없으므로 같은 프로젝트를 Pi와 Claude Code로 번갈아 열어도 phase와 memory는 항상 하나입니다.
 
 ### 설치되는 것
 
@@ -189,7 +189,7 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/in
 # memory만 설치
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component memory
 
-# claude만 설치 (Claude Code adapter)
+# claude만 설치 (Claude Code adapter) — 기본 설치에도 이미 포함되어 있으며, 이 컴포넌트만 다시 설치/재설치할 때 사용
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
 ```
 

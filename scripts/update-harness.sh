@@ -74,6 +74,7 @@ managed_paths() {
     if [ "$component" = "all" ]; then
       managed_paths_for workflow
       managed_paths_for memory
+      managed_paths_for claude
     else
       managed_paths_for "$component"
     fi

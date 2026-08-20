@@ -69,7 +69,7 @@ function Get-ComponentRoots([string]$ComponentName) {
 function Expand-Components([string[]]$Components) {
     $expanded = New-Object System.Collections.Generic.List[string]
     foreach ($c in $Components) {
-        if ($c -eq "all") { $expanded.Add("workflow"); $expanded.Add("memory") } else { $expanded.Add($c) }
+        if ($c -eq "all") { $expanded.Add("workflow"); $expanded.Add("memory"); $expanded.Add("claude") } else { $expanded.Add($c) }
     }
     return $expanded
 }

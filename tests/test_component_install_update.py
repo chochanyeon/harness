@@ -124,7 +124,7 @@ def test_python_initializer_can_install_claude_only(tmp_path):
     assert not (tmp_path / ".pi").exists()  # claude component doesn't pull in Pi files
 
 
-def test_python_initializer_default_all_does_not_install_claude(tmp_path):
+def test_python_initializer_default_all_installs_claude(tmp_path):
     result = subprocess.run(
         [sys.executable, "scripts/init-target-harness.py", "--source", "target", "--dest", str(tmp_path)],
         cwd=ROOT,
@@ -135,7 +135,7 @@ def test_python_initializer_default_all_does_not_install_claude(tmp_path):
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert not (tmp_path / ".claude").exists()
+    assert (tmp_path / ".claude" / "settings.json").exists()
 
 
 def test_python_initializer_combining_all_with_claude_installs_both(tmp_path):

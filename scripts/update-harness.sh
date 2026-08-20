@@ -7,7 +7,8 @@ DEST="$(pwd)"
 REF=""
 DRY_RUN=0
 KEEP_TEMP=0
-COMPONENTS="all"
+COMPONENTS=""
+COMPONENTS_EXPLICIT=0
 
 usage() {
   cat <<'EOF'
@@ -32,12 +33,14 @@ while [ "$#" -gt 0 ]; do
     --dest) DEST="$2"; shift 2 ;;
     --ref) REF="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
-    --component) if [ "$COMPONENTS" = "all" ]; then COMPONENTS="$2"; else COMPONENTS="$COMPONENTS $2"; fi; shift 2 ;;
+    --component) if [ "$COMPONENTS_EXPLICIT" -eq 0 ]; then COMPONENTS="$2"; else COMPONENTS="$COMPONENTS $2"; fi; COMPONENTS_EXPLICIT=1; shift 2 ;;
     --keep-temp) KEEP_TEMP=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+[ -z "$COMPONENTS" ] && COMPONENTS="all"
 
 command -v git >/dev/null 2>&1 || { echo "Required command not found: git" >&2; exit 1; }
 DEST=$(cd "$DEST" 2>/dev/null && pwd || { mkdir -p "$DEST" && cd "$DEST" && pwd; })

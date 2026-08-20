@@ -138,6 +138,62 @@ def test_python_initializer_default_all_does_not_install_claude(tmp_path):
     assert not (tmp_path / ".claude").exists()
 
 
+def test_python_initializer_combining_all_with_claude_installs_both(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/init-target-harness.py",
+            "--source",
+            "target",
+            "--dest",
+            str(tmp_path),
+            "--component",
+            "all",
+            "--component",
+            "claude",
+        ],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / ".pi" / "extensions" / "workflow.ts").exists()
+    assert (tmp_path / ".claude" / "settings.json").exists()
+
+
+@pytest.mark.skipif(
+    shutil.which("bash") is None or os.name == "nt",
+    reason="bash and python3 are required",
+)
+def test_shell_initializer_combining_all_with_claude_installs_both(tmp_path):
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/init-target-harness.sh",
+            "--repo",
+            str(ROOT),
+            "--dest",
+            str(tmp_path),
+            "--component",
+            "all",
+            "--component",
+            "claude",
+        ],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / ".pi" / "extensions" / "workflow.ts").exists()
+    assert (tmp_path / ".claude" / "settings.json").exists()
+
+
 def test_update_scripts_are_component_granular_for_claude():
     sh = (ROOT / "scripts" / "update-harness.sh").read_text(encoding="utf-8")
     ps1 = (ROOT / "scripts" / "update-harness.ps1").read_text(encoding="utf-8")

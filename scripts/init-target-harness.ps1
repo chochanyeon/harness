@@ -66,9 +66,16 @@ function Get-ComponentRoots([string]$ComponentName) {
     }
 }
 
+function Expand-Components([string[]]$Components) {
+    $expanded = New-Object System.Collections.Generic.List[string]
+    foreach ($c in $Components) {
+        if ($c -eq "all") { $expanded.Add("workflow"); $expanded.Add("memory") } else { $expanded.Add($c) }
+    }
+    return $expanded
+}
+
 function Get-SelectedComponentRoots {
-    $components = $Component
-    if ($components -contains "all") { $components = @("workflow", "memory") }
+    $components = Expand-Components $Component
     $roots = New-Object System.Collections.Generic.List[string]
     foreach ($componentName in $components) {
         foreach ($root in (Get-ComponentRoots $componentName)) { $roots.Add($root) }
@@ -78,8 +85,7 @@ function Get-SelectedComponentRoots {
 
 function Test-ComponentSelected([string]$Rel) {
     $normalized = $Rel.Replace('\', '/')
-    $components = $Component
-    if ($components -contains "all") { $components = @("workflow", "memory") }
+    $components = Expand-Components $Component
 
     foreach ($componentName in $components) {
         $roots = Get-ComponentRoots $componentName

@@ -95,10 +95,11 @@ def is_relative_to(path: Path, other: Path) -> bool:
 
 
 def selected_roots(components: list[str]) -> set[str]:
-    if "all" in components:
-        components = ["workflow", "memory"]
+    expanded: list[str] = []
+    for c in components:
+        expanded.extend(["workflow", "memory"] if c == "all" else [c])
     roots: set[str] = set()
-    for component in components:
+    for component in expanded:
         roots.update(COMPONENT_PATHS[component])
     return roots
 

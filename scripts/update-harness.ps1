@@ -19,9 +19,16 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONIOENCODING = "utf-8"
+function Expand-Components([string[]]$Components) {
+    $expanded = New-Object System.Collections.Generic.List[string]
+    foreach ($c in $Components) {
+        if ($c -eq "all") { $expanded.Add("workflow"); $expanded.Add("memory") } else { $expanded.Add($c) }
+    }
+    return $expanded
+}
+
 function Get-ManagedPaths {
-    $components = $Component
-    if ($components -contains "all") { $components = @("workflow", "memory") }
+    $components = Expand-Components $Component
     $paths = New-Object System.Collections.Generic.List[string]
     foreach ($componentName in $components) {
         switch ($componentName) {

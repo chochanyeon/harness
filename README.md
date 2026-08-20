@@ -236,24 +236,24 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/up
 
 ## 주요 runtime 명령
 
-아래 두 블록의 명령은 Pi 기준입니다(`/workflow <subcommand>`, `/memory <subcommand>`처럼 인자로 하위 명령을 받는 단일 slash command). `claude` 컴포넌트를 설치하면 hook을 통해 Claude Code에서도 같은 기능을 실행할 수 있는데, Claude Code는 디렉터리로 slash command를 구분하지 않으므로 `target/.claude/commands/workflow/*.md`, `target/.claude/commands/memory/*.md` 각 파일이 `/workflow-<subcommand>`, `/memory-<subcommand>` 형태의 독립된 slash command로 설치됩니다(공백이 아니라 하이픈). `# Claude 미지원` 표시가 없는 줄은 오른쪽에 표기한 하이픈 이름으로 Claude Code에서도 동일하게 동작하고, 표시가 있는 줄은 Pi 전용입니다(자세한 내용은 위 [Claude Code 지원](#claude-code-지원) 참고).
+아래 두 블록의 명령은 Pi 기준입니다(`/workflow <subcommand>`, `/memory <subcommand>`처럼 인자로 하위 명령을 받는 단일 slash command). `claude` 컴포넌트를 설치하면 hook을 통해 Claude Code에서도 같은 기능을 실행할 수 있는데, Claude Code는 `.claude/commands/<subdir>/<name>.md` 파일을 서브디렉터리 이름을 콜론(`:`) 네임스페이스로 삼아 `/<subdir>:<name>` 형태의 독립된 slash command로 설치합니다. 그래서 `target/.claude/commands/workflow/*.md`, `target/.claude/commands/memory/*.md` 각 파일은 `/workflow:<subcommand>`, `/memory:<subcommand>` 형태로 등록됩니다. `# Claude 미지원` 표시가 없는 줄은 오른쪽에 표기한 콜론 이름으로 Claude Code에서도 동일하게 동작하고, 표시가 있는 줄은 Pi 전용입니다(자세한 내용은 위 [Claude Code 지원](#claude-code-지원) 참고).
 
 ### Workflow
 
 ```text
-/workflow start <title>   # 대화 중 트리거 문구에 따라 LLM이 workflow_start tool로 직접 호출하기도 함 (tool 직접 호출은 Claude 미지원, slash command는 지원: /workflow-start)
-/workflow status                                                  # Claude: /workflow-status
-/workflow approve                                                 # Claude: /workflow-approve
-/workflow doctor                                                  # Claude: /workflow-doctor
-/workflow failures                                                # Claude: /workflow-failures
-/workflow failures export                                         # Claude: /workflow-failures export
+/workflow start <title>   # 대화 중 트리거 문구에 따라 LLM이 workflow_start tool로 직접 호출하기도 함 (tool 직접 호출은 Claude 미지원, slash command는 지원: /workflow:start)
+/workflow status                                                  # Claude: /workflow:status
+/workflow approve                                                 # Claude: /workflow:approve
+/workflow doctor                                                  # Claude: /workflow:doctor
+/workflow failures                                                # Claude: /workflow:failures
+/workflow failures export                                         # Claude: /workflow:failures export
 /workflow failures report   # alias: /workflow failures improve   # Claude 미지원
 /workflow list                                                    # Claude 미지원
 /workflow load <id>                                               # Claude 미지원
-/workflow state <phase>                                           # Claude: /workflow-state
-/workflow skip <gate> <reason>                                    # Claude: /workflow-skip
-/workflow abort                                                   # Claude: /workflow-abort
-/workflow dpaa-audit                                              # Claude: /workflow-dpaa-audit
+/workflow state <phase>                                           # Claude: /workflow:state
+/workflow skip <gate> <reason>                                    # Claude: /workflow:skip
+/workflow abort                                                   # Claude: /workflow:abort
+/workflow dpaa-audit                                              # Claude: /workflow:dpaa-audit
 /workflow trace                                                   # Claude 미지원
 /workflow undo | redo | history                                   # Claude 미지원
 /workflow snapshot | checkpoint | checkpoints | restore           # Claude 미지원
@@ -266,21 +266,21 @@ submit_review_package({ ... })   # tool-call, code_review → review_approved �
 `/memory`는 모든 subcommand가 Pi/Claude Code 양쪽에서 동일하게 지원됩니다. 단 `memory_*` tool-call 형태(LLM이 직접 호출하는 Pi `registerTool()`)는 Pi 전용이며, Claude Code에서는 동일한 동작을 slash command 또는 `node .claude/hooks/memory-cli.cjs <sub>` 실행으로 대신합니다.
 
 ```text
-/memory remember <text>                                            # Claude: /memory-remember
+/memory remember <text>                                            # Claude: /memory:remember
 memory_remember({ text })                                          # Claude 미지원 (tool-call 형태)
-/memory list                                                       # Claude: /memory-list
-/memory search <query>                                             # Claude: /memory-search
-/memory show <id>                                                  # Claude: /memory-show
-/memory disable <id>                                               # Claude: /memory-disable
-/memory enable <id>                                                # Claude: /memory-enable
-/memory delete <id>   # deprecated 처리   # Claude: /memory-delete
-/memory explain                                                    # Claude: /memory-explain
-/memory doctor                                                     # Claude: /memory-doctor
-/memory stats                                                      # Claude: /memory-stats
-/memory feedback <id> helpful|irrelevant|wrong|stale               # Claude: /memory-feedback
-/memory missed <description>                                       # Claude: /memory-missed
-/memory supersede <oldId> <newId>       # oldId를 superseded 상태로 바꿔 검색/주입에서 제외, newId의 supersedes에 기록   # Claude: /memory-supersede
-/memory merge <survivorId> <id2> [<id3> ...]  # survivor는 그대로 두고 나머지를 모두 survivor로 supersede(내용 합치기 없음)   # Claude: /memory-merge
+/memory list                                                       # Claude: /memory:list
+/memory search <query>                                             # Claude: /memory:search
+/memory show <id>                                                  # Claude: /memory:show
+/memory disable <id>                                               # Claude: /memory:disable
+/memory enable <id>                                                # Claude: /memory:enable
+/memory delete <id>   # deprecated 처리   # Claude: /memory:delete
+/memory explain                                                    # Claude: /memory:explain
+/memory doctor                                                     # Claude: /memory:doctor
+/memory stats                                                      # Claude: /memory:stats
+/memory feedback <id> helpful|irrelevant|wrong|stale               # Claude: /memory:feedback
+/memory missed <description>                                       # Claude: /memory:missed
+/memory supersede <oldId> <newId>       # oldId를 superseded 상태로 바꿔 검색/주입에서 제외, newId의 supersedes에 기록   # Claude: /memory:supersede
+/memory merge <survivorId> <id2> [<id3> ...]  # survivor는 그대로 두고 나머지를 모두 survivor로 supersede(내용 합치기 없음)   # Claude: /memory:merge
 memory_use_candidate({ memoryId, relevanceReason })       # candidate 요약 목록에서 관련 있는 항목을 상태 변경 없이 현재 턴에 사용   # Claude 미지원 (tool-call 형태)
 memory_promote_candidate({ memoryId, triggerKind, evidence })  # 명시적 확인/반복 확인/작업 성공 신호가 있을 때만 candidate→active 승격, 세션당 5건 상한, 근거 필수   # Claude 미지원 (tool-call 형태)
 memory_propose_agents_promotion({ memoryId, proposedText })    # useCount·helpful feedback 기준을 넘은 memory를 AGENTS.md 반영 후보로 사용자에게 제안했음을 기록 (실제 파일 수정은 하지 않음)   # Claude 미지원 (tool-call 형태)

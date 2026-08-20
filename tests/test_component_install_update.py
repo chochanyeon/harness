@@ -119,8 +119,8 @@ def test_python_initializer_can_install_claude_only(tmp_path):
     assert result.returncode == 0, result.stderr
     assert (tmp_path / ".claude" / "settings.json").exists()
     assert (tmp_path / ".claude" / "hooks" / "workflow-gate.cjs").exists()
-    assert (tmp_path / ".claude" / "commands" / "workflow" / "workflow-start.md").exists()
-    assert (tmp_path / ".claude" / "commands" / "memory" / "memory-remember.md").exists()
+    assert (tmp_path / ".claude" / "commands" / "workflow" / "start.md").exists()
+    assert (tmp_path / ".claude" / "commands" / "memory" / "remember.md").exists()
     assert not (tmp_path / ".pi").exists()  # claude component doesn't pull in Pi files
 
 
@@ -393,28 +393,26 @@ def test_install_update_entrypoints_force_utf8_and_do_not_reference_legacy_codep
     assert "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8" in combined
 
 
-def test_claude_command_basenames_are_unique_across_subdirectories():
-    """Claude Code does not namespace project slash commands by subdirectory:
-    a file at .claude/commands/<subdir>/<name>.md is invoked as /<name>,
-    regardless of which subdirectory it lives in. Two files with the same
-    basename under different subdirectories (e.g. workflow/doctor.md and
-    memory/doctor.md) silently collide on the same /doctor command, with one
-    winning over the other. This test fails if that ever happens again.
+def test_claude_command_names_are_not_redundantly_prefixed_by_subdirectory():
+    """Claude Code namespaces project slash commands by their immediate parent
+    subdirectory, invoked as /<subdir>:<name> (confirmed by live testing —
+    a file at .claude/commands/workflow/start.md is invoked as /workflow:start).
+    A filename that repeats its own subdirectory as a prefix (e.g.
+    workflow/workflow-start.md) produces a stuttering /workflow:workflow-start
+    invocation instead of the clean /workflow:start. This test fails if that
+    ever happens again.
     """
     commands_root = ROOT / "target" / ".claude" / "commands"
-    command_files = sorted(commands_root.glob("**/*.md"))
+    command_files = sorted(commands_root.glob("*/*.md"))
     assert command_files, f"expected at least one command file under {commands_root}"
 
-    basenames_seen = {}
-    duplicates = {}
-    for path in command_files:
-        name = path.name
-        if name in basenames_seen:
-            duplicates.setdefault(name, [basenames_seen[name]]).append(path)
-        else:
-            basenames_seen[name] = path
+    stuttering = [
+        path
+        for path in command_files
+        if path.stem.startswith(f"{path.parent.name}-")
+    ]
 
-    assert not duplicates, (
-        "Duplicate Claude Code slash command basenames collide on the same "
-        f"invocable command name: {duplicates}"
+    assert not stuttering, (
+        "Command file name redundantly repeats its subdirectory name, producing "
+        f"a stuttering /<subdir>:<subdir>-<name> invocation: {stuttering}"
     )

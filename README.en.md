@@ -236,24 +236,24 @@ Updates overwrite upstream-managed files only. Put project-specific customizatio
 
 ## Main runtime commands
 
-The two blocks below are the Pi baseline (a single slash command that takes a subcommand as an argument, e.g. `/workflow <subcommand>`, `/memory <subcommand>`). Installing the `claude` component makes the same functionality runnable from Claude Code too, via hooks — but Claude Code does not namespace slash commands by directory, so each file under `target/.claude/commands/workflow/*.md` and `target/.claude/commands/memory/*.md` installs as its own independent slash command named `/workflow-<subcommand>` or `/memory-<subcommand>` (a hyphen, not a space). A line with no `# Claude: not supported` tag behaves identically on Claude Code under the hyphenated name shown to its right, and a tagged line is Pi-only (see [Claude Code support](#claude-code-support) above for details).
+The two blocks below are the Pi baseline (a single slash command that takes a subcommand as an argument, e.g. `/workflow <subcommand>`, `/memory <subcommand>`). Installing the `claude` component makes the same functionality runnable from Claude Code too, via hooks — Claude Code namespaces a `.claude/commands/<subdir>/<name>.md` file by its subdirectory using a colon, so each file under `target/.claude/commands/workflow/*.md` and `target/.claude/commands/memory/*.md` installs as its own independent slash command named `/workflow:<subcommand>` or `/memory:<subcommand>`. A line with no `# Claude: not supported` tag behaves identically on Claude Code under the colon-qualified name shown to its right, and a tagged line is Pi-only (see [Claude Code support](#claude-code-support) above for details).
 
 ### Workflow
 
 ```text
-/workflow start <title>   # on an explicit trigger phrase the LLM may also call the workflow_start tool directly (direct tool-call: Claude not supported; slash command: supported as /workflow-start)
-/workflow status                                                  # Claude: /workflow-status
-/workflow approve                                                 # Claude: /workflow-approve
-/workflow doctor                                                  # Claude: /workflow-doctor
-/workflow failures                                                # Claude: /workflow-failures
-/workflow failures export                                         # Claude: /workflow-failures export
+/workflow start <title>   # on an explicit trigger phrase the LLM may also call the workflow_start tool directly (direct tool-call: Claude not supported; slash command: supported as /workflow:start)
+/workflow status                                                  # Claude: /workflow:status
+/workflow approve                                                 # Claude: /workflow:approve
+/workflow doctor                                                  # Claude: /workflow:doctor
+/workflow failures                                                # Claude: /workflow:failures
+/workflow failures export                                         # Claude: /workflow:failures export
 /workflow failures report   # alias: /workflow failures improve   # Claude: not supported
 /workflow list                                                    # Claude: not supported
 /workflow load <id>                                               # Claude: not supported
-/workflow state <phase>                                           # Claude: /workflow-state
-/workflow skip <gate> <reason>                                    # Claude: /workflow-skip
-/workflow abort                                                   # Claude: /workflow-abort
-/workflow dpaa-audit                                              # Claude: /workflow-dpaa-audit
+/workflow state <phase>                                           # Claude: /workflow:state
+/workflow skip <gate> <reason>                                    # Claude: /workflow:skip
+/workflow abort                                                   # Claude: /workflow:abort
+/workflow dpaa-audit                                              # Claude: /workflow:dpaa-audit
 /workflow trace                                                   # Claude: not supported
 /workflow undo | redo | history                                   # Claude: not supported
 /workflow snapshot | checkpoint | checkpoints | restore           # Claude: not supported
@@ -266,21 +266,21 @@ submit_review_package({ ... })   # tool-call, records review evidence before cod
 `/memory` supports every subcommand identically on both Pi and Claude Code. The `memory_*` tool-call form (Pi's `registerTool()`, invoked by the LLM directly) is Pi-only; Claude Code covers the same behavior via slash commands or by running `node .claude/hooks/memory-cli.cjs <sub>`.
 
 ```text
-/memory remember <text>                                            # Claude: /memory-remember
+/memory remember <text>                                            # Claude: /memory:remember
 memory_remember({ text })                                          # Claude: not supported (tool-call form)
-/memory list                                                       # Claude: /memory-list
-/memory search <query>                                             # Claude: /memory-search
-/memory show <id>                                                  # Claude: /memory-show
-/memory disable <id>                                               # Claude: /memory-disable
-/memory enable <id>                                                # Claude: /memory-enable
-/memory delete <id>   # marks deprecated   # Claude: /memory-delete
-/memory explain                                                    # Claude: /memory-explain
-/memory doctor                                                     # Claude: /memory-doctor
-/memory stats                                                      # Claude: /memory-stats
-/memory feedback <id> helpful|irrelevant|wrong|stale               # Claude: /memory-feedback
-/memory missed <description>                                       # Claude: /memory-missed
-/memory supersede <oldId> <newId>       # marks oldId superseded (excluded from search/injection), records it in newId's supersedes   # Claude: /memory-supersede
-/memory merge <survivorId> <id2> [<id3> ...]  # survivor's content stays unchanged, every other id is superseded by survivor (no content combining)   # Claude: /memory-merge
+/memory list                                                       # Claude: /memory:list
+/memory search <query>                                             # Claude: /memory:search
+/memory show <id>                                                  # Claude: /memory:show
+/memory disable <id>                                               # Claude: /memory:disable
+/memory enable <id>                                                # Claude: /memory:enable
+/memory delete <id>   # marks deprecated   # Claude: /memory:delete
+/memory explain                                                    # Claude: /memory:explain
+/memory doctor                                                     # Claude: /memory:doctor
+/memory stats                                                      # Claude: /memory:stats
+/memory feedback <id> helpful|irrelevant|wrong|stale               # Claude: /memory:feedback
+/memory missed <description>                                       # Claude: /memory:missed
+/memory supersede <oldId> <newId>       # marks oldId superseded (excluded from search/injection), records it in newId's supersedes   # Claude: /memory:supersede
+/memory merge <survivorId> <id2> [<id3> ...]  # survivor's content stays unchanged, every other id is superseded by survivor (no content combining)   # Claude: /memory:merge
 memory_use_candidate({ memoryId, relevanceReason })            # pull a candidate shortlist item into this turn without changing its status   # Claude: not supported (tool-call form)
 memory_promote_candidate({ memoryId, triggerKind, evidence })  # promote candidate→active only on explicit/repeated confirmation or task success, capped at 5/session, evidence required   # Claude: not supported (tool-call form)
 memory_propose_agents_promotion({ memoryId, proposedText })    # record that a repeatedly used + helpful-feedback memory is being suggested as an AGENTS.md addition (never edits the file itself)   # Claude: not supported (tool-call form)

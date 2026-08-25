@@ -42,6 +42,10 @@ def _workflow_script(project: Path) -> str:
     const path = require('path');
     const { createJiti } = require('jiti');
     process.chdir(__PROJECT__);
+    const policyPath = path.resolve('.harness/workflow-policy.json');
+    const policy = JSON.parse(require('fs').readFileSync(policyPath, 'utf8'));
+    policy.executionProfiles.defaultProfile = 'strict';
+    require('fs').writeFileSync(policyPath, JSON.stringify(policy));
     const extension = path.resolve('.pi/extensions/workflow.ts');
     const confirms = [];
     const pi = {

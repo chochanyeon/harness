@@ -5,6 +5,7 @@ import { getNextPhase } from "./state";
 import { banner, table } from "./ui";
 import { sharedContextStrategy, sharedHardRules, sharedPhaseGuidance, sharedSubagentHandoffContract } from "./policy-core";
 import { getCatalogCommandsForPhase } from "./catalog";
+import { resolveExecutionProfile } from "./domain/execution-profile-policy";
 
 export function formatWorkflowStatus(workflow: WorkflowInstance | null): string {
   if (!workflow) {
@@ -22,6 +23,7 @@ export function formatWorkflowStatus(workflow: WorkflowInstance | null): string 
       ["목표", workflow.title],
       ["현재 단계", workflow.phase],
       ["다음 단계", next ?? "없음"],
+      ["실행 프로필", formatExecutionProfile(workflow)],
       ["브랜치", workflow.branch],
       ["작업공간", ws.ok ? "정상" : "⚠️ 불일치"],
       ["실행 취소", workflow.history.length > 0 ? `${workflow.history.length}개 사용 가능` : "없음"],
@@ -174,14 +176,33 @@ export function formatWorkflowPrompt(workflow: WorkflowInstance | null): string 
     ].join("\n");
   }
   const workspace = validateWorkflowWorkspace(workflow);
+  const profile = resolveExecutionProfile(workflow);
+  const executionProfile = formatExecutionProfile(workflow);
+  if (profile !== "strict") {
+    return [
+      `• Objective: ${workflow.title}`,
+      `• Execution profile: ${executionProfile}`,
+      `• Current phase: ${workflow.phase}; next evidence: risk-proportionate verification and independent review.`,
+      "• Non-negotiable: git push requires the push workflow boundary and policy scan; runtime .pi/extensions/** writes require user approval.",
+      ...(workspace.ok ? [] : [formatWorkspaceMismatch(workspace)]),
+    ].join("\n");
+  }
   const lines = [
     `• Workflow branch: ${workflow.branch}`,
     `• Workflow cwd: ${workflow.cwd}`,
+    `• Execution profile: ${executionProfile}`,
     formatWorkflowAction(workflow),
     formatHardRules(),
   ];
   if (!workspace.ok) lines.push(formatWorkspaceMismatch(workspace));
   return lines.join("\n");
+}
+
+function formatExecutionProfile(workflow: WorkflowInstance): string {
+  const profile = resolveExecutionProfile(workflow);
+  const escalation = workflow.executionProfileEscalation;
+  if (!escalation) return profile;
+  return `${profile} (escalated from ${escalation.from}: ${escalation.reason})`;
 }
 
 function formatHardRules(): string {

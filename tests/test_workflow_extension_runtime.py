@@ -2419,6 +2419,12 @@ def test_stale_phase_steer_message_is_consumed_after_phase_changes(tmp_path):
 
         (async () => {
           await pi.commands.workflow.handler('start stale steer workflow', ctx);
+          const stateModule = jiti(path.resolve('.pi/extensions/workflow/state.ts'));
+          const persisted = stateModule.loadPersistedWorkflow();
+          persisted.executionProfile = 'strict';
+          stateModule.saveWorkflow(persisted);
+          await pi.events.session_start({ reason: 'fork' }, ctx);
+          await pi.commands.workflow.handler('load', ctx);
           await pi.commands.workflow.handler('skip interview-ambiguity test skip', ctx);
           await pi.commands.workflow.handler('approve', ctx);
           const editResult = await pi.events.tool_call({ toolName: 'edit', input: { path: 'src/app.txt', edits: [] } }, ctx);
@@ -2466,6 +2472,12 @@ def test_stale_code_review_steer_is_consumed_after_phase_advances_to_commit(tmp_
 
         (async () => {
           await pi.commands.workflow.handler('start stale review steer workflow', ctx);
+          const stateModule = jiti(path.resolve('.pi/extensions/workflow/state.ts'));
+          const persisted = stateModule.loadPersistedWorkflow();
+          persisted.executionProfile = 'strict';
+          stateModule.saveWorkflow(persisted);
+          await pi.events.session_start({ reason: 'fork' }, ctx);
+          await pi.commands.workflow.handler('load', ctx);
           await pi.commands.workflow.handler('state code_review', ctx);
           const editResult = await pi.events.tool_call({ toolName: 'edit', input: { path: 'src/app.txt', edits: [] } }, ctx);
           await pi.commands.workflow.handler('state commit', ctx);

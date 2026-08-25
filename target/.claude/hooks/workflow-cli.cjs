@@ -2102,6 +2102,17 @@ function getWorkspaceCheckpointRoot(workflowId) {
 // target/.pi/extensions/workflow/policy-core.ts
 var fs8 = __toESM(require("node:fs"));
 var path8 = __toESM(require("node:path"));
+
+// target/.pi/extensions/workflow/domain/execution-profile-policy.ts
+var EXECUTION_PROFILES = ["fast", "adaptive", "strict"];
+function resolveExecutionProfile(workflow) {
+  return isExecutionProfile(workflow.executionProfile) ? workflow.executionProfile : "strict";
+}
+function isExecutionProfile(value) {
+  return typeof value === "string" && EXECUTION_PROFILES.includes(value);
+}
+
+// target/.pi/extensions/workflow/policy-core.ts
 var PROJECT_ROOT = path8.resolve(__dirname, "../../..");
 var POLICY_FILE = path8.join(PROJECT_ROOT, ".harness", "workflow-policy.json");
 var DEFAULT_POLICY = {
@@ -2115,6 +2126,11 @@ var DEFAULT_POLICY = {
     forbidSkippedPhases: true,
     manualStateRestoreIsRecoveryOnly: true,
     tokenIssuanceIsNotThePolicySource: true
+  },
+  executionProfiles: {
+    defaultProfile: "adaptive",
+    strictEscalationSignals: ["sensitive-change", "repeated-verification-failure"],
+    repeatedVerificationFailureThreshold: 2
   },
   contextManagement: {
     mainAgentRole: "workflow-controller",
@@ -2178,6 +2194,14 @@ function normalizeTransitionPolicy(value) {
     tokenIssuanceIsNotThePolicySource: typeof source.tokenIssuanceIsNotThePolicySource === "boolean" ? source.tokenIssuanceIsNotThePolicySource : DEFAULT_POLICY.transitionPolicy.tokenIssuanceIsNotThePolicySource
   };
 }
+function normalizeExecutionProfiles(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    defaultProfile: isExecutionProfile(source.defaultProfile) ? source.defaultProfile : DEFAULT_POLICY.executionProfiles.defaultProfile,
+    strictEscalationSignals: Array.isArray(source.strictEscalationSignals) ? stringList(source.strictEscalationSignals) : DEFAULT_POLICY.executionProfiles.strictEscalationSignals,
+    repeatedVerificationFailureThreshold: Number.isInteger(source.repeatedVerificationFailureThreshold) && Number(source.repeatedVerificationFailureThreshold) > 0 ? Number(source.repeatedVerificationFailureThreshold) : DEFAULT_POLICY.executionProfiles.repeatedVerificationFailureThreshold
+  };
+}
 function normalizeContextStrategy(value) {
   if (!value || typeof value !== "object") return {};
   const result = {};
@@ -2205,6 +2229,7 @@ function loadSharedWorkflowPolicy() {
       approvalBoundaries: Array.isArray(parsed.approvalBoundaries) ? parsed.approvalBoundaries.filter((item) => typeof item === "string") : DEFAULT_POLICY.approvalBoundaries,
       gates: Array.isArray(parsed.gates) ? parsed.gates.filter((item) => typeof item === "string") : DEFAULT_POLICY.gates,
       transitionPolicy: normalizeTransitionPolicy(parsed.transitionPolicy),
+      executionProfiles: normalizeExecutionProfiles(parsed.executionProfiles),
       contextManagement: parsed.contextManagement && typeof parsed.contextManagement === "object" ? parsed.contextManagement : DEFAULT_POLICY.contextManagement,
       contextStrategy: parsed.contextStrategy && typeof parsed.contextStrategy === "object" ? normalizeContextStrategy(parsed.contextStrategy) : DEFAULT_POLICY.contextStrategy,
       subagentHandoffContract: Array.isArray(parsed.subagentHandoffContract) ? parsed.subagentHandoffContract.filter((item) => typeof item === "string" && item.trim().length > 0) : DEFAULT_POLICY.subagentHandoffContract,
@@ -2216,6 +2241,9 @@ function loadSharedWorkflowPolicy() {
     console.error(`[harness] Failed to load workflow policy from ${POLICY_FILE}: ${err}. Using defaults.`);
     return DEFAULT_POLICY;
   }
+}
+function sharedDefaultExecutionProfile() {
+  return loadSharedWorkflowPolicy().executionProfiles.defaultProfile;
 }
 function sharedWorkflowPhases() {
   return loadSharedWorkflowPolicy().phases;
@@ -2457,6 +2485,7 @@ function createWorkflow(title) {
     branch: gitRoot ? getBranch(gitRoot) : "unknown",
     history: [],
     undone: [],
+    executionProfile: sharedDefaultExecutionProfile(),
     startedAt: now,
     updatedAt: now
   };
@@ -2528,6 +2557,7 @@ function loadPersistedWorkflow() {
     workflow.gitRoot = workflow.gitRoot ?? getGitRoot();
     workflow.branch = workflow.branch ?? (workflow.gitRoot ? getBranch(workflow.gitRoot) : "unknown");
     workflow.phase = normalizeWorkflowPhase(workflow.phase);
+    workflow.executionProfile = resolveExecutionProfile(workflow);
     workflow.history = workflow.history.map((item) => ({
       ...item,
       from: normalizeWorkflowPhase(item.from),
@@ -2574,6 +2604,7 @@ function formatWorkflowStatus(workflow) {
       ["\uBAA9\uD45C", workflow.title],
       ["\uD604\uC7AC \uB2E8\uACC4", workflow.phase],
       ["\uB2E4\uC74C \uB2E8\uACC4", next ?? "\uC5C6\uC74C"],
+      ["\uC2E4\uD589 \uD504\uB85C\uD544", formatExecutionProfile(workflow)],
       ["\uBE0C\uB79C\uCE58", workflow.branch],
       ["\uC791\uC5C5\uACF5\uAC04", ws.ok ? "\uC815\uC0C1" : "\u26A0\uFE0F \uBD88\uC77C\uCE58"],
       ["\uC2E4\uD589 \uCDE8\uC18C", workflow.history.length > 0 ? `${workflow.history.length}\uAC1C \uC0AC\uC6A9 \uAC00\uB2A5` : "\uC5C6\uC74C"]
@@ -2621,6 +2652,12 @@ function formatPhaseGuidanceForUser(workflow) {
     lines.push(`\uB2E4\uC74C \uB2E8\uACC4: ${next}`);
   }
   return lines.join("\n");
+}
+function formatExecutionProfile(workflow) {
+  const profile = resolveExecutionProfile(workflow);
+  const escalation = workflow.executionProfileEscalation;
+  if (!escalation) return profile;
+  return `${profile} (escalated from ${escalation.from}: ${escalation.reason})`;
 }
 
 // target/.claude/hooks/src/lib/skip-tokens.ts

@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
-import { loadPersistedWorkflow } from "../../../.pi/extensions/workflow/state";
+import { loadPersistedWorkflow, saveWorkflow } from "../../../.pi/extensions/workflow/state";
 import { formatWorkflowPrompt } from "../../../.pi/extensions/workflow/format";
+import { escalateExecutionProfile, sensitiveChangeReasonForPath } from "../../../.pi/extensions/workflow/domain/execution-profile-policy";
+import { isVerificationCommand } from "../../../.pi/extensions/workflow/application/tool-call-gate";
+import { sharedVerificationFailureEscalationThreshold } from "../../../.pi/extensions/workflow/policy-core";
 import { isGitPush } from "../../../.pi/extensions/workflow/git";
 import {
   validateWorkflowWorkspace,
@@ -42,6 +45,39 @@ function injectContext(hookEventName: string, message: string): never {
     JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: message } }),
   );
   process.exit(0);
+}
+
+function isReportedToolError(event: any): boolean {
+  return event?.is_error === true
+    || event?.isError === true
+    || event?.tool_result?.is_error === true
+    || event?.toolResult?.isError === true;
+}
+
+function processPostToolUse(event: any): void {
+  const workflow = loadPersistedWorkflow();
+  if (!workflow) return;
+  const toolName = String(event?.tool_name ?? event?.toolName ?? "");
+  const input = event?.tool_input ?? event?.toolInput ?? {};
+  let changed = false;
+
+  if (toolName === "Write" || toolName === "Edit") {
+    const reason = sensitiveChangeReasonForPath(String(input.path ?? ""));
+    if (reason && escalateExecutionProfile(workflow, reason)) changed = true;
+  }
+
+  if (toolName === "Bash" && isReportedToolError(event)) {
+    const command = String(input.command ?? "");
+    if (isVerificationCommand(command)) {
+      workflow.verificationFailureCount = (workflow.verificationFailureCount ?? 0) + 1;
+      if (workflow.verificationFailureCount >= sharedVerificationFailureEscalationThreshold()) {
+        escalateExecutionProfile(workflow, `Verification failed ${workflow.verificationFailureCount} times.`);
+      }
+      changed = true;
+    }
+  }
+
+  if (changed) saveWorkflow(workflow);
 }
 
 function checkToolCall(event: any): void {
@@ -98,6 +134,7 @@ function main(): void {
       const hookEventName =
         command === "session-start" ? "SessionStart" : command === "user-prompt" ? "UserPromptSubmit" : "PostToolUse";
       try {
+        if (command === "reevaluate") processPostToolUse(input);
         injectContext(hookEventName, formatWorkflowPrompt(loadPersistedWorkflow()));
       } catch (error) {
         // Unlike check-tool-call, these three hook events are advisory-only

@@ -138,6 +138,12 @@ def test_fake_llm_agent_loop_drives_full_workflow_and_recovers_from_bad_actions(
         r'''
         const observations = {};
         await command('start Fake LLM full workflow');
+        const stateModule = jiti(path.join(path.dirname(extension), 'workflow', 'state.ts'));
+        const persisted = stateModule.loadPersistedWorkflow();
+        persisted.executionProfile = 'strict';
+        stateModule.saveWorkflow(persisted);
+        await pi.events.session_start({ reason: 'fork' }, ctx);
+        await command('load');
         await command('skip interview-ambiguity test skip');
         await command('approve'); // interview -> plan -> plan_review
 
@@ -385,5 +391,7 @@ def test_fake_llm_startup_does_not_inject_interview_when_user_message_is_pending
 
     assert data["sentMessageCount"] == 0
     assert "base prompt" in data["prompt"]
-    assert "LLM WORKFLOW ACTION" in data["prompt"]
+    assert "Execution profile: adaptive" in data["prompt"]
+    assert "Current phase: interview; next evidence: risk-proportionate verification and independent review." in data["prompt"]
+    assert "LLM WORKFLOW ACTION" not in data["prompt"]
     assert "Start interview now" not in data["prompt"]

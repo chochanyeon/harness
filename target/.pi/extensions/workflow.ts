@@ -230,7 +230,11 @@ export default function (pi: ExtensionAPI) {
   }
 
   function applyPhaseToolPolicy(phase: WorkflowPhase | null): void {
-    applyPhaseToolPolicyForHost(pi as unknown as { getAllTools?: () => Array<{ name: string; sourceInfo: { source: string } }>; setActiveTools?: (names: string[]) => void }, phase);
+    applyPhaseToolPolicyForHost(
+      pi as unknown as { getAllTools?: () => Array<{ name: string; sourceInfo: { source: string } }>; setActiveTools?: (names: string[]) => void },
+      phase,
+      state.workflow?.executionProfile ?? "strict",
+    );
   }
 
   const workflowContinuationMarker = continuation.createContinuationMarker;

@@ -1,4 +1,5 @@
 import type { ArtifactDescriptor } from "./artifact-descriptor";
+import type { ExecutionProfile, ExecutionProfileEscalation } from "./domain/execution-profile-policy";
 import type { PhaseTemplateName } from "./domain/phase-template-policy";
 
 export type WorkflowPhase =
@@ -71,6 +72,12 @@ export type WorkflowInstance = {
   untestedClassesSnapshot?: string[];
   /** plan.md의 `Phase Template:` 줄에서 확정된 phase 순서 template. undefined는 full(기존 10-phase 순서)을 의미한다. */
   phaseTemplate?: PhaseTemplateName;
+  /** New workflows persist their configured profile; missing legacy values resolve to strict. */
+  executionProfile?: ExecutionProfile;
+  /** The first reason that raised this workflow to strict handling. */
+  executionProfileEscalation?: ExecutionProfileEscalation;
+  /** Failed verification commands observed for strict-escalation policy. */
+  verificationFailureCount?: number;
   /** implement에 처음 진입할 때 기록된 HEAD 커밋 hash. 체크포인트 squash/rollback 기준점으로 쓰인다. */
   implementCheckpointBaseCommit?: string;
 };

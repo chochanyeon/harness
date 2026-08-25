@@ -6,7 +6,8 @@ import { createWorkspaceCheckpoint, restoreWorkspaceCheckpoint } from "./checkpo
 import { formatWorkspaceMismatch, runPreTransitionGate, validateWorkflowWorkspace, type InterviewAmbiguityScoreEvidence } from "./gates";
 import { getBranch, getGitRoot } from "./git";
 import { getWorkflowStatePath, getWorkflowStateDir } from "./storage";
-import { isSharedAutoAdvancePhase, isSharedTransitionAllowed, isSharedWorkflowPhase, sharedNextPhase } from "./policy-core";
+import { isSharedAutoAdvancePhase, isSharedTransitionAllowed, isSharedWorkflowPhase, sharedDefaultExecutionProfile, sharedNextPhase } from "./policy-core";
+import { resolveExecutionProfile } from "./domain/execution-profile-policy";
 import type { PhaseTemplateName } from "./domain/phase-template-policy";
 import { safeWriteWorkflowLedgerSnapshot } from "./ledger";
 
@@ -22,6 +23,7 @@ export function createWorkflow(title: string): WorkflowInstance {
     branch: gitRoot ? getBranch(gitRoot) : "unknown",
     history: [],
     undone: [],
+    executionProfile: sharedDefaultExecutionProfile(),
     startedAt: now,
     updatedAt: now,
   };
@@ -120,6 +122,7 @@ export function loadPersistedWorkflow(): WorkflowInstance | null {
     workflow.gitRoot = workflow.gitRoot ?? getGitRoot();
     workflow.branch = workflow.branch ?? (workflow.gitRoot ? getBranch(workflow.gitRoot) : "unknown");
     workflow.phase = normalizeWorkflowPhase(workflow.phase);
+    workflow.executionProfile = resolveExecutionProfile(workflow);
     workflow.history = workflow.history.map((item) => ({
       ...item,
       from: normalizeWorkflowPhase(item.from),

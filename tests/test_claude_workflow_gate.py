@@ -212,12 +212,20 @@ def test_pi_and_claude_adapters_share_persisted_workflow_state(tmp_path):
 
     read_script = _jiti_require_ts(state_ts) + textwrap.dedent("""
         const workflow = mod.loadPersistedWorkflow();
-        console.log(JSON.stringify({ phase: workflow && workflow.phase, title: workflow && workflow.title }));
+        console.log(JSON.stringify({
+          phase: workflow && workflow.phase,
+          title: workflow && workflow.title,
+          executionProfile: workflow && workflow.executionProfile,
+        }));
     """)
     read_result = _run_node(read_script, {"PI_CODING_AGENT_DIR": str(agent_dir)}, cwd=repo)
     assert read_result.returncode == 0, read_result.stderr
     read_payload = json.loads(read_result.stdout.strip().splitlines()[-1])
-    assert read_payload == {"phase": "interview", "title": "cross adapter title"}
+    assert read_payload == {
+        "phase": "interview",
+        "title": "cross adapter title",
+        "executionProfile": "adaptive",
+    }
 
     # Direction 2: Pi-side module writes (moves phase to "plan"), Claude CLI reads it back.
     write_script = _jiti_require_ts(state_ts) + textwrap.dedent("""
@@ -230,6 +238,7 @@ def test_pi_and_claude_adapters_share_persisted_workflow_state(tmp_path):
 
     status = _run_workflow_cli(["status"], repo, agent_dir)
     assert "plan" in status.stdout
+    assert "adaptive" in status.stdout
 
 
 def _run_hook(subcommand, stdin_obj, repo, agent_dir):
@@ -250,6 +259,90 @@ def _run_hook(subcommand, stdin_obj, repo, agent_dir):
     not (ROOT / "target" / ".claude" / "hooks" / "workflow-gate.cjs").exists(),
     reason="workflow-gate.cjs not built yet",
 )
+def test_claude_context_exposes_strict_escalation_reason_from_shared_pi_state(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+    state_ts = ROOT / "target" / ".pi" / "extensions" / "workflow" / "state.ts"
+
+    _run_workflow_cli(["start", "profile context test"], repo, agent_dir)
+    write_script = _jiti_require_ts(state_ts) + textwrap.dedent("""
+        const workflow = mod.loadPersistedWorkflow();
+        workflow.executionProfile = 'strict';
+        workflow.executionProfileEscalation = {
+          from: 'adaptive',
+          to: 'strict',
+          reason: 'CI workflow path changed',
+          timestamp: 1234,
+        };
+        mod.saveWorkflow(workflow);
+    """)
+    write_result = _run_node(write_script, {"PI_CODING_AGENT_DIR": str(agent_dir)}, cwd=repo)
+    assert write_result.returncode == 0, write_result.stderr
+
+    status = _run_workflow_cli(["status"], repo, agent_dir)
+    assert status.returncode == 0, status.stderr
+    assert "strict" in status.stdout
+    assert "CI workflow path changed" in status.stdout
+
+    result = _run_hook("session-start", {}, repo, agent_dir)
+    assert result.returncode == 0, result.stderr
+    context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "strict" in context
+    assert "CI workflow path changed" in context
+
+
+def test_claude_post_tool_use_escalates_sensitive_paths_and_persists_verification_failures(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    agent_dir = tmp_path / "pi-agent"
+    state_ts = ROOT / "target" / ".pi" / "extensions" / "workflow" / "state.ts"
+    _run_workflow_cli(["start", "Claude profile escalation"], repo, agent_dir)
+
+    sensitive = _run_hook(
+        "reevaluate",
+        {"tool_name": "Write", "tool_input": {"path": ".github/workflows/release.yml"}},
+        repo,
+        agent_dir,
+    )
+    assert sensitive.returncode == 0, sensitive.stderr
+    read_script = _jiti_require_ts(state_ts) + textwrap.dedent("""
+        const workflow = mod.loadPersistedWorkflow();
+        console.log(JSON.stringify({
+          profile: workflow.executionProfile,
+          reason: workflow.executionProfileEscalation?.reason,
+          failures: workflow.verificationFailureCount ?? 0,
+        }));
+    """)
+    sensitive_state = _run_node(read_script, {"PI_CODING_AGENT_DIR": str(agent_dir)}, cwd=repo)
+    assert sensitive_state.returncode == 0, sensitive_state.stderr
+    assert json.loads(sensitive_state.stdout.strip().splitlines()[-1]) == {
+        "profile": "strict", "reason": "CI workflow path changed", "failures": 0,
+    }
+
+    reset_script = _jiti_require_ts(state_ts) + textwrap.dedent("""
+        const workflow = mod.loadPersistedWorkflow();
+        workflow.executionProfile = 'adaptive';
+        delete workflow.executionProfileEscalation;
+        mod.saveWorkflow(workflow);
+    """)
+    assert _run_node(reset_script, {"PI_CODING_AGENT_DIR": str(agent_dir)}, cwd=repo).returncode == 0
+    failure_event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "python -m pytest tests/unit.py"},
+        "is_error": True,
+    }
+    assert _run_hook("reevaluate", failure_event, repo, agent_dir).returncode == 0
+    assert _run_hook("reevaluate", failure_event, repo, agent_dir).returncode == 0
+    failure_state = _run_node(read_script, {"PI_CODING_AGENT_DIR": str(agent_dir)}, cwd=repo)
+    assert failure_state.returncode == 0, failure_state.stderr
+    assert json.loads(failure_state.stdout.strip().splitlines()[-1]) == {
+        "profile": "strict", "reason": "Verification failed 2 times.", "failures": 2,
+    }
+
+
 def test_git_push_is_denied_when_no_workflow_is_active(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

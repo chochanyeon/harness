@@ -1,4 +1,5 @@
 import { getPhaseAllowedTools } from "./policy-core";
+import type { ExecutionProfile } from "./domain/execution-profile-policy";
 import type { WorkflowPhase } from "./types";
 
 export type ToolHost = {
@@ -6,7 +7,7 @@ export type ToolHost = {
   setActiveTools?: (names: string[]) => void;
 };
 
-export function applyPhaseToolPolicyForHost(pi: ToolHost, phase: WorkflowPhase | null): void {
+export function applyPhaseToolPolicyForHost(pi: ToolHost, phase: WorkflowPhase | null, profile: ExecutionProfile = "strict"): void {
   if (typeof pi.getAllTools !== "function" || typeof pi.setActiveTools !== "function") return;
   const all = pi.getAllTools();
   if (!phase) {
@@ -16,7 +17,7 @@ export function applyPhaseToolPolicyForHost(pi: ToolHost, phase: WorkflowPhase |
   const extensionTools = all
     .filter((t) => t.sourceInfo.source !== "builtin" && t.sourceInfo.source !== "sdk")
     .map((t) => t.name);
-  const allowed = getPhaseAllowedTools(phase, extensionTools);
+  const allowed = getPhaseAllowedTools(phase, extensionTools, profile);
   pi.setActiveTools(allowed);
 }
 

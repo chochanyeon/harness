@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { WorkflowPhase } from "./types";
 import { WORKFLOW_PHASES } from "./types";
+import type { ExecutionProfile } from "./domain/execution-profile-policy";
+import { isExecutionProfile } from "./domain/execution-profile-policy";
 import type { PhaseTemplateName } from "./domain/phase-template-policy";
 import { getPhaseTemplatePhases } from "./domain/phase-template-policy";
 
@@ -21,6 +23,12 @@ export type SharedTransitionPolicy = {
   tokenIssuanceIsNotThePolicySource: boolean;
 };
 
+export type ExecutionProfilePolicy = {
+  defaultProfile: ExecutionProfile;
+  strictEscalationSignals: string[];
+  repeatedVerificationFailureThreshold: number;
+};
+
 export type SharedWorkflowPolicy = {
   schemaVersion: number;
   phases: WorkflowPhase[];
@@ -28,6 +36,7 @@ export type SharedWorkflowPolicy = {
   approvalBoundaries: string[];
   gates: string[];
   transitionPolicy: SharedTransitionPolicy;
+  executionProfiles: ExecutionProfilePolicy;
   contextManagement: Record<string, unknown>;
   contextStrategy: Partial<Record<WorkflowPhase, PhaseContextStrategy>>;
   subagentHandoffContract: string[];
@@ -46,6 +55,11 @@ const DEFAULT_POLICY: SharedWorkflowPolicy = {
     forbidSkippedPhases: true,
     manualStateRestoreIsRecoveryOnly: true,
     tokenIssuanceIsNotThePolicySource: true,
+  },
+  executionProfiles: {
+    defaultProfile: "adaptive",
+    strictEscalationSignals: ["sensitive-change", "repeated-verification-failure"],
+    repeatedVerificationFailureThreshold: 2,
   },
   contextManagement: {
     mainAgentRole: "workflow-controller",
@@ -113,6 +127,20 @@ function normalizeTransitionPolicy(value: unknown): SharedTransitionPolicy {
   };
 }
 
+function normalizeExecutionProfiles(value: unknown): ExecutionProfilePolicy {
+  const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    defaultProfile: isExecutionProfile(source.defaultProfile) ? source.defaultProfile : DEFAULT_POLICY.executionProfiles.defaultProfile,
+    strictEscalationSignals: Array.isArray(source.strictEscalationSignals)
+      ? stringList(source.strictEscalationSignals)
+      : DEFAULT_POLICY.executionProfiles.strictEscalationSignals,
+    repeatedVerificationFailureThreshold: Number.isInteger(source.repeatedVerificationFailureThreshold)
+      && Number(source.repeatedVerificationFailureThreshold) > 0
+      ? Number(source.repeatedVerificationFailureThreshold)
+      : DEFAULT_POLICY.executionProfiles.repeatedVerificationFailureThreshold,
+  };
+}
+
 function normalizeContextStrategy(value: unknown): Partial<Record<WorkflowPhase, PhaseContextStrategy>> {
   if (!value || typeof value !== "object") return {};
   const result: Partial<Record<WorkflowPhase, PhaseContextStrategy>> = {};
@@ -142,6 +170,7 @@ export function loadSharedWorkflowPolicy(): SharedWorkflowPolicy {
       approvalBoundaries: Array.isArray(parsed.approvalBoundaries) ? parsed.approvalBoundaries.filter((item): item is string => typeof item === "string") : DEFAULT_POLICY.approvalBoundaries,
       gates: Array.isArray(parsed.gates) ? parsed.gates.filter((item): item is string => typeof item === "string") : DEFAULT_POLICY.gates,
       transitionPolicy: normalizeTransitionPolicy(parsed.transitionPolicy),
+      executionProfiles: normalizeExecutionProfiles(parsed.executionProfiles),
       contextManagement: parsed.contextManagement && typeof parsed.contextManagement === "object" ? parsed.contextManagement : DEFAULT_POLICY.contextManagement,
       contextStrategy: parsed.contextStrategy && typeof parsed.contextStrategy === "object" ? normalizeContextStrategy(parsed.contextStrategy) : DEFAULT_POLICY.contextStrategy,
       subagentHandoffContract: Array.isArray(parsed.subagentHandoffContract) ? parsed.subagentHandoffContract.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : DEFAULT_POLICY.subagentHandoffContract,
@@ -153,6 +182,14 @@ export function loadSharedWorkflowPolicy(): SharedWorkflowPolicy {
     console.error(`[harness] Failed to load workflow policy from ${POLICY_FILE}: ${err}. Using defaults.`);
     return DEFAULT_POLICY; // do not cache on error — next call may succeed
   }
+}
+
+export function sharedDefaultExecutionProfile(): ExecutionProfile {
+  return loadSharedWorkflowPolicy().executionProfiles.defaultProfile;
+}
+
+export function sharedVerificationFailureEscalationThreshold(): number {
+  return loadSharedWorkflowPolicy().executionProfiles.repeatedVerificationFailureThreshold;
 }
 
 export function sharedWorkflowPhases(): WorkflowPhase[] {
@@ -227,8 +264,14 @@ export const PHASE_ALLOWED_BUILTIN_TOOLS: Record<WorkflowPhase, readonly string[
  * Returns the full allowed tool name list for a given phase.
  * extensionToolNames should come from pi.getAllTools() filtered to non-builtin sources.
  */
-export function getPhaseAllowedTools(phase: WorkflowPhase, extensionToolNames: string[] = []): string[] {
-  const builtins: readonly string[] = PHASE_ALLOWED_BUILTIN_TOOLS[phase] ?? ALL_BUILTIN;
+export function getPhaseAllowedTools(
+  phase: WorkflowPhase,
+  extensionToolNames: string[] = [],
+  profile: ExecutionProfile = "strict",
+): string[] {
+  const builtins: readonly string[] = profile !== "strict" && phase !== "done"
+    ? ALL_BUILTIN
+    : PHASE_ALLOWED_BUILTIN_TOOLS[phase] ?? ALL_BUILTIN;
   return [...new Set([...builtins, ...extensionToolNames])];
 }
 

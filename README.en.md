@@ -44,6 +44,20 @@ interview
 - Inside the `implement` phase, a successful `project-test`/`code-quality` run mechanically creates a local git checkpoint commit. `git-reset-hard-to-checkpoint <hash>` rolls back to an earlier checkpoint. The `commit` phase's `git-reset-soft-to-checkpoint-base` squashes everything back into one clean commit before push.
 - `/workflow start` normally requires a human to type it, but if the user explicitly asks mid-conversation with a trigger phrase like "let's start a workflow for this", the LLM can start the workflow directly via the `workflow_start` tool. It is rejected if a workflow is already active.
 
+### Execution profiles
+
+New workflows persist the `adaptive` execution profile by default. Pi and Claude Code read the profile from the same state file, and Claude exposes it in both status output and hook context.
+
+| Profile | Behavior |
+|---|---|
+| `fast` | The minimum-procedure profile: ordinary exploration, editing, and test loops remain available in non-terminal phases. |
+| `adaptive` (default) | Uses `fast` autonomy while naming short risk/verification evidence and independent review as the next evidence. |
+| `strict` | Retains the existing full procedure, including phase-specific tool visibility and write-path restrictions. |
+
+A sensitive path change (CI, container/deploy, infrastructure, database/schema, auth/authorization, or OpenAPI), or repeated verification failures reaching the configured threshold, promotes `fast`/`adaptive` to `strict` once. Promotion is monotonic and records the first reason in workflow state. A legacy persisted workflow with no profile field is always interpreted as `strict` for compatibility.
+
+Regardless of profile, `git push` must cross the push boundary and policy scan, and mutating installed runtime `.pi/extensions/**` requires explicit user approval. Execution profiles do not change phase-transition, DPAA/SBADR, or document-policy semantics.
+
 ## What gets installed
 
 ![Harness install footprint](docs/assets/harness-install-footprint.svg)
@@ -125,6 +139,14 @@ Claude Code hooks cannot change which tools are even visible to the model on a g
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
+```
+
+### Harness contributors: rebuild Claude bundles
+
+After changing `target/.pi/extensions/workflow/**` or Claude hook source, regenerate generated `target/.claude/hooks/*.cjs` with the following command; do not edit the bundles directly.
+
+```bash
+npm run build:claude-adapter
 ```
 
 ## Key components

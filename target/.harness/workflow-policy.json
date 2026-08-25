@@ -34,6 +34,14 @@
     "manualStateRestoreIsRecoveryOnly": true,
     "tokenIssuanceIsNotThePolicySource": true
   },
+  "executionProfiles": {
+    "defaultProfile": "adaptive",
+    "strictEscalationSignals": [
+      "sensitive-change",
+      "repeated-verification-failure"
+    ],
+    "repeatedVerificationFailureThreshold": 2
+  },
   "contextManagement": {
     "mainAgentRole": "workflow-controller",
     "subagentPreferredPhases": [

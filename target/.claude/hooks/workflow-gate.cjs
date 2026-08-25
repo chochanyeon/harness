@@ -23,10 +23,10 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // target/.claude/hooks/src/workflow-gate.ts
-var fs4 = __toESM(require("node:fs"));
+var fs5 = __toESM(require("node:fs"));
 
 // target/.pi/extensions/workflow/state.ts
-var fs2 = __toESM(require("node:fs"));
+var fs3 = __toESM(require("node:fs"));
 
 // target/.pi/extensions/workflow/types.ts
 var WORKFLOW_PHASES = [
@@ -369,6 +369,43 @@ function formatGateBlocked(args) {
 // target/.pi/extensions/workflow/policy-core.ts
 var fs = __toESM(require("node:fs"));
 var path5 = __toESM(require("node:path"));
+
+// target/.pi/extensions/workflow/domain/execution-profile-policy.ts
+var EXECUTION_PROFILES = ["fast", "adaptive", "strict"];
+function resolveExecutionProfile(workflow) {
+  return isExecutionProfile(workflow.executionProfile) ? workflow.executionProfile : "strict";
+}
+function escalateExecutionProfile(workflow, reason, timestamp = Date.now()) {
+  const normalizedReason = reason.trim();
+  if (!normalizedReason) throw new Error("Execution-profile escalation requires a reason.");
+  const from = resolveExecutionProfile(workflow);
+  if (from === "strict") return false;
+  workflow.executionProfile = "strict";
+  workflow.executionProfileEscalation = {
+    from,
+    to: "strict",
+    reason: normalizedReason,
+    timestamp
+  };
+  return true;
+}
+var SENSITIVE_CHANGE_PATH_RULES = [
+  { pattern: /(^|\/)\.github\/workflows\//i, reason: "CI workflow path changed" },
+  { pattern: /(^|\/)(dockerfile|docker-compose[^/]*)$/i, reason: "Container/deployment path changed" },
+  { pattern: /(^|\/)(infra|infrastructure|terraform|k8s|kubernetes)\//i, reason: "Infrastructure path changed" },
+  { pattern: /(^|\/)(migrations?|db|database|schema)\//i, reason: "Database/schema path changed" },
+  { pattern: /(^|\/)(auth|security|permissions?)\//i, reason: "Authentication or authorization path changed" },
+  { pattern: /(^|\/)(openapi|swagger)\//i, reason: "Public API contract path changed" }
+];
+function sensitiveChangeReasonForPath(filePath) {
+  const normalized = filePath.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+  return SENSITIVE_CHANGE_PATH_RULES.find(({ pattern }) => pattern.test(normalized))?.reason ?? null;
+}
+function isExecutionProfile(value) {
+  return typeof value === "string" && EXECUTION_PROFILES.includes(value);
+}
+
+// target/.pi/extensions/workflow/policy-core.ts
 var PROJECT_ROOT = path5.resolve(__dirname, "../../..");
 var POLICY_FILE = path5.join(PROJECT_ROOT, ".harness", "workflow-policy.json");
 var DEFAULT_POLICY = {
@@ -382,6 +419,11 @@ var DEFAULT_POLICY = {
     forbidSkippedPhases: true,
     manualStateRestoreIsRecoveryOnly: true,
     tokenIssuanceIsNotThePolicySource: true
+  },
+  executionProfiles: {
+    defaultProfile: "adaptive",
+    strictEscalationSignals: ["sensitive-change", "repeated-verification-failure"],
+    repeatedVerificationFailureThreshold: 2
   },
   contextManagement: {
     mainAgentRole: "workflow-controller",
@@ -445,6 +487,14 @@ function normalizeTransitionPolicy(value) {
     tokenIssuanceIsNotThePolicySource: typeof source.tokenIssuanceIsNotThePolicySource === "boolean" ? source.tokenIssuanceIsNotThePolicySource : DEFAULT_POLICY.transitionPolicy.tokenIssuanceIsNotThePolicySource
   };
 }
+function normalizeExecutionProfiles(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    defaultProfile: isExecutionProfile(source.defaultProfile) ? source.defaultProfile : DEFAULT_POLICY.executionProfiles.defaultProfile,
+    strictEscalationSignals: Array.isArray(source.strictEscalationSignals) ? stringList(source.strictEscalationSignals) : DEFAULT_POLICY.executionProfiles.strictEscalationSignals,
+    repeatedVerificationFailureThreshold: Number.isInteger(source.repeatedVerificationFailureThreshold) && Number(source.repeatedVerificationFailureThreshold) > 0 ? Number(source.repeatedVerificationFailureThreshold) : DEFAULT_POLICY.executionProfiles.repeatedVerificationFailureThreshold
+  };
+}
 function normalizeContextStrategy(value) {
   if (!value || typeof value !== "object") return {};
   const result = {};
@@ -472,6 +522,7 @@ function loadSharedWorkflowPolicy() {
       approvalBoundaries: Array.isArray(parsed.approvalBoundaries) ? parsed.approvalBoundaries.filter((item) => typeof item === "string") : DEFAULT_POLICY.approvalBoundaries,
       gates: Array.isArray(parsed.gates) ? parsed.gates.filter((item) => typeof item === "string") : DEFAULT_POLICY.gates,
       transitionPolicy: normalizeTransitionPolicy(parsed.transitionPolicy),
+      executionProfiles: normalizeExecutionProfiles(parsed.executionProfiles),
       contextManagement: parsed.contextManagement && typeof parsed.contextManagement === "object" ? parsed.contextManagement : DEFAULT_POLICY.contextManagement,
       contextStrategy: parsed.contextStrategy && typeof parsed.contextStrategy === "object" ? normalizeContextStrategy(parsed.contextStrategy) : DEFAULT_POLICY.contextStrategy,
       subagentHandoffContract: Array.isArray(parsed.subagentHandoffContract) ? parsed.subagentHandoffContract.filter((item) => typeof item === "string" && item.trim().length > 0) : DEFAULT_POLICY.subagentHandoffContract,
@@ -483,6 +534,9 @@ function loadSharedWorkflowPolicy() {
     console.error(`[harness] Failed to load workflow policy from ${POLICY_FILE}: ${err}. Using defaults.`);
     return DEFAULT_POLICY;
   }
+}
+function sharedVerificationFailureEscalationThreshold() {
+  return loadSharedWorkflowPolicy().executionProfiles.repeatedVerificationFailureThreshold;
 }
 function sharedWorkflowPhases() {
   return loadSharedWorkflowPolicy().phases;
@@ -503,19 +557,224 @@ var READ_ONLY_BUILTIN = ["read", "bash", "grep", "find", "ls"];
 var WRITE_BUILTIN = ["write", "edit"];
 var ALL_BUILTIN = [...READ_ONLY_BUILTIN, ...WRITE_BUILTIN];
 
+// target/.pi/extensions/workflow/ledger.ts
+var import_node_child_process3 = require("node:child_process");
+var fs2 = __toESM(require("node:fs"));
+var path6 = __toESM(require("node:path"));
+var MAX_CHANGED_FILES = 20;
+function getWorkflowLedgerPath(workflow, root = process.cwd()) {
+  return path6.join(root, ".ai", "interview", "runs", workflow.id, "ledger.json");
+}
+function createWorkflowLedgerSnapshot(workflow, update = {}) {
+  const lastTransition = workflow.history.at(-1);
+  const taskCounts = summarizeTaskCounts(workflow);
+  const activeTask = workflow.taskQueue?.activeTaskId ? workflow.taskQueue.tasks.find((task) => task.id === workflow.taskQueue?.activeTaskId) : void 0;
+  const changedFiles = Array.from(new Set((update.changedFiles ?? collectChangedFiles(workflow.gitRoot ?? workflow.cwd)).map((file) => file.replace(/\\/g, "/"))));
+  const artifactPaths = (update.planArtifactPaths ?? defaultPlanArtifactPaths()).map((item) => item.replace(/\\/g, "/"));
+  const verificationCoverage = createVerificationCoverage(workflow, artifactPaths, update.verification);
+  const reviewSummary = update.review ? {
+    critical: update.review.critical,
+    major: update.review.major,
+    minor: update.review.minor,
+    reviewedFileCount: update.review.reviewedFiles?.length ?? update.review.reviewedFileCount
+  } : void 0;
+  const baseSnapshot = {
+    schemaVersion: 1,
+    workflowId: workflow.id,
+    title: workflow.title,
+    branch: workflow.branch,
+    cwd: workflow.cwd,
+    gitRoot: workflow.gitRoot,
+    phase: {
+      current: workflow.phase,
+      historyCount: workflow.history.length,
+      lastTransition: lastTransition ? {
+        from: lastTransition.from,
+        to: lastTransition.to,
+        reason: truncate(lastTransition.reason, 160),
+        timestamp: lastTransition.timestamp
+      } : void 0
+    },
+    startedAt: new Date(workflow.startedAt).toISOString(),
+    updatedAt: new Date(workflow.updatedAt).toISOString(),
+    planCoverage: {
+      artifactPaths,
+      taskCounts,
+      activeTask: activeTask ? {
+        id: activeTask.id,
+        title: truncate(activeTask.title, 160),
+        acceptanceCount: activeTask.acceptanceCriteria.length,
+        verificationCount: activeTask.verification.length
+      } : void 0
+    },
+    diffCoverage: {
+      changedFileCount: changedFiles.length,
+      changedFiles: changedFiles.slice(0, MAX_CHANGED_FILES),
+      truncated: changedFiles.length > MAX_CHANGED_FILES
+    },
+    verification: {
+      commandCount: update.verification ? 1 : 0,
+      lastCommand: update.verification ? {
+        commandId: update.verification.commandId,
+        ok: update.verification.ok,
+        exitCode: update.verification.exitCode,
+        artifactPath: update.verification.artifactPath?.replace(/\\/g, "/")
+      } : void 0
+    },
+    verificationCoverage,
+    review: {
+      submitted: Boolean(update.review),
+      summary: reviewSummary
+    },
+    nextSafeAction: {
+      phase: workflow.phase,
+      summary: summarizeNextSafeAction(workflow.phase, update)
+    }
+  };
+  const snapshot = {
+    ...baseSnapshot,
+    resume: { summary: "", generatedAt: new Date(workflow.updatedAt).toISOString() }
+  };
+  snapshot.resume.summary = formatWorkflowLedgerResumeSummary(snapshot);
+  return snapshot;
+}
+function writeWorkflowLedgerSnapshot(workflow, root = workflow.gitRoot ?? process.cwd(), update = {}) {
+  const file = getWorkflowLedgerPath(workflow, root);
+  const previous = readExistingLedger(file);
+  const mergedUpdate = {
+    planArtifactPaths: update.planArtifactPaths ?? previous?.planCoverage?.artifactPaths,
+    changedFiles: update.changedFiles,
+    verification: update.verification ?? previous?.verification?.lastCommand,
+    review: update.review ?? (previous?.review?.summary ? { ...previous.review.summary } : void 0)
+  };
+  const snapshot = createWorkflowLedgerSnapshot(workflow, mergedUpdate);
+  fs2.mkdirSync(path6.dirname(file), { recursive: true });
+  fs2.writeFileSync(file, `${JSON.stringify(snapshot, null, 2)}
+`, "utf-8");
+  return { path: file, workflowId: workflow.id, updatedAt: snapshot.updatedAt };
+}
+function safeWriteWorkflowLedgerSnapshot(workflow, root, update = {}) {
+  if (!workflow) return null;
+  try {
+    return writeWorkflowLedgerSnapshot(workflow, root ?? workflow.gitRoot ?? process.cwd(), update);
+  } catch {
+    return null;
+  }
+}
+function formatWorkflowLedgerResumeSummary(snapshot) {
+  const verification = snapshot.verification.lastCommand ? `${snapshot.verification.lastCommand.commandId}:${snapshot.verification.lastCommand.ok ? "pass" : "fail"}` : "none";
+  const review = snapshot.review.summary ? `Cr${snapshot.review.summary.critical}/Maj${snapshot.review.summary.major}/Min${snapshot.review.summary.minor}` : "none";
+  const counts = snapshot.verificationCoverage?.counts ?? { covered: 0, needsVerification: 0, unknown: 0 };
+  return [
+    `phase=${snapshot.phase.current}`,
+    `verification=${verification}`,
+    `coverage=${counts.covered}/${counts.needsVerification}/${counts.unknown}`,
+    `review=${review}`,
+    `diff=${snapshot.diffCoverage.changedFileCount}`,
+    `next=${truncate(snapshot.nextSafeAction.summary, 180)}`
+  ].join("; ");
+}
+function summarizeTaskCounts(workflow) {
+  if (!workflow.taskQueue) return { none: 1, pending: 0, active: 0, done: 0, blocked: 0, deferred: 0 };
+  return workflow.taskQueue.tasks.reduce((acc, task) => {
+    acc[task.status] = (acc[task.status] ?? 0) + 1;
+    return acc;
+  }, { none: 0, pending: 0, active: 0, done: 0, blocked: 0, deferred: 0 });
+}
+function defaultPlanArtifactPaths() {
+  return [".ai/interview/spec.ko.md", ".ai/interview/spec.md", ".ai/interview/plan.ko.md", ".ai/interview/plan.md"];
+}
+function createVerificationCoverage(workflow, artifactPaths, verification) {
+  const activeTask = workflow.taskQueue?.activeTaskId ? workflow.taskQueue.tasks.find((task) => task.id === workflow.taskQueue?.activeTaskId) : void 0;
+  const evidence = verification ? [`${verification.commandId}:${verification.ok ? "pass" : "fail"}`] : [];
+  const status = verification ? verification.ok ? "covered" : "needs_verification" : "unknown";
+  const items = activeTask?.acceptanceCriteria.length ? activeTask.acceptanceCriteria.map((label, index) => ({
+    id: `${activeTask.id}:acceptance:${index + 1}`,
+    label: truncate(label, 160),
+    status,
+    evidence
+  })) : [
+    {
+      id: "plan-artifacts",
+      label: "Plan artifacts available",
+      status: artifactPaths.length > 0 ? "covered" : "unknown",
+      evidence: artifactPaths.length > 0 ? [`planArtifacts:${artifactPaths.length}`] : []
+    },
+    {
+      id: "latest-verification",
+      label: "Latest verification evidence",
+      status,
+      evidence
+    }
+  ];
+  return { items, counts: countCoverageItems(items) };
+}
+function countCoverageItems(items) {
+  return items.reduce((acc, item) => {
+    if (item.status === "needs_verification") acc.needsVerification += 1;
+    else acc[item.status] += 1;
+    return acc;
+  }, { covered: 0, needsVerification: 0, unknown: 0 });
+}
+function collectChangedFiles(root) {
+  try {
+    const output = (0, import_node_child_process3.execFileSync)("git", ["-C", root, "status", "--short"], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+    return output.split(/\r?\n/).filter((line) => line.trim()).map((line) => line.slice(3).trim().replace(/^(.+)\s+->\s+(.+)$/, "$2")).filter((file) => file && !isGeneratedWorkflowArtifactPath(file));
+  } catch {
+    return [];
+  }
+}
+function isGeneratedWorkflowArtifactPath(file) {
+  const normalized = file.replace(/\\/g, "/");
+  return normalized === ".ai" || normalized === ".ai/" || normalized.startsWith(".ai/") || normalized === ".project-memory" || normalized === ".project-memory/" || normalized.startsWith(".project-memory/");
+}
+function summarizeNextSafeAction(phase, update) {
+  const hasVerification = Boolean(update.verification);
+  const hasReview = Boolean(update.review);
+  if (phase === "implement" && !hasVerification) return "implement: run targeted verification for current changes before code_review.";
+  if (phase === "implement") return "implement: verification evidence exists; finish the approved scope and advance to code_review.";
+  if (phase === "code_review" && !hasReview) return "code_review: collect self-review, independent review, and quality gate evidence before submit_review_package.";
+  if (phase === "code_review") return "code_review: review evidence exists; submit the review package when quality evidence is complete.";
+  if (phase === "commit" && !hasVerification) return "commit: check verification evidence before staging and committing.";
+  const actions = {
+    interview: "interview: clarify requirements and record interview score evidence.",
+    plan: "plan: write DPAA-ready spec and plan artifacts, then advance to plan_review.",
+    plan_review: "plan_review: run DPAA/SBADR and repair plan ambiguity before implementation.",
+    implement: "implement: complete approved scope, collect verification evidence, then advance to code_review.",
+    code_review: "code_review: collect self-review, independent review, and quality gate evidence before submitting review package.",
+    review_approved: "review_approved: prepare documentation updates for the approved changes.",
+    document: "document: update required docs and prepare commit summary.",
+    commit: "commit: stage reviewed changes and create the approved commit.",
+    push: "push: run the guarded git-push command and observe success.",
+    done: "done: workflow is complete."
+  };
+  return actions[phase];
+}
+function readExistingLedger(file) {
+  try {
+    return JSON.parse(fs2.readFileSync(file, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function truncate(value, max) {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}\u2026`;
+}
+
 // target/.pi/extensions/workflow/state.ts
 function getNextPhase(phase, phaseTemplate) {
   return sharedNextPhase(phase, phaseTemplate);
 }
 function loadPersistedWorkflow() {
   const file = getWorkflowStatePath();
-  if (!fs2.existsSync(file)) return null;
+  if (!fs3.existsSync(file)) return null;
   try {
-    const workflow = JSON.parse(fs2.readFileSync(file, "utf-8"));
+    const workflow = JSON.parse(fs3.readFileSync(file, "utf-8"));
     workflow.cwd = workflow.cwd ?? process.cwd();
     workflow.gitRoot = workflow.gitRoot ?? getGitRoot();
     workflow.branch = workflow.branch ?? (workflow.gitRoot ? getBranch(workflow.gitRoot) : "unknown");
     workflow.phase = normalizeWorkflowPhase(workflow.phase);
+    workflow.executionProfile = resolveExecutionProfile(workflow);
     workflow.history = workflow.history.map((item) => ({
       ...item,
       from: normalizeWorkflowPhase(item.from),
@@ -534,6 +793,12 @@ function loadPersistedWorkflow() {
 }
 function normalizeWorkflowPhase(phase) {
   return isSharedWorkflowPhase(phase) ? phase : LEGACY_WORKFLOW_PHASE_ALIASES[phase] ?? phase;
+}
+function saveWorkflow(workflow) {
+  const file = getWorkflowStatePath();
+  fs3.mkdirSync(getWorkflowStateDir(), { recursive: true });
+  fs3.writeFileSync(file, JSON.stringify(workflow, null, 2), "utf-8");
+  safeWriteWorkflowLedgerSnapshot(workflow);
 }
 
 // target/.pi/extensions/workflow/format.ts
@@ -625,30 +890,53 @@ function formatWorkflowPrompt(workflow) {
     ].join("\n");
   }
   const workspace = validateWorkflowWorkspace(workflow);
+  const profile = resolveExecutionProfile(workflow);
+  const executionProfile = formatExecutionProfile(workflow);
+  if (profile !== "strict") {
+    return [
+      `\u2022 Objective: ${workflow.title}`,
+      `\u2022 Execution profile: ${executionProfile}`,
+      `\u2022 Current phase: ${workflow.phase}; next evidence: risk-proportionate verification and independent review.`,
+      "\u2022 Non-negotiable: git push requires the push workflow boundary and policy scan; runtime .pi/extensions/** writes require user approval.",
+      ...workspace.ok ? [] : [formatWorkspaceMismatch(workspace)]
+    ].join("\n");
+  }
   const lines = [
     `\u2022 Workflow branch: ${workflow.branch}`,
     `\u2022 Workflow cwd: ${workflow.cwd}`,
+    `\u2022 Execution profile: ${executionProfile}`,
     formatWorkflowAction(workflow),
     formatHardRules()
   ];
   if (!workspace.ok) lines.push(formatWorkspaceMismatch(workspace));
   return lines.join("\n");
 }
+function formatExecutionProfile(workflow) {
+  const profile = resolveExecutionProfile(workflow);
+  const escalation = workflow.executionProfileEscalation;
+  if (!escalation) return profile;
+  return `${profile} (escalated from ${escalation.from}: ${escalation.reason})`;
+}
 function formatHardRules() {
   const rules = sharedHardRules().filter((rule) => !rule.startsWith("User approval is required"));
   return rules.length > 0 ? ["[WORKFLOW HARD RULES]", ...rules.map((rule) => `- ${rule}`), "[/WORKFLOW HARD RULES]"].join("\n") : "";
 }
 
+// target/.pi/extensions/workflow/application/tool-call-gate.ts
+function isVerificationCommand(cmd) {
+  return /\b(pytest|npm\s+(test|run\s+(test|lint|typecheck|build))|pnpm\s+(test|lint|typecheck|build)|yarn\s+(test|lint|typecheck|build)|gradle(w|\.bat)?\s+.*(test|check|build|codeQualityGuard)|mvn\s+.*(test|verify|package)|go\s+test|cargo\s+(test|clippy)|tsc\b|eslint\b|ruff\b|mypy\b)\b/i.test(cmd);
+}
+
 // target/.claude/hooks/src/lib/skip-tokens.ts
-var fs3 = __toESM(require("node:fs"));
-var path6 = __toESM(require("node:path"));
+var fs4 = __toESM(require("node:fs"));
+var path7 = __toESM(require("node:path"));
 var SKIP_TOKEN_TTL_MS = 10 * 60 * 1e3;
 function skipTokensPath() {
-  return path6.join(getWorkflowStateDir(), "claude-skip-tokens.json");
+  return path7.join(getWorkflowStateDir(), "claude-skip-tokens.json");
 }
 function readTokens(now) {
   try {
-    const raw = fs3.readFileSync(skipTokensPath(), "utf-8");
+    const raw = fs4.readFileSync(skipTokensPath(), "utf-8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((token) => token.expiresAt > now);
@@ -658,8 +946,8 @@ function readTokens(now) {
 }
 function writeTokens(tokens) {
   const file = skipTokensPath();
-  fs3.mkdirSync(path6.dirname(file), { recursive: true });
-  fs3.writeFileSync(file, JSON.stringify(tokens, null, 2), "utf-8");
+  fs4.mkdirSync(path7.dirname(file), { recursive: true });
+  fs4.writeFileSync(file, JSON.stringify(tokens, null, 2), "utf-8");
 }
 function consumeClaudeSkipToken(gate, workflowId) {
   const now = Date.now();
@@ -677,7 +965,7 @@ function consumeClaudeSkipToken(gate, workflowId) {
 // target/.claude/hooks/src/workflow-gate.ts
 function readStdinJson() {
   try {
-    const raw = fs4.readFileSync(0, "utf8").trim();
+    const raw = fs5.readFileSync(0, "utf8").trim();
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -704,6 +992,31 @@ function injectContext(hookEventName, message) {
     JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: message } })
   );
   process.exit(0);
+}
+function isReportedToolError(event) {
+  return event?.is_error === true || event?.isError === true || event?.tool_result?.is_error === true || event?.toolResult?.isError === true;
+}
+function processPostToolUse(event) {
+  const workflow = loadPersistedWorkflow();
+  if (!workflow) return;
+  const toolName = String(event?.tool_name ?? event?.toolName ?? "");
+  const input = event?.tool_input ?? event?.toolInput ?? {};
+  let changed = false;
+  if (toolName === "Write" || toolName === "Edit") {
+    const reason = sensitiveChangeReasonForPath(String(input.path ?? ""));
+    if (reason && escalateExecutionProfile(workflow, reason)) changed = true;
+  }
+  if (toolName === "Bash" && isReportedToolError(event)) {
+    const command = String(input.command ?? "");
+    if (isVerificationCommand(command)) {
+      workflow.verificationFailureCount = (workflow.verificationFailureCount ?? 0) + 1;
+      if (workflow.verificationFailureCount >= sharedVerificationFailureEscalationThreshold()) {
+        escalateExecutionProfile(workflow, `Verification failed ${workflow.verificationFailureCount} times.`);
+      }
+      changed = true;
+    }
+  }
+  if (changed) saveWorkflow(workflow);
 }
 function checkToolCall(event) {
   const toolName = event.tool_name ?? event.toolName ?? "";
@@ -749,6 +1062,7 @@ function main() {
     case "reevaluate": {
       const hookEventName = command === "session-start" ? "SessionStart" : command === "user-prompt" ? "UserPromptSubmit" : "PostToolUse";
       try {
+        if (command === "reevaluate") processPostToolUse(input);
         injectContext(hookEventName, formatWorkflowPrompt(loadPersistedWorkflow()));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

@@ -2,12 +2,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import type { WorkflowRuntimeState } from "../runtime-state";
+import { saveWorkflow } from "../state";
+import { escalateExecutionProfile, resolveExecutionProfile, sensitiveChangeReasonForPath } from "../domain/execution-profile-policy";
 import { ensureExtensionMutationApproved } from "./extension-mutation-approval";
 import { decideProductionClassTddGate, expectedProductionTestPath, hasProductionClassTestCoverage, isProductionClassPath, productionClassKey, productionClassKeyFromTestPath, decideProductionGoTddGate, expectedProductionGoTestPath, hasProductionGoTestCoverage, isProductionGoPath, productionGoFileKey, productionGoFileKeyFromTestPath } from "../domain/production-class-policy";
-import { consumeSkipToken, formatGateBlocked, formatPushPolicyScanBlocked, pushPolicySignature, scanPushPolicy, validateWorkflowWorkspace } from "../gates";
+import { consumeSkipToken, formatGateBlocked, formatPushPolicyScanBlocked, formatWorkspaceMismatch, pushPolicySignature, scanPushPolicy, validateWorkflowWorkspace } from "../gates";
 import { getGitRoot, hasGitDashC, isGitPush } from "../git";
-import { formatWorkspaceMismatch } from "../format";
-import { getPhaseWritePathPolicy, isWritePathBlocked, PHASE_ALLOWED_BUILTIN_TOOLS } from "../policy-core";
+import { getPhaseWritePathPolicy, isWritePathBlocked, PHASE_ALLOWED_BUILTIN_TOOLS, sharedVerificationFailureEscalationThreshold } from "../policy-core";
 import { writeFieldLogEvent } from "../field-log";
 
 export type WorkflowToolCallEvent = {
@@ -63,7 +64,7 @@ function handleWriteToolPolicy(
   event: WorkflowToolCallEvent,
   deps: WorkflowToolCallDeps,
 ): WorkflowToolCallDecision {
-  if (state.workflow?.phase === "implement" && (event.toolName === "write" || event.toolName === "edit")) {
+  if (state.workflow && (event.toolName === "write" || event.toolName === "edit")) {
     const filePath = String((event.input as any).path ?? "");
     const gitRoot = state.workflow.gitRoot ?? getGitRoot();
     if (gitRoot && isProductionClassPath(filePath, gitRoot)) {
@@ -96,9 +97,16 @@ function handleWriteToolPolicy(
   }
 
   if (state.workflow && (event.toolName === "write" || event.toolName === "edit")) {
+    const filePath = String((event.input as any).path ?? "");
+    const sensitiveReason = sensitiveChangeReasonForPath(filePath);
+    if (sensitiveReason && escalateExecutionProfile(state.workflow, sensitiveReason)) {
+      saveWorkflow(state.workflow);
+    }
+
     const phase = state.workflow.phase;
+    const strict = resolveExecutionProfile(state.workflow) === "strict";
     const phaseAllowed = PHASE_ALLOWED_BUILTIN_TOOLS[phase] as readonly string[] | undefined;
-    if (phaseAllowed && !phaseAllowed.includes(event.toolName)) {
+    if ((strict || phase === "done") && phaseAllowed && !phaseAllowed.includes(event.toolName)) {
       if (phase === "commit" || phase === "push") {
         return {
           block: true,
@@ -117,7 +125,7 @@ function handleWriteToolPolicy(
       return { block: true, reason: `⚠️ ${guide}` };
     }
 
-    const pathPolicy = getPhaseWritePathPolicy(state.workflow.phase);
+    const pathPolicy = strict ? getPhaseWritePathPolicy(state.workflow.phase) : null;
     if (pathPolicy) {
       const filePath = String((event.input as any).path ?? "");
       if (filePath) {
@@ -137,9 +145,19 @@ function handleWriteToolPolicy(
 }
 
 export function handleWorkflowToolResult(state: WorkflowRuntimeState, event: WorkflowToolResultEvent): void {
-  if (event.isError) return;
-  if (event.toolName !== "write" && event.toolName !== "edit") return;
-  if (state.workflow?.phase !== "implement") return;
+  if (event.toolName === "bash" && event.isError && state.workflow) {
+    const command = String((event.input as any).command ?? "");
+    if (isVerificationCommand(command)) {
+      state.workflow.verificationFailureCount = (state.workflow.verificationFailureCount ?? 0) + 1;
+      const threshold = sharedVerificationFailureEscalationThreshold();
+      if (state.workflow.verificationFailureCount >= threshold) {
+        escalateExecutionProfile(state.workflow, `Verification failed ${state.workflow.verificationFailureCount} times.`);
+      }
+      saveWorkflow(state.workflow);
+    }
+  }
+
+  if (event.isError || (event.toolName !== "write" && event.toolName !== "edit") || !state.workflow) return;
   const filePath = String((event.input as any).path ?? "");
   const gitRoot = state.workflow.gitRoot ?? getGitRoot();
   if (!gitRoot || !filePath) return;
@@ -147,7 +165,7 @@ export function handleWorkflowToolResult(state: WorkflowRuntimeState, event: Wor
 }
 
 function recordTddTestEvidence(state: WorkflowRuntimeState, filePath: string, gitRoot: string): void {
-  if (!state.workflow || state.workflow.phase !== "implement") return;
+  if (!state.workflow) return;
   const productionKey = productionClassKeyFromTestPath(filePath, gitRoot) ?? productionGoFileKeyFromTestPath(filePath, gitRoot);
   if (!productionKey) return;
   const current = state.tddTestEvidence?.workflowId === state.workflow.id
@@ -163,8 +181,12 @@ function hasTddTestEvidence(state: WorkflowRuntimeState, productionKey: string):
   return state.tddTestEvidence.productionKeys.includes(productionKey);
 }
 
+export function isVerificationCommand(cmd: string): boolean {
+  return /\b(pytest|npm\s+(test|run\s+(test|lint|typecheck|build))|pnpm\s+(test|lint|typecheck|build)|yarn\s+(test|lint|typecheck|build)|gradle(w|\.bat)?\s+.*(test|check|build|codeQualityGuard)|mvn\s+.*(test|verify|package)|go\s+test|cargo\s+(test|clippy)|tsc\b|eslint\b|ruff\b|mypy\b)\b/i.test(cmd);
+}
+
 function recordVerificationCommand(state: WorkflowRuntimeState, cmd: string): void {
-  if (/\b(pytest|npm\s+(test|run\s+(test|lint|typecheck|build))|pnpm\s+(test|lint|typecheck|build)|yarn\s+(test|lint|typecheck|build)|gradle(w|\.bat)?\s+.*(test|check|build|codeQualityGuard)|mvn\s+.*(test|verify|package)|go\s+test|cargo\s+(test|clippy)|tsc\b|eslint\b|ruff\b|mypy\b)\b/i.test(cmd)) {
+  if (isVerificationCommand(cmd)) {
     state.recentVerificationCommands.push({ command: cmd, timestamp: Date.now(), phase: state.workflow?.phase });
     if (state.recentVerificationCommands.length > 20) state.recentVerificationCommands.shift();
   }

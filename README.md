@@ -44,6 +44,20 @@ interview
 - `implement` phase에서 `project-test`/`code-quality`가 성공하면 익스텐션이 기계적으로 로컬 git 체크포인트 커밋을 만듭니다. `git-reset-hard-to-checkpoint <hash>`로 이전 체크포인트로 다시 돌아갈 수 있고, `commit` phase의 `git-reset-soft-to-checkpoint-base`가 최종 push되는 이력을 하나의 깨끗한 커밋으로 squash합니다.
 - `/workflow start`는 사람이 직접 입력해야 하지만, 대화 중 사용자가 "워크플로우로 진행해보자" 같은 트리거 문구로 명시적으로 요청하면 LLM이 `workflow_start` tool로 워크플로를 직접 시작할 수 있습니다. 이미 진행 중인 workflow가 있으면 거부됩니다.
 
+### 실행 프로필
+
+새 workflow는 기본으로 `adaptive` 실행 프로필을 state에 저장합니다. 프로필은 Pi와 Claude Code가 같은 state 파일에서 읽으며, Claude의 status와 hook context에도 표시됩니다.
+
+| 프로필 | 동작 |
+|---|---|
+| `fast` | 비종료 phase에서 일반적인 탐색·편집·테스트 loop를 허용하는 최소 절차 프로필입니다. |
+| `adaptive` (기본) | `fast`의 자율성을 사용하되, 짧은 위험·검증 증거와 독립 리뷰를 다음 증거로 제시합니다. |
+| `strict` | 기존의 phase별 tool visibility 및 write-path 제한을 유지하는 전체 절차 프로필입니다. |
+
+민감 경로(CI, container/deploy, infrastructure, database/schema, auth/authorization, OpenAPI) 변경 또는 연속 검증 실패가 임계값에 도달하면 `fast`/`adaptive`는 한 번만 `strict`로 승격됩니다. 승격은 되돌릴 수 없고, 최초 사유를 workflow state에 남깁니다. 프로필 필드가 없는 기존 persisted workflow는 호환성을 위해 항상 `strict`로 해석합니다.
+
+프로필과 관계없이 `git push`는 push boundary와 policy scan을 통과해야 하며, 설치된 runtime `.pi/extensions/**` 수정은 명시적 사용자 승인을 요구합니다. 실행 프로필은 phase 전이, DPAA/SBADR, document 정책을 바꾸지 않습니다.
+
 ## What gets installed
 
 ![Harness install footprint](docs/assets/harness-install-footprint.svg)
@@ -125,6 +139,14 @@ Claude Code hook은 Pi extension처럼 turn마다 사용 가능한 tool 자체�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
+```
+
+### 하네스 기여자: Claude bundle 재생성
+
+`target/.pi/extensions/workflow/**` 또는 Claude hook source를 수정한 뒤에는 생성된 `target/.claude/hooks/*.cjs`를 직접 편집하지 말고 다음 명령으로 재생성합니다.
+
+```bash
+npm run build:claude-adapter
 ```
 
 ## Key components

@@ -1,13 +1,7 @@
-"""
-Tests for MVP 2: phase-based tool policy via pi.setActiveTools().
+"""Profile-aware Pi workflow tool-policy regression tests.
 
-Verifies that:
-- PHASE_ALLOWED_BUILTIN_TOOLS is defined in policy-core.ts
-- getPhaseAllowedTools is exported from policy-core.ts
-- Read-only phases do not allow write/edit
-- Write phases allow write/edit
-- applyPhaseToolPolicy is wired in workflow.ts
-- tool_call backstop blocks write/edit in read-only phases without queuing follow-up steering
+Strict workflows retain phase-based visibility and write backstops. Fast and
+adaptive workflows retain ordinary edit/test loops in nonterminal phases.
 """
 from pathlib import Path
 
@@ -51,9 +45,11 @@ def test_phase_allowed_builtin_tools_defined():
     assert "PHASE_ALLOWED_BUILTIN_TOOLS" in src
 
 
-def test_get_phase_allowed_tools_exported():
+def test_get_phase_allowed_tools_exported_and_profile_aware():
     src = POLICY_CORE.read_text(encoding="utf-8")
     assert "export function getPhaseAllowedTools" in src
+    assert "ExecutionProfile" in src
+    assert 'profile !== "strict"' in src
 
 
 def test_read_only_phases_exclude_write_and_edit():
@@ -102,13 +98,22 @@ def test_apply_phase_tool_policy_called_on_start():
     assert src.count("applyPhaseToolPolicy") >= 3
 
 
-def test_tool_call_backstop_blocks_write_edit_in_readonly_phases_without_followup_steering():
+def test_tool_call_backstop_applies_phase_write_restrictions_only_to_strict_profiles():
     src = WORKFLOW_EXTENSION.read_text(encoding="utf-8") + TOOL_CALL_GATE.read_text(encoding="utf-8")
     assert "PHASE_ALLOWED_BUILTIN_TOOLS" in src
+    assert "resolveExecutionProfile(state.workflow) === \"strict\"" in src
     assert 'event.toolName === "write"' in src or "event.toolName ===" in src
     assert "phaseAllowed && !phaseAllowed.includes(event.toolName)" in src
     assert "return { block: true, reason: `⚠️ ${guide}` }" in src
     assert "sendUserMessage 기반" not in src
+
+
+def test_tdd_and_runtime_extension_protection_are_not_profile_gated():
+    src = TOOL_CALL_GATE.read_text(encoding="utf-8")
+    assert "ensureExtensionMutationApproved" in src
+    assert "decideProductionClassTddGate" in src
+    assert "sensitiveChangeReasonForPath" in src
+    assert "sharedVerificationFailureEscalationThreshold" in src
 
 
 def test_workflow_typo_suggestion_helper_defined_in_runtime_policy():
@@ -140,13 +145,13 @@ def test_steer_llm_defaults_to_steer_not_followup():
     assert 'async function steerLlm(message: string, deliverAs: "followUp" | "steer" = "steer")' in src
 
 
-def test_tdd_gate_checks_write_and_edit_calls_in_implement_phase():
+def test_tdd_gate_checks_write_and_edit_calls_for_any_active_workflow_phase():
     src = (
         WORKFLOW_EXTENSION.read_text(encoding="utf-8")
         + TOOL_CALL_GATE.read_text(encoding="utf-8")
         + PRODUCTION_CLASS_POLICY.read_text(encoding="utf-8")
     )
-    assert 'state.workflow?.phase === "implement"' in src
+    assert "if (state.workflow && (event.toolName === \"write\" || event.toolName === \"edit\"))" in src
     assert 'event.toolName === "write" || event.toolName === "edit"' in src
     assert "isProductionClassPath" in src
     assert "src/test/java" in src

@@ -58,6 +58,16 @@ A sensitive path change (CI, container/deploy, infrastructure, database/schema, 
 
 Regardless of profile, `git push` must cross the push boundary and policy scan, and mutating installed runtime `.pi/extensions/**` requires explicit user approval. Execution profiles do not change phase-transition, DPAA/SBADR, or document-policy semantics.
 
+## Devin-native lightweight configuration
+
+A separate configuration uses Devin directly, without Pi orchestration. One substantial design document drives autonomous implementation, verification, correction, and self-review, without phase-by-phase user continuation messages. Short always-on rules live in `.devin/rules/`, settings in `.devin/config.json`, and detailed instructions plus design/state templates in `docs/devin/`.
+
+Copy **only `.devin/` and `docs/devin/`** into another project. No Pi/Claude installation or npm install is required. Merge existing destination configuration instead of overwriting it, and migrate essential project safety rules before disabling legacy imports. This package is separate from the existing `target/.pi/` installers/updaters; those scripts do not install the Devin package.
+
+See [`.devin/README.md`](.devin/README.md) for installation, validation commands, and limitations. The standalone validator requires Node 18 or newer. In this source repository, use `npm run test:devin` and `npm run lint:devin`. Official documentation confirms CLI-native rule locations, but equivalent Desktop behavior and actual cost savings remain unverified. Prompt instructions do not enforce billing limits.
+
+For Windows npm projects, both catalog commands and automatic quality gates invoke the Node installation's `npm-cli.js` without a shell. Existing behavior remains the fallback when that entry point is unavailable.
+
 ## What gets installed
 
 ![Harness install footprint](docs/assets/harness-install-footprint.svg)

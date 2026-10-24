@@ -135,11 +135,19 @@ export function detectBuildSystem(root: string): BuildSystemInfo {
       hasTest = !!pkg.scripts?.test;
       hasBuild = !!pkg.scripts?.build;
     } catch { /* ignore */ }
+    // Resolve npm here so catalog commands and automatic quality gates share
+    // the same shell-free Windows invocation instead of spawning npm.cmd.
+    const npmCli = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+    const useNpmCli = process.platform === "win32" && pm === "npm" && fs.existsSync(npmCli);
+    const scriptCommand = (script: string) => ({
+      executable: useNpmCli ? process.execPath : pmBin,
+      args: [...(useNpmCli ? [npmCli] : []), "run", script],
+    });
     return {
       type: pm,
-      testCommand: hasTest ? { executable: pmBin, args: ["run", "test"] } : null,
-      buildCommand: hasBuild ? { executable: pmBin, args: ["run", "build"] } : null,
-      qualityCommand: hasLint ? { executable: pmBin, args: ["run", "lint"] } : null,
+      testCommand: hasTest ? scriptCommand("test") : null,
+      buildCommand: hasBuild ? scriptCommand("build") : null,
+      qualityCommand: hasLint ? scriptCommand("lint") : null,
     };
   }
 

@@ -58,6 +58,16 @@ interview
 
 프로필과 관계없이 `git push`는 push boundary와 policy scan을 통과해야 하며, 설치된 runtime `.pi/extensions/**` 수정은 명시적 사용자 승인을 요구합니다. 실행 프로필은 phase 전이, DPAA/SBADR, document 정책을 바꾸지 않습니다.
 
+## Devin 네이티브 경량 구성
+
+Pi를 경유하지 않고 Devin을 직접 사용하는 별도 구성을 제공합니다. 충분한 단일 설계 문서 후 구현·검증·수정·자체 리뷰를 자율적으로 이어가며, 단계별 사용자 재개 메시지는 요구하지 않습니다. 짧은 상시 규칙은 `.devin/rules/`, 설정은 `.devin/config.json`, 상세 지침과 설계·상태 템플릿은 `docs/devin/`에 있습니다.
+
+다른 프로젝트에는 **`.devin/`과 `docs/devin/` 두 폴더만** 복사합니다. Pi/Claude 설치나 npm install은 필요하지 않습니다. 기존 대상 구성을 덮어쓰지 말고 병합하며, 자동 import를 끄기 전에 필수 프로젝트 안전 규칙을 이관해야 합니다. 이 구성은 기존 `target/.pi/` 설치·업데이트 스크립트와 별개이고, 해당 스크립트가 Devin 구성을 설치한다고 가정하지 않습니다.
+
+설치·검사 명령과 제한 사항은 [`.devin/README.md`](.devin/README.md)를 참고하세요. 독립 검사 도구는 Node 18 이상을 사용합니다. 이 소스 저장소에서는 `npm run test:devin`과 `npm run lint:devin`으로 관련 검사를 실행할 수 있습니다. CLI 네이티브 로드 경로는 공식 문서에서 확인했지만 Desktop 동일 동작·실제 비용 절감은 미검증이며 프롬프트는 청구 한도를 강제하지 않습니다.
+
+Windows npm 프로젝트는 카탈로그와 자동 품질 게이트 모두 Node 설치의 `npm-cli.js`를 셸 없이 직접 실행합니다. 진입점이 없으면 기존 동작을 유지합니다.
+
 ## What gets installed
 
 ![Harness install footprint](docs/assets/harness-install-footprint.svg)

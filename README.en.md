@@ -60,11 +60,18 @@ Regardless of profile, `git push` must cross the push boundary and policy scan, 
 
 ## Devin-native lightweight configuration
 
-A separate configuration uses Devin directly, without Pi orchestration. One substantial design document drives autonomous implementation, verification, correction, and self-review, without phase-by-phase user continuation messages. Short always-on rules live in `.devin/rules/`, settings in `.devin/config.json`, and detailed instructions plus design/state templates in `docs/devin/`.
+A separate configuration primarily targets **Devin Local in Devin Desktop**. Short `.devin/rules/` contain safety invariants and a conditional index; `.devin/skills/` supply task preparation, resume/recovery, and completion checks only when relevant. Normal implementation requests prepare design/task/state files and continue through implementation, verification, correction, and self-review without phase-by-phase continuation prompts. `docs/devin/` holds task templates, compatibility indexes, and human-facing verification/cost documents.
 
-Copy **only `.devin/` and `docs/devin/`** into another project. No Pi/Claude installation or npm install is required. Merge existing destination configuration instead of overwriting it, and migrate essential project safety rules before disabling legacy imports. This package is separate from the existing `target/.pi/` installers/updaters; those scripts do not install the Devin package.
+Install from a repository checkout with Node.js 18+. No Pi/Claude installation or npm install is required.
 
-See [`.devin/README.md`](.devin/README.md) for installation, validation commands, and limitations. The standalone validator requires Node 18 or newer. In this source repository, use `npm run test:devin` and `npm run lint:devin`. Official documentation confirms CLI-native rule locations, but equivalent Desktop behavior and actual cost savings remain unverified. Prompt instructions do not enforce billing limits.
+```sh
+node .devin/tools/install.cjs --target "C:\work\my-project" --dry-run
+node .devin/tools/install.cjs --target "C:\work\my-project"
+```
+
+The installer copies only 18 allowlisted distribution files. It rejects existing `.devin/` or `docs/devin/`, symbolic-link paths, and overlapping source/target trees. Runtime state, private configuration, extra Skills, and Pi/Claude harnesses are not copied. There is no automatic update or merge; preserve/migrate essential project safety rules. This package is separate from the existing `target/.pi/` installers/updaters. The installer does not execute Devin or external commands.
+
+See [`.devin/README.md`](.devin/README.md) for installation safety boundaries, Devin Local/Normal usage, and limitations. In this source repository, `npm run test:devin` checks JSON, Skill contracts, and installation; `npm run lint:devin` checks the related CJS syntax. The Node installer is verified on Windows/Node 24; other OSes, Node 18 execution, actual Local Skill activation, and long-run token savings remain unverified. Instructions do not enforce billing limits.
 
 For Windows npm projects, both catalog commands and automatic quality gates invoke the Node installation's `npm-cli.js` without a shell. Existing behavior remains the fallback when that entry point is unavailable.
 

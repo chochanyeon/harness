@@ -60,11 +60,18 @@ interview
 
 ## Devin 네이티브 경량 구성
 
-Pi를 경유하지 않고 Devin을 직접 사용하는 별도 구성을 제공합니다. 충분한 단일 설계 문서 후 구현·검증·수정·자체 리뷰를 자율적으로 이어가며, 단계별 사용자 재개 메시지는 요구하지 않습니다. 짧은 상시 규칙은 `.devin/rules/`, 설정은 `.devin/config.json`, 상세 지침과 설계·상태 템플릿은 `docs/devin/`에 있습니다.
+**Devin Desktop의 Devin Local**을 주 대상으로 하는 별도 구성입니다. 짧은 `.devin/rules/`에는 안전 핵심과 조건별 인덱스만 두고, `.devin/skills/`의 작업 준비·재개/복구·완료 검증 Skill은 필요할 때만 사용합니다. 일반 구현 요청에서 설계·작업·상태를 준비하고 단계별 재개 확인 없이 구현·검증·수정·자체 리뷰를 이어가도록 안내합니다. `docs/devin/`에는 작업 템플릿·호환 인덱스·사람용 검증/비용 문서가 있습니다.
 
-다른 프로젝트에는 **`.devin/`과 `docs/devin/` 두 폴더만** 복사합니다. Pi/Claude 설치나 npm install은 필요하지 않습니다. 기존 대상 구성을 덮어쓰지 말고 병합하며, 자동 import를 끄기 전에 필수 프로젝트 안전 규칙을 이관해야 합니다. 이 구성은 기존 `target/.pi/` 설치·업데이트 스크립트와 별개이고, 해당 스크립트가 Devin 구성을 설치한다고 가정하지 않습니다.
+Node.js 18+가 있는 저장소 사본에서 다음 명령으로 설치합니다. Pi/Claude 설치나 npm install은 필요하지 않습니다.
 
-설치·검사 명령과 제한 사항은 [`.devin/README.md`](.devin/README.md)를 참고하세요. 독립 검사 도구는 Node 18 이상을 사용합니다. 이 소스 저장소에서는 `npm run test:devin`과 `npm run lint:devin`으로 관련 검사를 실행할 수 있습니다. CLI 네이티브 로드 경로는 공식 문서에서 확인했지만 Desktop 동일 동작·실제 비용 절감은 미검증이며 프롬프트는 청구 한도를 강제하지 않습니다.
+```sh
+node .devin/tools/install.cjs --target "C:\work\my-project" --dry-run
+node .devin/tools/install.cjs --target "C:\work\my-project"
+```
+
+설치기는 허용된 배포 파일 18개만 설치합니다. 기존 `.devin/`·`docs/devin/`, 심볼릭 링크 경로, 원본/대상 중첩은 거부합니다. 작업 상태·개인 설정·추가 Skills와 Pi/Claude 하네스는 복사하지 않습니다. 기존 구성을 갱신·자동 병합하지 않으며 필수 프로젝트 안전 규칙은 보존·이관해야 합니다. 이 구성은 기존 `target/.pi/` 설치·업데이트 스크립트와 별개입니다. 설치기는 Devin이나 외부 명령을 실행하지 않습니다.
+
+설치 안전 경계·Devin Local/Normal 사용법과 제한은 [`.devin/README.md`](.devin/README.md)를 참고하세요. 이 소스 저장소의 `npm run test:devin`은 JSON·Skill 계약·설치기를 검사하고, `npm run lint:devin`은 관련 CJS 구문을 검사합니다. Node 기반 설치기는 Windows/Node 24에서 검증하며 다른 OS·Node 18 실측과 실제 Local Skill 자동 적용·장기 토큰 절감은 미검증입니다. 지침은 청구 한도를 강제하지 않습니다.
 
 Windows npm 프로젝트는 카탈로그와 자동 품질 게이트 모두 Node 설치의 `npm-cli.js`를 셸 없이 직접 실행합니다. 진입점이 없으면 기존 동작을 유지합니다.
 

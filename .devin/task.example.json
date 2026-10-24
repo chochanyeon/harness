@@ -1,0 +1,14 @@
+{
+  "goal": "단일 설계를 기반으로 승인된 범위를 자율 구현하고 검증 근거를 남긴다",
+  "scope": ["지정된 프로젝트의 대상 모듈"],
+  "outOfScope": ["배포, push, 유료 호출, 관련 없는 리팩터링"],
+  "decisions": ["docs/devin/DESIGN.md의 설계 결정을 따른다", "Devin 하나가 실행 주체이며 자동 위임하지 않는다"],
+  "steps": ["관련 코드와 기존 테스트 확인", "테스트 작성 후 구현", "검증과 수정 및 자체 리뷰", "완료 기준별 증거 보고"],
+  "acceptanceCriteria": ["docs/devin/DESIGN.md의 모든 완료 기준에 검증 근거가 있다", "차단 사유 또는 검증 실패를 숨기지 않는다"],
+  "verificationCommands": ["node --test .devin/tests/validate-task.test.cjs"],
+  "recovery": "최초 실패 후 원인을 기록하고 수정·재검증한다. 작업 전체 복구 시도 한도가 소진되면 중단 보고한다.",
+  "stopConditions": ["완료 기준 충족", "복구 한도 소진", "미승인 권한·범위 확대 필요", "사용자만 결정할 수 있는 차단 사유"],
+  "stateFile": "state/STATE.md",
+  "maxRetries": 3,
+  "allowPaidExecution": false
+}

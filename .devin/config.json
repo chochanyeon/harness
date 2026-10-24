@@ -1,0 +1,8 @@
+{
+  "read_config_from": {
+    "agents_standard": false,
+    "cursor": false,
+    "windsurf": false,
+    "claude": false
+  }
+}

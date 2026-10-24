@@ -25,11 +25,14 @@ Options:
   --force             Overwrite existing files
   --clean             Clean managed harness runtime paths before reinstalling; preserves AGENTS.md, .pi/LOCAL.md, and .ai/interview artifacts
   --dry-run           Print planned changes without writing files
-  --component NAME    Component to initialize: all, workflow, memory, claude (repeatable; default: all)
+  --component NAME    Component: all, workflow, memory, claude, devin (default: all)
   --keep-temp         Keep temporary clone directory
   -h, --help          Show this help
 
 Notes:
+  all keeps workflow + memory + claude. devin is an opt-in, standalone choice.
+  devin requires Node.js 18+ and an existing destination; --force, --clean,
+  mixed components and custom --source-subdir are not supported for devin.
   A shared Stanford CoreNLP Docker container is started automatically when
   the workflow component is selected. Requires Docker Desktop.
   To skip, use --component memory (workflow component omitted).
@@ -54,10 +57,23 @@ done
 
 [ -z "$COMPONENTS" ] && COMPONENTS="all"
 
-command -v git >/dev/null 2>&1 || { echo "Required command not found: git" >&2; exit 1; }
-command -v find >/dev/null 2>&1 || { echo "Required command not found: find" >&2; exit 1; }
+DEVIN_ONLY=0
+case " $COMPONENTS " in
+  *" devin "*)
+    for component in $COMPONENTS; do
+      [ "$component" = "devin" ] || { echo "devin must be installed separately from other components" >&2; exit 2; }
+    done
+    [ "$FORCE" -eq 0 ] && [ "$CLEAN" -eq 0 ] || { echo "devin does not support --force or --clean" >&2; exit 2; }
+    [ "$SOURCE_SUBDIR" = "target" ] || { echo "--source-subdir is only supported for legacy components" >&2; exit 2; }
+    command -v node >/dev/null 2>&1 || { echo "Required command not found: node (Node.js 18+)" >&2; exit 1; }
+    DEVIN_ONLY=1 ;;
+esac
 
-DEST=$(cd "$DEST" 2>/dev/null && pwd || { mkdir -p "$DEST" && cd "$DEST" && pwd; })
+command -v git >/dev/null 2>&1 || { echo "Required command not found: git" >&2; exit 1; }
+if [ "$DEVIN_ONLY" -eq 0 ]; then
+  command -v find >/dev/null 2>&1 || { echo "Required command not found: find" >&2; exit 1; }
+  DEST=$(cd "$DEST" 2>/dev/null && pwd || { mkdir -p "$DEST" && cd "$DEST" && pwd; })
+fi
 TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/harness.XXXXXX")
 CLONE_DIR="$TEMP_ROOT/repo"
 
@@ -81,6 +97,19 @@ if [ -n "$REF" ]; then
   git clone --depth 1 --branch "$REF" "$REPO" "$CLONE_DIR"
 else
   git clone --depth 1 "$REPO" "$CLONE_DIR"
+fi
+
+# Devin uses the repository-root bundle, not target/ or the legacy clean flow.
+if [ "$DEVIN_ONLY" -eq 1 ]; then
+  INSTALLER="$CLONE_DIR/.devin/tools/install.cjs"
+  [ -f "$INSTALLER" ] || { echo "Devin bundle not found in selected repository/ref" >&2; exit 1; }
+  if [ "$DRY_RUN" -eq 1 ]; then
+    node "$INSTALLER" --target "$DEST" --dry-run
+  else
+    node "$INSTALLER" --target "$DEST"
+  fi
+  echo "Next: open the destination in Devin Desktop and select Devin Local (Normal mode)."
+  exit 0
 fi
 
 SOURCE="$CLONE_DIR/$SOURCE_SUBDIR"

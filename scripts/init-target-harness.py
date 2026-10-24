@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -178,19 +179,44 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--component",
         action="append",
-        choices=["all", "workflow", "memory", "claude"],
+        choices=["all", "workflow", "memory", "claude", "devin"],
         default=None,
-        help="Component to initialize. Repeatable. Default: all.",
+        help="Repeatable legacy components; all = workflow/memory/claude. devin is a standalone Node.js 18+ opt-in.",
     )
     return parser.parse_args(argv)
 
 
+def install_devin(args: argparse.Namespace, components: list[str]) -> int:
+    if any(component != "devin" for component in components):
+        raise SystemExit("devin must be installed separately from other components")
+    if args.force:
+        raise SystemExit("devin does not support --force")
+    if args.source.resolve() != (repo_root() / "target").resolve():
+        raise SystemExit("--source is only supported for legacy components")
+    node = shutil.which("node")
+    if node is None:
+        raise SystemExit("Required command not found: node (Node.js 18+)")
+    installer = repo_root() / ".devin" / "tools" / "install.cjs"
+    if not installer.is_file():
+        raise SystemExit("Devin bundle not found in selected repository/ref")
+    # Preserve the raw target path so the shared installer can reject links.
+    command = [node, str(installer), "--target", str(args.dest)]
+    if args.dry_run:
+        command.append("--dry-run")
+    result = subprocess.run(command, check=False)
+    if result.returncode == 0:
+        print("Next: open the destination in Devin Desktop and select Devin Local (Normal mode).")
+    return result.returncode
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    components = args.component or ["all"]
+    if "devin" in components:
+        return install_devin(args, components)
+
     dest = args.dest.resolve()
     source = args.source.resolve()
-
-    components = args.component or ["all"]
 
     print(f"source: {source}")
     print(f"dest:   {dest}")

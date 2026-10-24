@@ -62,14 +62,9 @@ interview
 
 **Devin Desktop의 Devin Local**을 주 대상으로 하는 별도 구성입니다. 짧은 `.devin/rules/`에는 안전 핵심과 조건별 인덱스만 두고, `.devin/skills/`의 작업 준비·재개/복구·완료 검증 Skill은 필요할 때만 사용합니다. 일반 구현 요청에서 설계·작업·상태를 준비하고 단계별 재개 확인 없이 구현·검증·수정·자체 리뷰를 이어가도록 안내합니다. `docs/devin/`에는 작업 템플릿·호환 인덱스·사람용 검증/비용 문서가 있습니다.
 
-Node.js 18+가 있는 저장소 사본에서 다음 명령으로 설치합니다. Pi/Claude 설치나 npm install은 필요하지 않습니다.
+**기존 설치 명령에 `--component devin`(PowerShell/CMD는 `-Component devin`)을 추가**하면 됩니다. Git과 Node.js 18+가 필요하며 Pi/Claude 설치나 npm install은 필요하지 않습니다. 기본 `all`은 기존 workflow+memory+claude를 유지하고 Devin은 단독으로 명시 선택합니다. [component별 설치](#component별-설치)에 원격 명령이 있습니다. 로컬 체크아웃의 기존 Python 진입점도 `--component devin`을 지원합니다.
 
-```sh
-node .devin/tools/install.cjs --target "C:\work\my-project" --dry-run
-node .devin/tools/install.cjs --target "C:\work\my-project"
-```
-
-설치기는 허용된 배포 파일 18개만 설치합니다. 기존 `.devin/`·`docs/devin/`, 심볼릭 링크 경로, 원본/대상 중첩은 거부합니다. 작업 상태·개인 설정·추가 Skills와 Pi/Claude 하네스는 복사하지 않습니다. 기존 구성을 갱신·자동 병합하지 않으며 필수 프로젝트 안전 규칙은 보존·이관해야 합니다. 이 구성은 기존 `target/.pi/` 설치·업데이트 스크립트와 별개입니다. 설치기는 Devin이나 외부 명령을 실행하지 않습니다.
+기존 진입점이 선택한 ref를 임시 clone한 뒤 내부 안전 복사 helper로 허용 파일 18개만 설치합니다. 기존 `.devin/`·`docs/devin/`, 링크·경로 중첩은 거부하고 개인 상태·추가 Skills·Pi/Claude 파일을 복사하지 않습니다. Force/Clean·컴포넌트 혼합·자동 병합은 지원하지 않습니다. Devin 경로에서 Pi/CoreNLP/Devin 자체를 실행하지 않으며 기존 업데이트 명령은 변경하지 않았습니다. 필수 프로젝트 안전 규칙은 보존·이관해야 합니다.
 
 설치 안전 경계·Devin Local/Normal 사용법과 제한은 [`.devin/README.md`](.devin/README.md)를 참고하세요. 이 소스 저장소의 `npm run test:devin`은 JSON·Skill 계약·설치기를 검사하고, `npm run lint:devin`은 관련 CJS 구문을 검사합니다. Node 기반 설치기는 Windows/Node 24에서 검증하며 다른 OS·Node 18 실측과 실제 Local Skill 자동 적용·장기 토큰 절감은 미검증입니다. 지침은 청구 한도를 강제하지 않습니다.
 
@@ -232,7 +227,21 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/in
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
 ```
 
-깨끗하게 재설치하려면 managed runtime을 지우고 다시 복사합니다. `AGENTS.md`, `.pi/LOCAL.md`, `.ai/interview` 산출물은 보존됩니다.
+### Devin Local만 설치
+
+```powershell
+$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.ps1 -OutFile $p; powershell -NoProfile -File $p -Dest (Get-Location).Path -Component devin
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component devin
+```
+
+Devin은 기본 `all`에서 제외되며 Git·Node.js 18+가 필요합니다. `-DryRun`/`--dry-run`은 대상 프로젝트에 쓰지 않습니다(임시 clone은 생성·정리). `-Force`/`--force`, `-Clean`/`--clean`, 다른 컴포넌트와의 혼합·사용자 지정 source 옵션은 거부합니다. main 반영 전에는 위 다운로드 URL의 `main`과 `-Ref`/`--ref`를 같은 기능 브랜치로 바꿔 사용합니다(현재 `feat/devin-local-installer`). 설치 후 Desktop에서 **Devin Local / Normal**을 선택합니다. 로컬 Python 진입점도 기존 명령에 `--component devin`을 추가하며 CMD는 `-Component devin`을 전달합니다. 기존 업데이트 스크립트의 Devin 갱신은 이번 범위에 포함하지 않습니다.
+
+설치 진입점 회귀 검사는 `python -m pytest tests/test_devin_component_install.py tests/test_component_install_update.py -q`로 실행합니다. 임시 로컬 저장소를 사용하며 GitHub·Docker·Devin에 접속하지 않습니다.
+
+Pi/Claude를 깨끗하게 재설치하려면 managed runtime을 지우고 다시 복사합니다. `AGENTS.md`, `.pi/LOCAL.md`, `.ai/interview` 산출물은 보존됩니다.
 
 ```powershell
 $p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Clean

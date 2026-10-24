@@ -62,14 +62,9 @@ Regardless of profile, `git push` must cross the push boundary and policy scan, 
 
 A separate configuration primarily targets **Devin Local in Devin Desktop**. Short `.devin/rules/` contain safety invariants and a conditional index; `.devin/skills/` supply task preparation, resume/recovery, and completion checks only when relevant. Normal implementation requests prepare design/task/state files and continue through implementation, verification, correction, and self-review without phase-by-phase continuation prompts. `docs/devin/` holds task templates, compatibility indexes, and human-facing verification/cost documents.
 
-Install from a repository checkout with Node.js 18+. No Pi/Claude installation or npm install is required.
+**Add `--component devin` to the existing installer (`-Component devin` for PowerShell/CMD).** Git and Node.js 18+ are required; Pi/Claude installation and npm install are not. Default `all` remains workflow+memory+claude; Devin is an explicit standalone choice. Remote commands are in [Component-specific install](#component-specific-install). The existing Python entry point also accepts `--component devin` from a local checkout.
 
-```sh
-node .devin/tools/install.cjs --target "C:\work\my-project" --dry-run
-node .devin/tools/install.cjs --target "C:\work\my-project"
-```
-
-The installer copies only 18 allowlisted distribution files. It rejects existing `.devin/` or `docs/devin/`, symbolic-link paths, and overlapping source/target trees. Runtime state, private configuration, extra Skills, and Pi/Claude harnesses are not copied. There is no automatic update or merge; preserve/migrate essential project safety rules. This package is separate from the existing `target/.pi/` installers/updaters. The installer does not execute Devin or external commands.
+The existing entry point temporarily clones the selected ref, then delegates copying to the internal safe helper, which installs only 18 allowlisted files. Existing package roots, links, and overlapping paths are rejected; private state, extra Skills, and Pi/Claude files are excluded. Force/Clean, mixed components, and automatic merging are unsupported. The Devin route does not launch Pi, CoreNLP, or Devin itself; update entry points remain unchanged. Preserve/migrate essential project safety rules.
 
 See [`.devin/README.md`](.devin/README.md) for installation safety boundaries, Devin Local/Normal usage, and limitations. In this source repository, `npm run test:devin` checks JSON, Skill contracts, and installation; `npm run lint:devin` checks the related CJS syntax. The Node installer is verified on Windows/Node 24; other OSes, Node 18 execution, actual Local Skill activation, and long-run token savings remain unverified. Instructions do not enforce billing limits.
 
@@ -232,7 +227,21 @@ curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/in
 curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component claude
 ```
 
-Clean reinstall removes managed runtime files and copies them again. `AGENTS.md`, `.pi/LOCAL.md`, and `.ai/interview` artifacts are preserved.
+### Install Devin Local only
+
+```powershell
+$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.ps1 -OutFile $p; powershell -NoProfile -File $p -Dest (Get-Location).Path -Component devin
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component devin
+```
+
+Devin is excluded from default `all` and requires Git plus Node.js 18+. `-DryRun`/`--dry-run` does not write to the destination (a temporary clone is created and removed). Force/Clean, mixed components, and custom source options are refused. Before merging into main, replace `main` in the download URL and set `-Ref`/`--ref` to the same feature branch (currently `feat/devin-local-installer`). Open the project in Desktop with **Devin Local / Normal** afterward. Append `--component devin` to the existing local Python command; CMD forwards `-Component devin`. Devin updates through existing update scripts are outside this change.
+
+Run entry-point regressions with `python -m pytest tests/test_devin_component_install.py tests/test_component_install_update.py -q`. Tests use temporary local repositories, without GitHub, Docker, or Devin access.
+
+For Pi/Claude, clean reinstall removes managed runtime files and copies them again. `AGENTS.md`, `.pi/LOCAL.md`, and `.ai/interview` artifacts are preserved.
 
 ```powershell
 $p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.ps1 -OutFile $p; $env:HARNESS_DEST=(Get-Location).Path; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Clean

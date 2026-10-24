@@ -27,7 +27,7 @@ param(
 
     [switch]$DryRun,
 
-    [ValidateSet("all", "workflow", "memory", "claude")]
+    [ValidateSet("all", "workflow", "memory", "claude", "devin")]
     [string[]]$Component = @("all"),
 
     [switch]$KeepTemp
@@ -35,6 +35,8 @@ param(
 # Note: A shared Stanford CoreNLP Docker container is started automatically
 # when the workflow component is selected. Requires Docker Desktop.
 # To skip, omit the workflow component: -Component memory
+# all remains workflow + memory + claude. -Component devin is a standalone opt-in
+# requiring Node.js 18+; Force/Clean/mixed components/custom SourceSubdir are refused.
 
 $ErrorActionPreference = "Stop"
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
@@ -116,10 +118,19 @@ function Test-Excluded([System.IO.FileSystemInfo]$Item, [string]$Root) {
     return $false
 }
 
+$devinOnly = $Component -contains "devin"
+if ($devinOnly) {
+    if (@($Component | Where-Object { $_ -ne "devin" }).Count -gt 0) {
+        throw "devin must be installed separately from other components"
+    }
+    if ($Force -or $Clean) { throw "devin does not support -Force or -Clean" }
+    if ($SourceSubdir -ne "target") { throw "-SourceSubdir is only supported for legacy components" }
+    Assert-Command node
+}
 Assert-Command git
 
 $destPath = [System.IO.Path]::GetFullPath($Dest)
-if (-not (Test-Path -LiteralPath $destPath)) {
+if (-not $devinOnly -and -not (Test-Path -LiteralPath $destPath)) {
     if ($DryRun) {
         Write-Host "dest directory would be created: $destPath"
     } else {
@@ -146,6 +157,20 @@ try {
 
     & git @cloneArgs
     if ($LASTEXITCODE -ne 0) { throw "git clone failed with exit code $LASTEXITCODE" }
+
+    # Dispatch before template discovery, clean, and CoreNLP/Pi setup.
+    if ($devinOnly) {
+        $installer = Join-Path $cloneDir ".devin/tools/install.cjs"
+        if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+            throw "Devin bundle not found in selected repository/ref"
+        }
+        $nodeArgs = @($installer, "--target", $destPath)
+        if ($DryRun) { $nodeArgs += "--dry-run" }
+        & node @nodeArgs
+        if ($LASTEXITCODE -ne 0) { throw "Devin installation failed with exit code $LASTEXITCODE" }
+        Write-Host "Next: open the destination in Devin Desktop and select Devin Local (Normal mode)."
+        return
+    }
 
     $source = Join-Path $cloneDir $SourceSubdir
     if (-not (Test-Path -LiteralPath $source -PathType Container)) {

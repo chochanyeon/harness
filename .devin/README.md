@@ -3,7 +3,7 @@
 동일한 완료 기준·변경 품질·검증 수준을 유지하면서 장기 자율 실행을 끝낼 때까지의 총 입력·출력 토큰을 줄이는 것이 목표다. 충분한 단일 설계와 장기 자율 실행을 유지하면서 사용자 재개 메시지·중복 오케스트레이션·반복 컨텍스트 주입을 줄인다. 주 사용 환경은 **Devin Desktop의 Devin Local**이다. Pi·Claude 설치나 npm 패키지 설치는 필요 없다.
 
 ## 다른 PC·프로젝트에 설치
-신뢰할 수 있는 저장소 사본에서 아래 설치기를 실행한다. **Node.js 18+**가 필요하며 npm install·관리자 권한은 요구하지 않는다. 설치기는 명시된 배포 파일 18개만 대상 프로젝트의 `.devin/`과 `docs/devin/`에 설치한다. 작업 상태·개인 설정까지 섞일 수 있으므로 사용 중인 폴더 전체를 재귀 복사하지 않는다. 루트 package.json·`.pi/`·`.claude/`·`.harness/`는 설치하지 않는다.
+**기존 `init-target-harness` 설치 명령에 Devin 선택지만 추가한다.** Git과 Node.js 18+가 필요하며 npm install·Pi/Claude 설치는 요구하지 않는다. 기본 `all`은 기존 workflow+memory+claude를 유지하고 Devin은 명시적으로 선택할 때만 설치한다. 기존 안전 복사 helper가 허용된 배포 파일 18개만 `.devin/`과 `docs/devin/`에 설치한다. 작업 상태·개인 설정·루트 package.json·Pi/Claude 하네스는 복사하지 않는다.
 
 ```text
 대상 프로젝트/
@@ -31,19 +31,30 @@
    └─ VERIFICATION.md
 ```
 
-저장소 루트에서 대상 경로를 실제 프로젝트로 바꿔 실행한다. 공백·한글이 있는 경로도 따옴표로 감싼다.
+설치할 프로젝트 루트에서 실행한다. 신뢰하는 저장소/ref만 사용하며 회사의 스크립트 실행 정책을 따른다.
 
-```sh
-node .devin/tools/install.cjs --target "C:\work\my-project" --dry-run
-node .devin/tools/install.cjs --target "C:\work\my-project"
+### Windows PowerShell
+```powershell
+$p=Join-Path $env:TEMP 'init-harness.ps1'; Invoke-WebRequest https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.ps1 -OutFile $p; powershell -NoProfile -File $p -Dest (Get-Location).Path -Component devin
 ```
 
-`--dry-run`도 실제 설치와 같은 사전 검사를 수행하지만 파일·디렉터리를 만들지 않는다. macOS/Linux에서는 대상 경로를 `/path/to/project` 형태로 지정한다. 코드는 OS 공통 Node API를 사용하며 실제 검증 환경은 Windows/Node 24다. 다른 OS·Node 18 실측은 아직 수행하지 않았다.
+### macOS/Linux 또는 Git Bash
+```sh
+curl -fsSL https://raw.githubusercontent.com/chochanyeon/harness/main/scripts/init-target-harness.sh | sh -s -- --component devin
+```
+
+로컬 체크아웃을 사용하는 경우에는 기존 `python /path/to/harness/scripts/init-target-harness.py --component devin`도 지원한다. Windows의 기존 `init-target-harness.cmd -Component devin`은 PowerShell로 전달된다. 설치 후 Pi를 실행하는 것이 아니라 Desktop에서 해당 프로젝트를 열고 **Devin Local / Normal**을 선택한다.
+
+`-DryRun` 또는 `--dry-run`으로 미리 확인할 수 있다. 통합 진입점은 임시 Git clone을 만들고 정리하지만 대상 프로젝트에는 쓰지 않는다. `devin`은 단독 선택이며 다른 컴포넌트와 혼합하거나 Force/Clean·사용자 지정 source-subdir/source 옵션을 적용할 수 없다. 업데이트 명령에는 Devin을 추가하지 않았다.
+
+기능이 main에 반영되기 전에는 다운로드 URL의 `main`과 `-Ref`/`--ref`를 **둘 다** 해당 기능 브랜치로 맞춘다(현재 `feat/devin-local-installer`). 설치 진입점과 bundle의 버전을 일치시켜야 한다. 내부 복사 helper `.devin/tools/install.cjs`는 유지하지만 사용자가 별도 명령으로 호출할 필요는 없다.
+
+검증 환경은 Windows/Git Bash/PowerShell 5.1/CMD/Python 3.14/Node 24다. 네이티브 macOS/Linux·Node 18 실측과 실제 Local 자동 적용은 미검증이다.
 
 ### 설치 안전 경계
 - 대상 프로젝트 폴더는 미리 존재해야 한다. `.devin/` 또는 `docs/devin/`이 파일·폴더·끊어진 링크를 포함해 이미 있으면 덮어쓰지 않는다. 자동 병합·업데이트·force 옵션은 없으며 기존 구성은 사람이 검토·병합한다.
 - 원본 파일·경로 및 대상·상위 경로의 심볼릭 링크/Node가 인식하는 junction을 거부한다. 원본과 대상이 같거나 서로 포함하는 경로도 거부한다. 기존 일반 `docs/`와 다른 프로젝트 파일은 보존한다.
-- 허용 목록만 복사한다. `.devin/task.json`, `state/`, `tasks/`, `config.local.json`, 추가 Skills, 실제 `DESIGN.md` 등 개인·실행 자료는 설치하지 않는다. 외부 명령·Devin·npm 설치·프로젝트 테스트를 설치기가 실행하지 않는다.
+- 허용 목록만 복사한다. `.devin/task.json`, `state/`, `tasks/`, `config.local.json`, 추가 Skills, 실제 `DESIGN.md` 등 개인·실행 자료는 설치하지 않는다. 통합 진입점은 기존처럼 Git clone을 사용하고 복사만 Node helper에 위임한다. helper는 외부 명령·Devin·npm 설치·프로젝트 테스트를 실행하지 않으며, Devin 경로는 CoreNLP를 시작하지 않는다.
 - 쓰기 실패 시 이번 실행이 생성한 동일 파일·빈 디렉터리만 정리한다. 예기치 않은 파일·소유 변경은 보존하고 정리 미완료 경로를 오류에 표시한다. 재귀 삭제는 하지 않는다.
 - 링크 검사는 시점 검사다. 적대적인 동시 경로 교체에 대한 보안 경계나 강제 종료·전원 차단의 원자성을 보장하지 않는다. 설치 중 원본·대상을 다른 작업으로 변경하지 않는다. 실패 후 잔여 경로가 있으면 내용을 확인하고 수동으로 복구하며 무조건 삭제하거나 재설치하지 않는다.
 

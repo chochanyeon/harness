@@ -1,6 +1,28 @@
 # 검증 현황
 
-## 현재 변경 — 설치기·배포 검증
+## 현재 변경 — 기존 설치 명령의 Devin 컴포넌트
+
+### 범위와 의도
+별도 사용자 설치 명령을 추가하는 것이 아니라 기존 `init-target-harness.sh/.ps1/.py`에 `devin` 선택지를 연결했다. CMD는 기존 전달 경로 그대로 `-Component devin`을 지원한다. Shell/PowerShell은 선택한 ref를 임시 clone하고, Python은 로컬 체크아웃을 사용하며, 실제 복사는 기존 안전 Node helper에 위임한다. Devin 분기는 일반 target/ 복사·clean·CoreNLP·Pi 실행 전에 끝난다. 기본 `all`은 workflow+memory+claude 그대로이며 Node도 새로 요구하지 않는다. Devin은 명시적 단독 선택으로만 설치하고 Force/Clean·컴포넌트 혼합·사용자 지정 source 옵션은 거부한다. 기존 업데이트 스크립트는 변경하지 않았다.
+
+### 검증 근거
+| 확인 | 명령/방법 | 결과 |
+|---|---|---|
+| RED | 통합 설치 테스트의 기본 설치 사례 4개, 구현 전 실행 | Python/Shell/PowerShell/CMD 모두 devin 미지원으로 실패 |
+| 통합 설치 | `python -m pytest tests/test_devin_component_install.py -q` | 44개 통과, 실패·건너뜀 0 |
+| 기존 설치 회귀 포함 | `python -m pytest tests/test_devin_component_install.py tests/test_component_install_update.py -q` | 59개 통과·실패 0·기존 Windows 제외 2개 건너뜀 |
+| 기존 Devin 검사 | `npm run test:devin` | 45개 통과·실패 0·기존 파일 symlink 권한 제한 1개 건너뜀 |
+| 구문 | `npm run lint:devin`, `bash -n`, Python AST, PowerShell Parser | 모두 통과 |
+| 독립 리뷰 | reviewer run `73c2d420-c6da-4ad7-9222-027241edac2d`, 연결 diff 8개 파일 정적 검토 | 구체적 결함 없음. Merge verdict: OK with notes. 직접 Git/테스트 실행은 하지 않음 |
+
+44개 통합 검사는 임시 로컬 Git 저장소만 사용한다. Shell은 표준입력으로 전달해 `curl | sh` 형태를 재현했고, PowerShell·CMD·Python도 다른 프로젝트 cwd에서 실제 파일 설치를 확인했다. 기본 all의 Node 불필요·Devin 제외, dry-run 대상 무변경, 없는 대상 미생성, 기존 파일 보호, Node 부재, force/clean·혼합 거부, bundle 없는 ref의 안전 실패, 원래 경로의 링크 검사 전달을 각 진입점에서 검증했다. 테스트는 GitHub·Docker·Devin에 접속하지 않았다.
+
+리뷰 보고서는 `I:/harness/.pi/subagent-artifacts/devin-component-integration-review-r1.md`에 보관했다. 메인은 원래 대상 경로 전달, destructive 옵션의 사전 거부, 기본 all의 불변성, 문서의 URL/ref 일치를 대조했다. 검토 결과 수집·분류를 마쳤고 진행 중인 위임 작업은 없다.
+
+### 한계와 전달
+검증 환경은 Windows/Git Bash/PowerShell 5.1/CMD/Python 3.14/Node 24다. 네이티브 macOS/Linux·Node 18 및 실제 Devin Local 적용·토큰 효과는 미검증이다. 다운로드된 진입점과 clone 대상 ref를 일치시켜야 하며, main 반영 전에는 URL과 `--ref`/`-Ref` 모두 `feat/devin-local-installer`를 사용한다. 원격 main을 변경하지 않고 기존 기능 브랜치에 추가 커밋으로 전달한다.
+
+## 이전 개선 — 설치기·배포 검증
 
 ### 범위와 안전 경계
 `.devin/tools/install.cjs`에 Node.js 18+ 설치기를 추가했다. 기존 승인된 Local Skills 구성과 함께 허용 목록의 배포 파일 18개만 복사한다. 기존 `.devin/`·`docs/devin/`, 심볼릭 링크/Node가 인식하는 junction, 원본·대상 중첩은 거부한다. 작업 상태·개인 설정·추가 Skills와 Pi/Claude 하네스·루트 package.json은 설치하지 않는다. dry-run은 같은 사전 검사만 수행한다. 설치기가 외부 명령·Devin·npm 설치·프로젝트 검증을 실행하지 않는다. 쓰기 실패는 이번 실행 소유 파일·빈 디렉터리만 정리하며 예기치 않은 자료는 보존하고 정리 미완료를 보고한다. 적대적 동시 경로 교체나 프로세스 강제 종료에 대한 원자성은 보장하지 않는다.
